@@ -15,7 +15,7 @@ $$
 y_t = \mu_t + \gamma_t + \mathbf x_t^{\prime} \boldsymbol{\beta} + \epsilon_t \\
 $$
 
-where $\mu_t$ specifies a dynamic level component, $\gamma_t$ a dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ a regression component, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation. 
+where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ an unobserved regression component with respect to the coefficients, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation. 
 
 The unobserved level evolves according to the following transition equations:
 
