@@ -20,6 +20,7 @@ $$
 
 where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ an unobserved regression component with respect to the coefficients, $\boldsymbol{\beta}$, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
 
+## Level and trend
 The unobserved level evolves according to the following general transition equations:
 
 $$
@@ -31,10 +32,19 @@ $$
 
 where $\eta_{\mu, t} \sim N(0, \sigma_{\eta_\mu}^2)$ and $\eta_{\delta, t} \sim N(0, \sigma_{\eta_\delta}^2)$ for all $t$. The state equation for $\delta_t$ represents the local slope at time $t$. If $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, then the level component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
+## Seasonality
 The seasonal component, $\gamma_t$, can be modeled in two ways. One way is known as the "dummy" variable approach. Formally, the seasonal effect on the outcome $y$ is modeled as
 
 $$
 \sum_{j=0}^{S-1} \gamma_{t-j} = \eta_{\gamma, t} \iff \gamma_t = -\sum_{j=1}^{S-1} \gamma_{t-j} + \eta_{\gamma, t},
 $$
 
-where $j$ indexes the number of periods in a seasonal cycle, $S$ is the number of periods in a seasonal cycle, and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle should, in the mean, be zero.
+where $j$ indexes the number of periods in a seasonal cycle, $S$ is the number of periods in a seasonal cycle, and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle should, on average, be zero.
+
+Another way to model seasonality is through a trigonometric represenation, which exploits the periodicity of sine and cosine functions. Specifically, seasonality is modeled as
+
+$$
+\gamma_t = \sum_{j=1}^h \gamma_{j, t}
+$$
+
+where $j$ indexes the number of harmonics to represent seasonality of periodity $S$ and $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. 
