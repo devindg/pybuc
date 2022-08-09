@@ -15,7 +15,9 @@ $$
 y_t = \mu_t + \gamma_t + \mathbf x_t \boldsymbol{\beta} + \epsilon_t \\
 $$
 
-where $\mu_t$ specifies the dynamic level component, $\gamma_t$ the dynamic seasonal component, $\mathbf x_t \boldsymbol{\beta}$ the regression component, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ the irregular component. The level component takes the general form
+where $\mu_t$ specifies a dynamic level component, $\gamma_t$ a dynamic seasonal component, $\mathbf x_t \boldsymbol{\beta}$ a regression component, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an irregular component. The equation describing the outcome $y_t$ is commonly referred to as as the observation equation. 
+
+The unobserved level evolves according to the following transition equations:
 
 $$
 \begin{align}
@@ -23,3 +25,5 @@ $$
     \delta_{t+1} &= \delta_t + \eta_{\delta, t}
 \end{align}
 $$
+
+where $\eta_{\mu, t} \sim N(0, \sigma_{\eta_\mu}^2)$ and $\eta_{\delta, t} \sim N(0, \sigma_{\eta_\delta}^2)$. The state described by $\delta_t$ governs the local slope at time $t$. If $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, then the level component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
