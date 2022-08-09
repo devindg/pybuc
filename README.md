@@ -9,15 +9,18 @@
     <li>Regression with static coefficients</li>
 </ul>
 
-A model with level, trend, seasonal, and regression components takes the form:
+In addition to a relatively limited feature set, the way <code/>pybuc</code> estimates regression coefficients is methodologically different than <code/>bsts</code>. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when degrees of freedom are negative.
+
+# Model
+A structural time series model with level, trend, seasonal, and regression components takes the form:
 
 $$
 y_t = \mu_t + \gamma_t + \mathbf x_t^{\prime} \boldsymbol{\beta} + \epsilon_t \\
 $$
 
-where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ an unobserved regression component with respect to the coefficients, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation. 
+where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ an unobserved regression component with respect to the coefficients, $\boldsymbol{\beta}$, and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
 
-The unobserved level evolves according to the following transition equations:
+The unobserved level evolves according to the following general transition equations:
 
 $$
 \begin{align}
