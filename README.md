@@ -60,3 +60,6 @@ $$
 $$
 
 where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
+
+## State space representation
+The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times u}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $u$ is number of state parameters to be estimated. 
