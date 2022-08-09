@@ -33,6 +33,8 @@ $$
 where $\eta_{\mu, t} \sim N(0, \sigma_{\eta_\mu}^2)$ and $\eta_{\delta, t} \sim N(0, \sigma_{\eta_\delta}^2)$ for all $t$. The state equation for $\delta_t$ represents the local slope at time $t$. If $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, then the level component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
 ## Seasonality
+
+### Dummy form
 The seasonal component, $\gamma_t$, can be modeled in two ways. One way is known as the "dummy" variable approach. Formally, the seasonal effect on the outcome $y$ is modeled as
 
 $$
@@ -41,10 +43,20 @@ $$
 
 where $j$ indexes the number of periods in a seasonal cycle, $S$ is the number of periods in a seasonal cycle, and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle should, on average, be zero.
 
+### Trigonometric form
 Another way to model seasonality is through a trigonometric represenation, which exploits the periodicity of sine and cosine functions. Specifically, seasonality is modeled as
 
 $$
 \gamma_t = \sum_{j=1}^h \gamma_{j, t}
 $$
 
-where $j$ indexes the number of harmonics to represent seasonality of periodity $S$ and $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. 
+where $j$ indexes the number of harmonics to represent seasonality of periodity $S$ and $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. The state transition equations for each harmonic, $\gamma_{j, t}$, are represented by a real and imaginary part, specifically
+
+$$
+\begin{align}
+    \gamma_{j, t+1} &= \cos(\lambda_j) \gamma_{j, t} + \sin(\lambda_j) \gamma_{j, t}^* + \eta_{\gamma_j, t} \\
+    \gamma_{j, t+1}^* &= -\sin(\lambda_j) \gamma_{j, t} + \cos(\lambda_j) \gamma_{j, t}^* + \eta_{\gamma_j^* , t}
+\end{align}
+$$
+
+where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
