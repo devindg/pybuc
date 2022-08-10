@@ -62,20 +62,30 @@ $$
 where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 
 ## State space representation
-The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity of 4 and 2 harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). The observation, state transition, and state error transformation matrices may be written as
+The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity of 4 and 2 harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). There are $m = 1 + 1 + 2 * 2 + 1 = 7$ state equations and $q = 1 + 1 + 2 * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is by construction 1 for all $t$. The observation, state transition, and state error transformation matrices may be written as
 
 $$
 \begin{align}
     \mathbf Z_t &= \left(\begin{array}{cc} 
-1 & 0 & 1 & 0 & 1 & 0 & \mathbf x_t^{\prime} \boldsymbol{\beta}
-\end{array}\right) \\
+                        1 & 0 & 1 & 0 & 1 & 0 & \mathbf x_t^{\prime} \boldsymbol{\beta}
+                        \end{array}\right) \\
     \mathbf T &= \left(\begin{array}{cc} 
-1 & 1 & 0 & 0 & 0 & 0 \\
-0 & 1 & 0 & 0 & 0 & 0 \\
-0 & 0 & \cos(2\pi / 4) & \sin(2\pi / 4) & 0 & 0 \\
-0 & 0 & -\sin(2\pi / 4) & \cos(2\pi / 4) & 0 & 0 \\
-0 & 0 & 0 & 0 & \cos(4\pi / 4) & \sin(4\pi / 4) \\
-0 & 0 & 0 & 0 & -\sin(4\pi / 4) & \cos(4\pi / 4)
-\end{array}\right)
+                        1 & 1 & 0 & 0 & 0 & 0 & 0 \\
+                        0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+                        0 & 0 & \cos(2\pi / 4) & \sin(2\pi / 4) & 0 & 0 & 0 \\
+                        0 & 0 & -\sin(2\pi / 4) & \cos(2\pi / 4) & 0 & 0 & 0 \\
+                        0 & 0 & 0 & 0 & \cos(4\pi / 4) & \sin(4\pi / 4) & 0 \\
+                        0 & 0 & 0 & 0 & -\sin(4\pi / 4) & \cos(4\pi / 4) & 0 \\
+                        0 & 0 & 0 & 0 & 0 & 0 & 1
+                        \end{array}\right) \\
+    \mathbf R &= \left(\begin{array}{cc} 
+                    1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+                    0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+                    0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+                    0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+                    0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+                    0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+                    0 & 0 & 0 & 0 & 0 & 0 & 0
+                    \end{array}\right)
 \end{align}
 $$
