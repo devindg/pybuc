@@ -20,7 +20,7 @@ $$
 
 where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
 
-## Level and trend
+## Level and slope
 The unobserved level evolves according to the following general transition equations:
 
 $$
@@ -62,7 +62,7 @@ $$
 where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 
 ## State space representation
-The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity of 4 and 2 harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). There are $m = 1 + 1 + 2 * 2 + 1 = 7$ state equations and $q = 1 + 1 + 2 * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is 1 for all $t$ by construction. The observation, state transition, and state error transformation matrices may be written as
+The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity of 4 and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). There are $m = 1 + 1 + h * 2 + 1 = 7$ state equations and $q = 1 + 1 + h * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is 1 for all $t$ by construction. The observation, state transition, and state error transformation matrices may be written as
 
 $$
 \begin{align}
