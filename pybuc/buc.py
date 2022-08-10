@@ -187,22 +187,29 @@ def simulate_linear_state_space(observation_matrix,
     Z = observation_matrix
     R = state_error_transformation_matrix
 
-    # Store number of state variables (m), state parameters (u), observations (n)
+    # Establish number of state variables (m), state parameters (q), observations (n)
     m = Z.shape[2]
-    u = R.shape[1]
+    q = R.shape[1]
     n = Z.shape[0]
 
-    error_variances = np.concatenate((outcome_error_variance, diag_2d(state_error_variance_matrix)))
-    errors = np.empty((n, 1 + u, 1), dtype=np.float64)
+    if q > 0:
+        error_variances = np.concatenate((outcome_error_variance, diag_2d(state_error_variance_matrix)))
+    else:
+        error_variances = outcome_error_variance
+
+    errors = np.empty((n, 1 + q, 1), dtype=np.float64)
     for t in range(n):
-        errors[t] = vec_norm(np.zeros((1 + u, 1)), np.sqrt(error_variances))
+        errors[t] = vec_norm(np.zeros((1 + q, 1)), np.sqrt(error_variances))
 
     alpha = np.empty((n + 1, m, 1), dtype=np.float64)
     alpha[0] = init_state
     y = np.empty((n, 1), dtype=np.float64)
     for t in range(n):
         y[t] = Z[t].dot(alpha[t]) + errors[t, 0, :]
-        alpha[t + 1] = T.dot(alpha[t]) + R.dot(errors[t, 1:])
+        if q > 0:
+            alpha[t + 1] = T.dot(alpha[t]) + R.dot(errors[t, 1:])
+        else:
+            alpha[t + 1] = T.dot(alpha[t])
 
     return slss(y, alpha, errors)
 
@@ -306,10 +313,11 @@ def kalman_filter(y: np.ndarray,
     T = state_transition_matrix
     Z = observation_matrix
     R = state_error_transformation_matrix
-    lss_mat_check(y, Z, T, R)
+    # lss_mat_check(y, Z, T, R)
 
-    # Store number of observation variables (p), state variables (m), state parameters (u), observations (n)
+    # Establish number of state variables (m), state parameters (q), and observations (n)
     m = Z.shape[2]
+    q = R.shape[1]
     n = y.shape[0]
 
     # Initialize Kalman filter matrices
@@ -351,7 +359,11 @@ def kalman_filter(y: np.ndarray,
         K[t] = T.dot(P[t]).dot(Z[t].T).dot(F_inv[t])
         L[t] = T - K[t].dot(Z[t])
         a[t + 1] = T.dot(a[t]) + K[t].dot(v[t])
-        P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_variance_matrix).dot(R.T)
+
+        if q > 0:
+            P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_variance_matrix).dot(R.T)
+        else:
+            P[t + 1] = T.dot(P[t]).dot(L[t].T)
 
     return kf(v, K, a, P, F, F_inv, L)
 
@@ -374,7 +386,7 @@ def dk_smoother(y: np.ndarray,
 
     # Store number of state variables (m), state parameters (u), observations (n)
     m = Z.shape[2]
-    u = R.shape[1]
+    q = R.shape[1]
     n = y.shape[0]
 
     init_state_cov = init_state_covariance.copy()
@@ -420,14 +432,18 @@ def dk_smoother(y: np.ndarray,
     r_init = Z[0].T.dot(F_inv[0]).dot(v[0]) + L[0].T.dot(r[0])
 
     # Compute smoothed observation and state residuals and state vector
-    w_hat = np.empty((n, 1 + u, 1), dtype=np.float64)
+    w_hat = np.empty((n, 1 + q, 1), dtype=np.float64)
     alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
     alpha_hat[0] = init_state_values - init_plus_state_values + init_state_covariance.dot(r_init)
     for t in range(n):
         eps_hat = outcome_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
-        eta_hat = state_error_variance_matrix.dot(R.T).dot(r[t])
-        w_hat[t] = np.concatenate((eps_hat, eta_hat))
-        alpha_hat[t + 1] = T.dot(alpha_hat[t]) + R.dot(w_hat[t, 1:])
+        if q > 0:
+            eta_hat = state_error_variance_matrix.dot(R.T).dot(r[t])
+            w_hat[t] = np.concatenate((eps_hat, eta_hat))
+            alpha_hat[t + 1] = T.dot(alpha_hat[t]) + R.dot(eta_hat)
+        else:
+            w_hat[t] = eps_hat
+            alpha_hat[t + 1] = T.dot(alpha_hat[t])
 
     # Compute simulation smoothed errors (E[error | y]), state (E[state | y]), and prediction
     smoothed_errors = w_hat + w_plus
@@ -445,46 +461,55 @@ def forecast(posterior, num_periods, burn, state_observation_matrix, state_trans
     R = state_error_transformation_matrix
     X = future_regressors
     m = R.shape[0]
-    u = R.shape[1]
+    q = R.shape[1]
 
     var_eps = posterior.outcome_error_variance[burn:]
-    var_eta = posterior.state_error_variance[burn:]
+    if q > 0:
+        var_eta = posterior.state_error_variance[burn:]
     smoothed_state = posterior.smoothed_state[burn:]
     num_samp = posterior.num_samp - burn + 1
 
     y_forecast = np.empty((num_samp, num_periods, 1), dtype=np.float64)
     num_periods_zeros = np.zeros((num_periods, 1))
-    num_periods_u_zeros = np.zeros((num_periods, u, 1))
+    num_periods_u_zeros = np.zeros((num_periods, q, 1))
     num_periods_ones = np.ones((num_periods, 1))
-    num_periods_u_ones = np.ones((num_periods, u, 1))
+    num_periods_u_ones = np.ones((num_periods, q, 1))
 
     if X.size == 0:
         for s in range(num_samp):
             obs_error = vec_norm(num_periods_zeros,
                                  num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
-            state_error = vec_norm(num_periods_u_zeros,
-                                   num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
+            if q > 0:
+                state_error = vec_norm(num_periods_u_zeros,
+                                       num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
 
             alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
             alpha[0] = smoothed_state[s, -1]
             for t in range(num_periods):
                 y_forecast[s, t] = Z[t].dot(alpha[t]) + obs_error[t]
-                alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
+                if q > 0:
+                    alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
+                else:
+                    alpha[t + 1] = T.dot(alpha[t])
     else:
         reg_coeff = posterior.regression_coefficients[burn:]
         Z_reg = Z.copy()
         for s in range(num_samp):
             obs_error = vec_norm(num_periods_zeros,
                                  num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
-            state_error = vec_norm(num_periods_u_zeros,
-                                   num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
+            if q > 0:
+                state_error = vec_norm(num_periods_u_zeros,
+                                       num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
 
             alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
             alpha[0] = smoothed_state[s, -1]
             Z_reg[:, :, -1] = X.dot(reg_coeff[s])
             for t in range(num_periods):
                 y_forecast[s, t] = Z_reg[t].dot(alpha[t]) + obs_error[t]
-                alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
+                if q > 0:
+                    alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
+                else:
+                    alpha[t + 1] = T.dot(alpha[t])
 
     return y_forecast
 
@@ -650,7 +675,7 @@ class BayesianStructuralTimeSeries:
             return self._stochastic_trig_seasonal
 
     @property
-    def num_trig_seasonal_states(self):
+    def num_trig_seasonal_state_eqs(self):
         if len(self.trig_seasonal) == 0:
             return 0
         else:
@@ -670,10 +695,6 @@ class BayesianStructuralTimeSeries:
         return num_stochastic
 
     @property
-    def num_trig_seasonal_params(self):
-        return sum(self.stochastic_trig_seasonal)
-
-    @property
     def num_indicator_seasonal_state_eqs(self):
         return (self.seasonal - 1) * (self.seasonal > 1) * 1
 
@@ -690,7 +711,7 @@ class BayesianStructuralTimeSeries:
 
     @property
     def num_seasonal_state_eqs(self):
-        return self.num_indicator_seasonal_state_eqs + self.num_trig_seasonal_states
+        return self.num_indicator_seasonal_state_eqs + self.num_trig_seasonal_state_eqs
 
     @property
     def num_regressors(self):
@@ -704,13 +725,6 @@ class BayesianStructuralTimeSeries:
         return ((self.level + self.slope) * 1
                 + self.num_seasonal_state_eqs
                 + (self.num_regressors > 0) * 1)
-
-    @property
-    def num_states(self):
-        return (self.level
-                + self.slope
-                + (self.seasonal > 1)
-                + self.num_trig_seasonal_states) * 1
 
     @property
     def num_stochastic_states(self):
@@ -766,8 +780,8 @@ class BayesianStructuralTimeSeries:
             s = np.zeros((1, self.seasonal - 1))
             s[0, 0] = 1.
             V.append(s)
-        if self.num_trig_seasonal_states > 0:
-            s = np.zeros((1, self.num_trig_seasonal_states))
+        if len(self.trig_seasonal) > 0:
+            s = np.zeros((1, self.num_trig_seasonal_state_eqs))
             s[0, 0::2] = 1.
             V.append(s)
         if self.num_regressors > 0:
@@ -794,7 +808,7 @@ class BayesianStructuralTimeSeries:
             s = np.eye(self.seasonal - 1, k=-1)
             s[0, :] = -1.
             V.append(s)
-        if self.num_trig_seasonal_states > 0:
+        if len(self.trig_seasonal) > 0:
             for c, w in enumerate(self.trig_seasonal):
                 period, freq = w
                 for j in range(1, freq + 1):
@@ -813,48 +827,12 @@ class BayesianStructuralTimeSeries:
 
     def state_error_transformation_matrix(self):
         m = self.num_state_eqs
-        u = self.num_states
-        R = np.zeros((m, u), dtype=np.float64)
-
-        V = []
-        if self.level:
-            if self.stochastic_level:
-                V.append(np.array([[1.]]))
-            else:
-                V.append(np.array([[0.]]))
-        if self.slope:
-            if self.stochastic_slope:
-                V.append(np.array([[1.]]))
-            else:
-                V.append(np.array([[0.]]))
-        if self.seasonal > 1:
-            if self.stochastic_seasonal:
-                V.append(np.array([[1.]]))
-            else:
-                V.append(np.array([[0.]]))
-        if self.num_trig_seasonal_states > 0:
-            for c, w in enumerate(self.trig_seasonal):
-                _, freq = w
-                V.append(self.stochastic_trig_seasonal[c] * np.eye(2 * freq))
-
-        r, c = 0, 0
-        for v in V:
-            num_rows, num_cols = v.shape
-            R[r:r + num_rows, c:c + num_cols] = v
-            r += num_rows
-            c += num_cols
-
-        return R
-
-    def state_sse_transformation_matrix(self):
         q = self.num_stochastic_states
-        u = self.num_states
+        R = np.zeros((m, q), dtype=np.float64)
 
         if q == 0:
-            return np.array([[]])
+            pass
         else:
-            W = np.zeros((q, u), dtype=np.float64)
-
             V = []
             if self.level:
                 if self.stochastic_level:
@@ -871,7 +849,7 @@ class BayesianStructuralTimeSeries:
                     V.append(np.array([[1.]]))
                 else:
                     V.append(np.array([[]]))
-            if self.num_trig_seasonal_params > 0:
+            if len(self.trig_seasonal) > 0:
                 for c, w in enumerate(self.trig_seasonal):
                     _, freq = w
                     if self.stochastic_trig_seasonal[c]:
@@ -882,59 +860,55 @@ class BayesianStructuralTimeSeries:
             r, c = 0, 0
             for v in V:
                 if v.size == 0:
-                    num_rows, num_cols = 0, 1
+                    num_rows, num_cols = 1, 0
                 else:
                     num_rows, num_cols = v.shape
-                    W[r:r + num_rows, c:c + num_cols] = v
-
+                    R[r:r + num_rows, c:c + num_cols] = v
                 r += num_rows
                 c += num_cols
 
-            return W
+        return R
 
-    def posterior_state_error_covariance_transformation_matrix(self):
+    def posterior_state_error_variance_transformation_matrix(self):
         q = self.num_stochastic_states
-        u = self.num_states
 
         if q == 0:
             return np.array([[]])
         else:
-            A = np.zeros((u, q), dtype=np.float64)
-
-            V = []
-            if self.level:
-                if self.stochastic_level:
-                    V.append(np.array([[1.]]))
-                else:
-                    V.append(np.array([[]]))
-            if self.slope:
-                if self.stochastic_slope:
-                    V.append(np.array([[1.]]))
-                else:
-                    V.append(np.array([[]]))
-            if self.seasonal > 1:
-                if self.stochastic_seasonal:
-                    V.append(np.array([[1.]]))
-                else:
-                    V.append(np.array([[]]))
-            if self.num_trig_seasonal_params > 0:
-                for c, w in enumerate(self.trig_seasonal):
-                    _, freq = w
-                    if self.stochastic_trig_seasonal[c]:
-                        V.append(np.ones((2 * freq, 2 * freq)) / (2 * freq))
+            if self.num_stochastic_trig_seasonal_states == 0:
+                A = np.eye(q)
+            else:
+                A = np.zeros((q, q), dtype=np.float64)
+                V = []
+                if self.level:
+                    if self.stochastic_level:
+                        V.append(np.array([[1.]]))
                     else:
                         V.append(np.array([[]]))
+                if self.slope:
+                    if self.stochastic_slope:
+                        V.append(np.array([[1.]]))
+                    else:
+                        V.append(np.array([[]]))
+                if self.seasonal > 1:
+                    if self.stochastic_seasonal:
+                        V.append(np.array([[1.]]))
+                    else:
+                        V.append(np.array([[]]))
+                if len(self.trig_seasonal) > 0:
+                    for c, w in enumerate(self.trig_seasonal):
+                        _, freq = w
+                        if self.stochastic_trig_seasonal[c]:
+                            V.append(np.ones((2 * freq, 2 * freq)) / (2 * freq))
+                        else:
+                            V.append(np.array([[]]))
 
-            r, c = 0, 0
-            for v in V:
-                if v.size == 0:
-                    num_rows, num_cols = 1, 0
-                else:
+                r, c = 0, 0
+                for v in V:
                     num_rows, num_cols = v.shape
                     A[r:r + num_rows, c:c + num_cols] = v
-
-                r += num_rows
-                c += num_cols
+                    r += num_rows
+                    c += num_cols
 
             return A
 
@@ -979,8 +953,6 @@ class BayesianStructuralTimeSeries:
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
                 init_state_error_var.append(0.01 * self.sd_outcome ** 2)
-            else:
-                init_state_error_var.append(0.)
 
             init_state_variances.append(1e6)
             components['Level'] = dict(start_index=j, end_index=j + 1)
@@ -998,8 +970,6 @@ class BayesianStructuralTimeSeries:
                 state_var_shape_post.append(slope_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(slope_var_scale_prior)
                 init_state_error_var.append(0.01 * self.sd_outcome ** 2)
-            else:
-                init_state_error_var.append(0.)
 
             components['Trend'] = dict()
             init_state_variances.append(1e6)
@@ -1017,11 +987,10 @@ class BayesianStructuralTimeSeries:
                 state_var_shape_post.append(season_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(season_var_scale_prior)
                 init_state_error_var.append(0.01 * self.sd_outcome ** 2)
-            else:
-                init_state_error_var.append(0.)
 
             for k in range(self.seasonal - 1):
                 init_state_variances.append(1e6)
+                
             components[f'Seasonal.{self.seasonal}'] = dict(start_index=j,
                                                            end_index=j + (self.seasonal - 1) + 1)
             j += self.seasonal - 1
@@ -1044,17 +1013,13 @@ class BayesianStructuralTimeSeries:
                         state_var_shape_post.append(trig_season_var_shape_prior + 0.5 * n)
                         state_var_scale_prior.append(trig_season_var_scale_prior)
                         init_state_error_var.append(0.01 * self.sd_outcome ** 2)
-                else:
-                    for k in range(num_terms):
-                        init_state_error_var.append(0.)
 
                 for k in range(num_terms):
                     init_state_variances.append(1e6)
                 components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_index=i,
                                                                      end_index=i + num_terms + 1)
                 i += 2 * h
-
-            j += self.num_trig_seasonal_states
+            j += self.num_trig_seasonal_state_eqs
 
         if self.num_regressors > 0:
             components['Regression'] = dict()
@@ -1102,14 +1067,12 @@ class BayesianStructuralTimeSeries:
         # Define variables
         y = self.y
         n = self.num_obs
-        u = self.num_states
         q = self.num_stochastic_states
         m = self.num_state_eqs
         Z = self.observation_matrix()
         T = self.state_transition_matrix()
         R = self.state_error_transformation_matrix()
-        W = self.state_sse_transformation_matrix()
-        A = self.posterior_state_error_covariance_transformation_matrix()
+        A = self.posterior_state_error_variance_transformation_matrix()
         X = self.regressors
         k = self.num_regressors
 
@@ -1129,12 +1092,12 @@ class BayesianStructuralTimeSeries:
 
         # Initialize arrays for variances and state vector
         if q > 0:
-            var_eta = np.empty((num_samp, u, u), dtype=np.float64)
+            var_eta = np.empty((num_samp, q, q), dtype=np.float64)
         else:
-            var_eta = np.zeros((num_samp, u, u), dtype=np.float64)
+            var_eta = np.array([[]])
 
         var_eps = np.empty((num_samp, 1, 1), dtype=np.float64)
-        smoothed_errors = np.empty((num_samp, n, 1 + u, 1), dtype=np.float64)
+        smoothed_errors = np.empty((num_samp, n, 1 + q, 1), dtype=np.float64)
         smoothed_state = np.empty((num_samp, n + 1, m, 1), dtype=np.float64)
         smoothed_prediction = np.empty((num_samp, n, 1), dtype=np.float64)
         filtered_state = np.empty((num_samp, n + 1, m, 1), dtype=np.float64)
@@ -1144,7 +1107,7 @@ class BayesianStructuralTimeSeries:
         init_plus_state_values = np.zeros((m, 1))
 
         # Helper matrices
-        u_eye = np.eye(u)
+        q_eye = np.eye(q)
         n_ones = np.ones((n, 1))
 
         if k == 0:
@@ -1152,11 +1115,17 @@ class BayesianStructuralTimeSeries:
             for s in range(num_samp):
                 if s == 0:
                     v_eps = np.array([[init_error_variances[0]]])
-                    v_eta = np.diag(init_error_variances[1:])
+                    if q > 0:
+                        v_eta = np.diag(init_error_variances[1:])
+                    else:
+                        v_eta = var_eta
                     init_state_values = np.zeros((m, 1))
                 else:
                     v_eps = var_eps[s - 1]
-                    v_eta = var_eta[s - 1]
+                    if q > 0:
+                        v_eta = var_eta[s - 1]
+                    else:
+                        v_eta = var_eta
                     init_state_values = smoothed_state[s - 1, 0]
 
                 # Filtered state
@@ -1194,9 +1163,9 @@ class BayesianStructuralTimeSeries:
                 if q > 0:
                     state_residual = smoothed_errors[s][:, 1:, 0]
                     state_sse = dot(state_residual.T ** 2, n_ones)
-                    state_var_scale_post = state_var_scale_prior + 0.5 * dot(W, state_sse)
+                    state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
                     state_var_post = dot(A, vec_ig(state_var_shape_post, state_var_scale_post))
-                    var_eta[s] = u_eye * state_var_post
+                    var_eta[s] = q_eye * state_var_post
 
                 # Get new draw for observation variance
                 smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
@@ -1224,7 +1193,11 @@ class BayesianStructuralTimeSeries:
             for s in range(num_samp):
                 if s == 0:
                     v_eps = np.array([[init_error_variances[0]]])
-                    v_eta = np.diag(init_error_variances[1:])
+                    if q > 0:
+                        v_eta = np.diag(init_error_variances[1:])
+                    else:
+                        v_eta = var_eta
+
                     reg_coeff = dot(reg_coeff_var_post,
                                     (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
                     init_state_values = np.zeros((m, 1))
@@ -1232,7 +1205,11 @@ class BayesianStructuralTimeSeries:
 
                 else:
                     v_eps = var_eps[s - 1]
-                    v_eta = var_eta[s - 1]
+                    if q > 0:
+                        v_eta = var_eta[s - 1]
+                    else:
+                        v_eta = var_eta
+
                     reg_coeff = regression_coeff[s - 1]
                     init_state_values = smoothed_state[s - 1, 0]
 
@@ -1273,9 +1250,9 @@ class BayesianStructuralTimeSeries:
                 if q > 0:
                     state_residual = smoothed_errors[s][:, 1:, 0]
                     state_sse = dot(state_residual.T ** 2, n_ones)
-                    state_var_scale_post = state_var_scale_prior + 0.5 * dot(W, state_sse)
+                    state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
                     state_var_post = dot(A, vec_ig(state_var_shape_post, state_var_scale_post))
-                    var_eta[s] = u_eye * state_var_post
+                    var_eta[s] = q_eye * state_var_post
 
                 # Get new draw for observation variance
                 smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
