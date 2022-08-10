@@ -89,3 +89,20 @@ $$
                     \end{array}\right)
 \end{align}
 $$
+
+Given the definitions of $\mathbf Z_t$, $\mathbf T$, and $\mathbf R$, the state space representation of the unobserved components model above can compactly be expressed as
+
+$$
+\begin{align}
+    y_t &= \mathbf Z_t \boldsymbol{\alpha}_ t + \epsilon_t \\
+    \boldsymbol{\alpha}_ {t+1} &= \mathbf T \boldsymbol{\alpha}_ t + \mathbf R \boldsymbol{\eta}_ t
+\end{align}
+$$
+
+where
+
+$$
+\boldsymbol{\alpha}_ t^\prime = \left(\begin{array}{cc} 
+                        \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
+                        \end{array}\right)
+$$
