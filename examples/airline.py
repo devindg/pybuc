@@ -2,7 +2,8 @@ from pybuc import buc
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.statespace.structural import UnobservedComponents
 
 
 # Convenience function for computing root mean squared error
@@ -21,8 +22,9 @@ y_test = air[-hold_out_size:, :]
 
 if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
-    sarima = sm.tsa.statespace.SARIMAX(y_train, order=(0, 1, 1),
-                                       seasonal_order=(0, 1, 1, 12), trend=[0])
+    sarima = SARIMAX(y_train, order=(0, 1, 1),
+                     seasonal_order=(0, 1, 1, 12),
+                     trend=[0])
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())
 
@@ -46,11 +48,11 @@ if __name__ == '__main__':
     print(f"SARIMA RMSE: {rmse(y_test.flatten(), sarima_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using MLE unobserved components '''
-    mle_uc = sm.tsa.UnobservedComponents(y_train, exog=None, irregular=True,
-                                         level=True, stochastic_level=True,
-                                         trend=True, stochastic_trend=True,
-                                         freq_seasonal=[{'period': 12, 'harmonics': 6}],
-                                         stochastic_freq_seasonal=[True])
+    mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
+                                  level=True, stochastic_level=True,
+                                  trend=True, stochastic_trend=True,
+                                  freq_seasonal=[{'period': 12, 'harmonics': 6}],
+                                  stochastic_freq_seasonal=[True])
 
     # Fit the model via maximum likelihood
     mle_uc_res = mle_uc.fit()
@@ -85,7 +87,7 @@ if __name__ == '__main__':
                                                 level=True, stochastic_level=True,
                                                 slope=True, stochastic_slope=True,
                                                 seasonal=0, stochastic_seasonal=True,
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
+                                                trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,))
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
