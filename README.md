@@ -77,7 +77,7 @@ where $\tau_t$ represents the time series component of the structural time serie
 <code/>pybuc</code> uses Method 2 for estimating static coefficients.
 
 ## State space representation
-The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). 
+The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, $\mathbf R \in \mathbb{R}^{m \times q}$, and $\boldsymbol{\alpha}_ t \in \mathbb{R}^{m \times 1}$ denote the observation matrix, state transition matrix, state error transformation matrix, and unobserved state vector, respectively, where $m$ is the number of state equations and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). 
 
 There are $m = 1 + 1 + h * 2 + 1 = 7$ state equations and $q = 1 + 1 + h * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is 1 for all $t$ by construction. The observation, state transition, and state error transformation matrices may be written as
 
@@ -112,7 +112,7 @@ Given the definitions of $\mathbf Z_t$, $\mathbf T$, and $\mathbf R$, the state 
 $$
 \begin{align}
     y_t &= \mathbf Z_t \boldsymbol{\alpha}_ t + \epsilon_t \\
-    \boldsymbol{\alpha}_ {t+1} &= \mathbf T \boldsymbol{\alpha}_ t + \mathbf R \boldsymbol{\eta}_ t
+    \boldsymbol{\alpha}_ {t+1} &= \mathbf T \boldsymbol{\alpha}_ t + \mathbf R \boldsymbol{\eta}_ t, \hspace{5pt} t=1,2,...,n
 \end{align}
 $$
 
@@ -124,5 +124,19 @@ $$
                         \end{array}\right)^\prime
 $$
 
+and 
+
+$$
+\mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta =  \mathrm{diag}(\sigma^2_{\eta_1}, \sigma^2_{\eta_2}, ..., \sigma^2_{\eta_m}) \in \mathbb{R}^{m \times m} \hspace{5pt} \textrm{for all } t=1,2,...,n
+$$
+
 # Estimation
-<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-gamma random variables.   
+<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
+
+To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. Sampling repeats the following three steps for each sample $s$:
+
+<ol>
+    <li>Draw $\boldsymbol{\alpha}^{(s)}$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta, \boldsymbol{\beta}, \sigma^2_\epsilon)$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha} = \left(\begin{array}{cc} \boldsymbol{\alpha}_ 1 & \boldsymbol{\alpha}_ 2 & \cdots & \boldsymbol{\alpha}_ n \end{array}\right)^\prime$ and $\boldsymbol{\sigma}^2_\eta = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta) $. </li>
+    <li>Draw </li>
+</ol>
+
