@@ -1,31 +1,16 @@
 import numpy as np
-from collections import namedtuple
 from numpy import dot
-from numpy.random import normal, gamma
-from numba import njit, float64, vectorize, int64
+from numba import njit
+from collections import namedtuple
 from numpy.linalg import solve
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import warnings
 
-slss = namedtuple('slss',
-                  ['simulated_outcome',
-                   'simulated_state',
-                   'simulated_errors'])
-
-kf = namedtuple('kf',
-                ['one_step_ahead_prediction_residual',
-                 'kalman_gain',
-                 'filtered_state',
-                 'state_covariance',
-                 'outcome_variance',
-                 'inverse_outcome_variance',
-                 'L'])
-
-dkss = namedtuple('dkss',
-                  ['simulated_smoothed_errors',
-                   'simulated_smoothed_state',
-                   'simulated_smoothed_prediction'])
+from .statespace.kalman_filter import kalman_filter as kf
+from .statespace.durbin_koopman_smoother import dk_smoother as dks
+from .utils import array_operations as ao
+from .vectorized import distributions as dist
 
 post = namedtuple('post',
                   ['num_samp',
@@ -61,162 +46,9 @@ def set_seed(value):
     np.random.seed(value)
 
 
-@njit
-def diag_2d(x: np.ndarray, as_col: bool = True) -> np.ndarray:
-    if as_col:
-        return np.diag(x).reshape(-1, 1)
-    else:
-        return np.diag(x).reshape(1, -1)
-
-
-@njit
-def replace_nan(x):
-    z = x.copy()
-    shape = z.shape
-    z = z.ravel()
-    z[np.isnan(z)] = 0.
-    z = z.reshape(shape)
-    return z
-
-
-@vectorize([float64(float64, float64)])
-def vec_norm(mean, sd):
-    return normal(mean, sd)
-
-
-@vectorize([float64(float64, float64)])
-def vec_ig(shape, scale):
-    ig = 1. / gamma(shape=shape, scale=1. / scale)
-    return ig
-
-
-@njit
-def is_2d(x: np.ndarray) -> bool:
-    if x.ndim == 2:
-        return True
-    else:
-        return False
-
-
-@njit
-def is_square(x: np.ndarray) -> bool:
-    if x.shape[0] == x.shape[1]:
-        return True
-    else:
-        return False
-
-
-# Define matrix inversion routine based on dimension.
-# Ideally, the function would look like _mat_inv(dim) -> f(z, s=dim)
-# so that the function type would be returned based on instantiation of dim.
-# Numba doesn't support returning functions it seems. Thus, instead of
-# returning the function type once based on instantiation, using mat_inv(z)
-# as defined below will evaluate True/False everytime in a loop and return
-# the correct function type.
-@njit
-def mat_inv(z):
-    dim = z.shape[0]
-    if dim == 1:
-        return 1. / z
-    else:
-        return solve(z, np.eye(dim))
-
-
-@njit
-def var_mat_check(var_mat):
-    if not is_2d(var_mat):
-        raise ValueError('The variance-covariance matrix must have a row and column dimension. '
-                         'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-
-    if not is_square(var_mat):
-        raise ValueError('The variance-covariance matrix must be square.')
-
-    return
-
-
-@njit
-def lss_mat_check(y: np.ndarray,
-                  observation_matrix: np.ndarray,
-                  state_transition_matrix: np.ndarray,
-                  state_error_transformation_matrix: np.ndarray):
-    Z = observation_matrix
-    T = state_transition_matrix
-    R = state_error_transformation_matrix
-    m = Z.shape[2]
-    n = y.shape[0]
-
-    # if not all(is_2d(Z[t]) for t in range(n)):
-    #     raise ValueError('The observation matrix must have a row and column dimension for each observation. '
-    #                      'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-
-    if not is_2d(T):
-        raise ValueError('The state transition matrix must have a row and column dimension. '
-                         'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-
-    if not is_2d(R):
-        raise ValueError('The state error transformation matrix must have a row and column dimension. '
-                         'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-
-    if not is_square(T):
-        raise ValueError('The state transition matrix must be square.')
-
-    if Z.shape[1] != 1:
-        raise ValueError('The number of rows in the observation matrix must match the '
-                         'number of observation variables, i.e., 1..')
-
-    if T.shape[0] != m:
-        raise ValueError('The numbers of rows/columns in the state transition matrix '
-                         'must match the number of columns in the observation matrix.')
-
-    if R.shape[0] != m:
-        raise ValueError('The number of rows in the state error transformation matrix '
-                         'must match the number of columns in the observation matrix.')
-
-    return
-
-
 @njit(cache=True)
-def simulate_linear_state_space(observation_matrix,
-                                state_transition_matrix,
-                                state_error_transformation_matrix,
-                                init_state,
-                                outcome_error_variance,
-                                state_error_variance_matrix):
-    # Get state and observation transformation matrices
-    T = state_transition_matrix
-    Z = observation_matrix
-    R = state_error_transformation_matrix
-
-    # Establish number of state variables (m), state parameters (q), observations (n)
-    m = Z.shape[2]
-    q = R.shape[1]
-    n = Z.shape[0]
-
-    if q > 0:
-        error_variances = np.concatenate((outcome_error_variance, diag_2d(state_error_variance_matrix)))
-    else:
-        error_variances = outcome_error_variance
-
-    errors = np.empty((n, 1 + q, 1), dtype=np.float64)
-    for t in range(n):
-        errors[t] = vec_norm(np.zeros((1 + q, 1)), np.sqrt(error_variances))
-
-    alpha = np.empty((n + 1, m, 1), dtype=np.float64)
-    alpha[0] = init_state
-    y = np.empty((n, 1), dtype=np.float64)
-    for t in range(n):
-        y[t] = Z[t].dot(alpha[t]) + errors[t, 0, :]
-        if q > 0:
-            alpha[t + 1] = T.dot(alpha[t]) + R.dot(errors[t, 1:])
-        else:
-            alpha[t + 1] = T.dot(alpha[t])
-
-    return slss(y, alpha, errors)
-
-
-@njit(cache=True)
-def simulate_posterior_predictive_outcome(posterior, burn=0, num_fit_ignore=0,
-                                          random_sample_size_prop=1.):
+def _simulate_posterior_predictive_outcome(posterior, burn=0, num_fit_ignore=0,
+                                           random_sample_size_prop=1.):
     outcome_mean = posterior.filtered_prediction[burn:, num_fit_ignore:, 0]
     outcome_variance = posterior.outcome_variance[burn:, num_fit_ignore:, 0]
     num_posterior_samp = outcome_mean.shape[0]
@@ -241,8 +73,8 @@ def simulate_posterior_predictive_outcome(posterior, burn=0, num_fit_ignore=0,
     y_post = np.empty((num_samp, n), dtype=np.float64)
     i = 0
     for s in S:
-        y_post[i] = vec_norm(outcome_mean[s],
-                             np.sqrt(outcome_variance[s][:, 0]))
+        y_post[i] = dist.vec_norm(outcome_mean[s],
+                                  np.sqrt(outcome_variance[s][:, 0]))
         i += 1
 
     return y_post
@@ -257,8 +89,8 @@ def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
     return state_post
 
 
-def simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, random_sample_size_prop=1.,
-                                        has_regressors=False, static_regression=False):
+def _simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, random_sample_size_prop=1.,
+                                         has_regressors=False, static_regression=False):
     if has_regressors and static_regression:
         mean = posterior.filtered_state[burn:, num_fit_ignore:-1, :-1, 0]
         cov = posterior.state_covariance[burn:, num_fit_ignore:-1, :-1, :-1]
@@ -298,164 +130,8 @@ def simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, ran
 
 
 @njit(cache=True)
-def kalman_filter(y: np.ndarray,
-                  observation_matrix: np.ndarray,
-                  state_transition_matrix: np.ndarray,
-                  state_error_transformation_matrix: np.ndarray,
-                  outcome_error_variance_matrix: np.ndarray,
-                  state_error_variance_matrix: np.ndarray,
-                  init_state: np.ndarray = np.array([[]]),
-                  init_state_covariance: np.ndarray = np.array([[]])):
-    var_mat_check(outcome_error_variance_matrix)
-    # var_mat_check(state_error_variance_matrix)
-
-    # Get state and observation transformation matrices
-    T = state_transition_matrix
-    Z = observation_matrix
-    R = state_error_transformation_matrix
-    # lss_mat_check(y, Z, T, R)
-
-    # Establish number of state variables (m), state parameters (q), and observations (n)
-    m = Z.shape[2]
-    q = R.shape[1]
-    n = y.shape[0]
-
-    # Initialize Kalman filter matrices
-    v = np.empty((n, 1, 1), dtype=np.float64)  # Observation residuals
-    K = np.empty((n, m, 1), dtype=np.float64)  # Kalman gain
-    L = np.empty((n, m, m), dtype=np.float64)  # Kalman gain transformation
-    a = np.empty((n + 1, m, 1), dtype=np.float64)  # A priori state prediction
-    P = np.empty((n + 1, m, m), dtype=np.float64)  # A priori state variance
-    F = np.empty((n, 1, 1), dtype=np.float64)  # Total variance (state plus observation)
-    F_inv = np.empty((n, 1, 1), dtype=np.float64)  # Inverse of total variance (state plus observation)
-
-    # Initialize Kalman filter
-    if init_state.size == 0:
-        a[0] = np.zeros((m, 1))
-    else:
-        a[0] = init_state
-
-    if init_state_covariance.size == 0:
-        P[0] = np.diag(np.ones(m) * 1e6)
-    else:
-        P[0] = init_state_covariance
-
-    # Check if y has NaN values. Find indices, if any, and use this to assign v[t] to 0.
-    # This is functionally the same as setting y[t] = Za[t] when y[t] is missing.
-    # Thus, in the absence of a measurement/observation, the Kalman Filter will impute
-    # the missing observation using the state prediction a[t | t-1].
-    y_nan_indicator = np.isnan(y) * 1.
-    y_no_nan = replace_nan(y)
-
-    # Run Kalman Filter
-    for t in range(n):
-        v[t] = (1. - y_nan_indicator[t, 0]) * (y_no_nan[t, :] - Z[t].dot(a[t]))
-        F[t] = Z[t].dot(P[t]).dot(Z[t].T) + outcome_error_variance_matrix
-        # Get appropriate matrix inversion procedure for F.
-        # Matrix inversion is computationally expensive,
-        # so it's good to avoid needlessly using matrix inversion
-        # on 1x1 matrices.
-        F_inv[t] = mat_inv(F[t])
-        K[t] = T.dot(P[t]).dot(Z[t].T).dot(F_inv[t])
-        L[t] = T - K[t].dot(Z[t])
-        a[t + 1] = T.dot(a[t]) + K[t].dot(v[t])
-
-        if q > 0:
-            P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_variance_matrix).dot(R.T)
-        else:
-            P[t + 1] = T.dot(P[t]).dot(L[t].T)
-
-    return kf(v, K, a, P, F, F_inv, L)
-
-
-@njit(cache=True)
-def dk_smoother(y: np.ndarray,
-                observation_matrix: np.ndarray,
-                state_transition_matrix: np.ndarray,
-                state_error_transformation_matrix: np.ndarray,
-                outcome_error_variance_matrix: np.ndarray,
-                state_error_variance_matrix: np.ndarray,
-                init_state_values: np.ndarray,
-                init_plus_state_values: np.ndarray,
-                init_state_covariance: np.ndarray,
-                static_regression: bool = False):
-    # Get state and observation transformation matrices
-    T = state_transition_matrix
-    Z = observation_matrix
-    R = state_error_transformation_matrix
-
-    # Store number of state variables (m), state parameters (u), observations (n)
-    m = Z.shape[2]
-    q = R.shape[1]
-    n = y.shape[0]
-
-    init_state_cov = init_state_covariance.copy()
-    if static_regression:
-        init_state_cov[-1, -1] = 1e6
-    else:
-        init_state_cov = init_state_covariance
-
-    sim_lss = simulate_linear_state_space(Z,
-                                          T,
-                                          R,
-                                          init_plus_state_values,
-                                          outcome_error_variance_matrix,
-                                          state_error_variance_matrix)
-
-    y_plus = sim_lss.simulated_outcome
-    alpha_plus = sim_lss.simulated_state
-    w_plus = sim_lss.simulated_errors
-
-    # Run y* = y - y+ through diffuse Kalman filter (i.e., with diffuse initial state covariance matrix).
-    y_star = y - y_plus
-    y_star_kf = kalman_filter(y_star,
-                              Z,
-                              T,
-                              R,
-                              outcome_error_variance_matrix,
-                              state_error_variance_matrix,
-                              init_state=init_state_values - init_plus_state_values,
-                              init_state_covariance=init_state_cov)
-
-    v = y_star_kf.one_step_ahead_prediction_residual
-    F_inv = y_star_kf.inverse_outcome_variance
-    K = y_star_kf.kalman_gain
-    L = y_star_kf.L
-
-    # Backward-pass filter for observation and state residuals
-    r = np.empty((n, m, 1), dtype=np.float64)
-    r[-1] = np.zeros((m, 1), dtype=np.float64)
-    for t in range(n - 1, 0, -1):
-        r[t - 1] = Z[t].T.dot(F_inv[t]).dot(v[t]) + L[t].T.dot(r[t])
-
-    # Initial backward-pass residual for computing the smoothed state
-    r_init = Z[0].T.dot(F_inv[0]).dot(v[0]) + L[0].T.dot(r[0])
-
-    # Compute smoothed observation and state residuals and state vector
-    w_hat = np.empty((n, 1 + q, 1), dtype=np.float64)
-    alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
-    alpha_hat[0] = init_state_values - init_plus_state_values + init_state_covariance.dot(r_init)
-    for t in range(n):
-        eps_hat = outcome_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
-        if q > 0:
-            eta_hat = state_error_variance_matrix.dot(R.T).dot(r[t])
-            w_hat[t] = np.concatenate((eps_hat, eta_hat))
-            alpha_hat[t + 1] = T.dot(alpha_hat[t]) + R.dot(eta_hat)
-        else:
-            w_hat[t] = eps_hat
-            alpha_hat[t + 1] = T.dot(alpha_hat[t])
-
-    # Compute simulation smoothed errors (E[error | y]), state (E[state | y]), and prediction
-    smoothed_errors = w_hat + w_plus
-    smoothed_state = alpha_hat + alpha_plus
-    smoothed_prediction = (Z[:, 0, :] * smoothed_state[:n, :, 0]).dot(np.ones((m, 1)))
-
-    return dkss(smoothed_errors, smoothed_state, smoothed_prediction)
-
-
-@njit(cache=True)
-def forecast(posterior, num_periods, burn, state_observation_matrix, state_transition_matrix,
-             state_error_transformation_matrix, future_regressors=np.array([[]])):
+def _forecast(posterior, num_periods, burn, state_observation_matrix, state_transition_matrix,
+              state_error_transformation_matrix, future_regressors=np.array([[]])):
     Z = state_observation_matrix
     T = state_transition_matrix
     R = state_error_transformation_matrix
@@ -467,7 +143,7 @@ def forecast(posterior, num_periods, burn, state_observation_matrix, state_trans
     if q > 0:
         var_eta = posterior.state_error_variance[burn:]
     smoothed_state = posterior.smoothed_state[burn:]
-    num_samp = posterior.num_samp - burn + 1
+    num_samp = posterior.num_samp - burn
 
     y_forecast = np.empty((num_samp, num_periods, 1), dtype=np.float64)
     num_periods_zeros = np.zeros((num_periods, 1))
@@ -477,11 +153,11 @@ def forecast(posterior, num_periods, burn, state_observation_matrix, state_trans
 
     if X.size == 0:
         for s in range(num_samp):
-            obs_error = vec_norm(num_periods_zeros,
-                                 num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
+            obs_error = dist.vec_norm(num_periods_zeros,
+                                      num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
             if q > 0:
-                state_error = vec_norm(num_periods_u_zeros,
-                                       num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
+                state_error = dist.vec_norm(num_periods_u_zeros,
+                                            num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
 
             alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
             alpha[0] = smoothed_state[s, -1]
@@ -495,11 +171,11 @@ def forecast(posterior, num_periods, burn, state_observation_matrix, state_trans
         reg_coeff = posterior.regression_coefficients[burn:]
         Z_reg = Z.copy()
         for s in range(num_samp):
-            obs_error = vec_norm(num_periods_zeros,
-                                 num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
+            obs_error = dist.vec_norm(num_periods_zeros,
+                                      num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
             if q > 0:
-                state_error = vec_norm(num_periods_u_zeros,
-                                       num_periods_u_ones * np.sqrt(diag_2d(var_eta[s])))
+                state_error = dist.vec_norm(num_periods_u_zeros,
+                                            num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
 
             alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
             alpha[0] = smoothed_state[s, -1]
@@ -514,7 +190,7 @@ def forecast(posterior, num_periods, burn, state_observation_matrix, state_trans
     return y_forecast
 
 
-class BayesianStructuralTimeSeries:
+class BayesianUnobservedComponents:
     def __init__(self,
                  outcome: np.ndarray,
                  level: bool = True,
@@ -990,7 +666,7 @@ class BayesianStructuralTimeSeries:
 
             for k in range(self.seasonal - 1):
                 init_state_variances.append(1e6)
-                
+
             components[f'Seasonal.{self.seasonal}'] = dict(start_index=j,
                                                            end_index=j + (self.seasonal - 1) + 1)
             j += self.seasonal - 1
@@ -1109,7 +785,7 @@ class BayesianStructuralTimeSeries:
         # Helper matrices
         q_eye = np.eye(q)
         n_ones = np.ones((n, 1))
-
+        # TODO: collapse this conditional statement into one for loop. Conditionals will be placed in loop.
         if k == 0:
             # Start Gibbs sampler
             for s in range(num_samp):
@@ -1129,14 +805,14 @@ class BayesianStructuralTimeSeries:
                     init_state_values = smoothed_state[s - 1, 0]
 
                 # Filtered state
-                y_kf = kalman_filter(y,
-                                     Z,
-                                     T,
-                                     R,
-                                     v_eps,
-                                     v_eta,
-                                     init_state_values,
-                                     init_state_covariance)
+                y_kf = kf(y,
+                          Z,
+                          T,
+                          R,
+                          v_eps,
+                          v_eta,
+                          init_state_values,
+                          init_state_covariance)
 
                 filtered_state[s] = y_kf.filtered_state
                 state_covariance[s] = y_kf.state_covariance
@@ -1144,15 +820,15 @@ class BayesianStructuralTimeSeries:
                 outcome_variance[s] = y_kf.outcome_variance
 
                 # Get smoothed state from DK smoother
-                dk = dk_smoother(y,
-                                 Z,
-                                 T,
-                                 R,
-                                 v_eps,
-                                 v_eta,
-                                 init_plus_state_values=init_plus_state_values,
-                                 init_state_values=init_state_values,
-                                 init_state_covariance=init_state_covariance)
+                dk = dks(y,
+                         Z,
+                         T,
+                         R,
+                         v_eps,
+                         v_eta,
+                         init_plus_state_values=init_plus_state_values,
+                         init_state_values=init_state_values,
+                         init_state_covariance=init_state_covariance)
 
                 # Smoothed disturbances and state
                 smoothed_errors[s] = dk.simulated_smoothed_errors
@@ -1164,7 +840,7 @@ class BayesianStructuralTimeSeries:
                     state_residual = smoothed_errors[s][:, 1:, 0]
                     state_sse = dot(state_residual.T ** 2, n_ones)
                     state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
-                    state_var_post = dot(A, vec_ig(state_var_shape_post, state_var_scale_post))
+                    state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
                     var_eta[s] = q_eye * state_var_post
 
                 # Get new draw for observation variance
@@ -1172,7 +848,7 @@ class BayesianStructuralTimeSeries:
                 outcome_var_scale_post = (outcome_var_scale_prior
                                           + 0.5 * dot(smooth_one_step_ahead_prediction_residual.T,
                                                       smooth_one_step_ahead_prediction_residual))
-                var_eps[s] = vec_ig(outcome_var_shape_post, outcome_var_scale_post)
+                var_eps[s] = dist.vec_ig(outcome_var_shape_post, outcome_var_scale_post)
 
             results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
                            filtered_state, filtered_prediction, outcome_variance, state_covariance,
@@ -1186,7 +862,7 @@ class BayesianStructuralTimeSeries:
             reg_coeff_var_post = solve(reg_coeff_var_inv_post, np.eye(k))
 
             y_nan_indicator = np.isnan(y) * 1.
-            y_no_nan = replace_nan(y)
+            y_no_nan = ao.replace_nan(y)
 
             # Run Gibbs sampler
             regression_coeff = np.empty((num_samp, k, 1), dtype=np.float64)
@@ -1215,14 +891,14 @@ class BayesianStructuralTimeSeries:
 
                 Z[:, :, -1] = X.dot(reg_coeff)
                 # Filtered state
-                y_kf = kalman_filter(y,
-                                     Z,
-                                     T,
-                                     R,
-                                     v_eps,
-                                     v_eta,
-                                     init_state=init_state_values,
-                                     init_state_covariance=init_state_covariance)
+                y_kf = kf(y,
+                          Z,
+                          T,
+                          R,
+                          v_eps,
+                          v_eta,
+                          init_state=init_state_values,
+                          init_state_covariance=init_state_covariance)
 
                 filtered_state[s] = y_kf.filtered_state
                 state_covariance[s] = y_kf.state_covariance
@@ -1230,16 +906,16 @@ class BayesianStructuralTimeSeries:
                 outcome_variance[s] = y_kf.outcome_variance
 
                 # Get smoothed state from DK smoother
-                dk = dk_smoother(y,
-                                 Z,
-                                 T,
-                                 R,
-                                 v_eps,
-                                 v_eta,
-                                 init_plus_state_values=init_plus_state_values,
-                                 init_state_values=init_state_values,
-                                 init_state_covariance=init_state_covariance,
-                                 static_regression=self.static_regression)
+                dk = dks(y,
+                         Z,
+                         T,
+                         R,
+                         v_eps,
+                         v_eta,
+                         init_plus_state_values=init_plus_state_values,
+                         init_state_values=init_state_values,
+                         init_state_covariance=init_state_covariance,
+                         static_regression=self.static_regression)
 
                 # Smoothed disturbances and state
                 smoothed_errors[s] = dk.simulated_smoothed_errors
@@ -1251,7 +927,7 @@ class BayesianStructuralTimeSeries:
                     state_residual = smoothed_errors[s][:, 1:, 0]
                     state_sse = dot(state_residual.T ** 2, n_ones)
                     state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
-                    state_var_post = dot(A, vec_ig(state_var_shape_post, state_var_scale_post))
+                    state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
                     var_eta[s] = q_eye * state_var_post
 
                 # Get new draw for observation variance
@@ -1259,7 +935,7 @@ class BayesianStructuralTimeSeries:
                 outcome_var_scale_post = (outcome_var_scale_prior
                                           + 0.5 * dot(smooth_one_step_ahead_prediction_residual.T,
                                                       smooth_one_step_ahead_prediction_residual))
-                var_eps[s] = vec_ig(outcome_var_shape_post, outcome_var_scale_post)
+                var_eps[s] = dist.vec_ig(outcome_var_shape_post, outcome_var_scale_post)
 
                 # Get new draw for regression coefficients
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
@@ -1305,13 +981,13 @@ class BayesianStructuralTimeSeries:
                                   f'Therefore, only the first {num_periods} observations will be used '
                                   f'in future_regressors.')
 
-        y_forecast = forecast(posterior,
-                              num_periods,
-                              burn,
-                              Z,
-                              T,
-                              R,
-                              X_fut)
+        y_forecast = _forecast(posterior,
+                               num_periods,
+                               burn,
+                               Z,
+                               T,
+                               R,
+                               X_fut)
 
         return y_forecast
 
@@ -1334,10 +1010,10 @@ class BayesianStructuralTimeSeries:
         conf_int_lb = 0.5 * conf_int_level
         conf_int_ub = 1. - 0.5 * conf_int_level
 
-        filtered_prediction = simulate_posterior_predictive_outcome(posterior,
-                                                                    burn,
-                                                                    num_fit_ignore,
-                                                                    random_sample_size_prop)
+        filtered_prediction = _simulate_posterior_predictive_outcome(posterior,
+                                                                     burn,
+                                                                     num_fit_ignore,
+                                                                     random_sample_size_prop)
         smoothed_prediction = posterior.smoothed_prediction[burn:, num_fit_ignore:, 0]
 
         if smoothed:
@@ -1345,12 +1021,12 @@ class BayesianStructuralTimeSeries:
             state = posterior.smoothed_state[burn:, num_fit_ignore:n, :, :]
         else:
             prediction = filtered_prediction
-            state = simulate_posterior_predictive_state(posterior,
-                                                        burn,
-                                                        num_fit_ignore,
-                                                        random_sample_size_prop,
-                                                        self.has_regressors,
-                                                        self.static_regression)
+            state = _simulate_posterior_predictive_state(posterior,
+                                                         burn,
+                                                         num_fit_ignore,
+                                                         random_sample_size_prop,
+                                                         self.has_regressors,
+                                                         self.static_regression)
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
         ax[0].plot(y)
