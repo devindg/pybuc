@@ -131,7 +131,7 @@ $$
 $$
 
 # Estimation
-<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
+<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
 
 To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Sampling repeats the following three steps for each sample $s$:
 
@@ -140,4 +140,6 @@ To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adopt
     <li>Draw $\boldsymbol{\sigma}^2(s) \equiv (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's simulation disturbance smoother.</li>
     <li>Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^*$ is defined above.
 </ol>
+
+By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to independently sampling each element in $\boldsymbol{\sigma}^2(s)$ from their posterior inverse-Gamma distributions.
 
