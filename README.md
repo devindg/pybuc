@@ -108,3 +108,5 @@ $$
                         \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
                         \end{array}\right)
 $$
+
+# Estimation
