@@ -11,6 +11,8 @@
 
 Note that the way <code/>pybuc</code> estimates regression coefficients is methodologically different than <code/>bsts</code>. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
 
+Fast computation is achieved using [Numba](https://numba.pydata.org/), a high performance just-in-time (JIT) compiler for Python.
+
 # Model
 A structural time series model with level, trend, seasonal, and regression components takes the form:
 
@@ -141,5 +143,5 @@ To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adopt
     <li>Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^*$ is defined above.
 </ol>
 
-By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to independently sampling each element in $\boldsymbol{\sigma}^2(s)$ from their posterior inverse-Gamma distributions.
+By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their posterior inverse-Gamma distributions.
 
