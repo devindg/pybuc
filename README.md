@@ -61,6 +61,21 @@ $$
 
 where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 
+## Regression
+There are two ways to configure the model matrices to account for a regression component with static coefficients. The most common way (Method 1) is to append $\mathbf x_ t^\prime$ to $\mathbf Z_ t$ and $\boldsymbol{\beta}_ t$ to the state vector, $\boldsymbol{\alpha}_ t$ (see state space represenation below), with the constraints $\boldsymbol{\beta}_ 0 = \boldsymbol{\beta}$ and $\boldsymbol{\beta}_ t = \boldsymbol{\beta}_ {t-1}$ for all $t$. Another, less common way (Method 2) is to append $\mathbf x_ t^\prime \boldsymbol{\beta}$ to $\mathbf Z_ t$ and 1 to the state vector. 
+
+While both methods can be accomodated by the Kalman filter, Method 1 is a direct extension of the Kalman filter as it maintains the observability of $\mathbf Z_ t$ and treats the regression coefficients as unobserved states. Method 2 does not fit naturally into the conventional framework of the Kalman filter, but it offers the significant advantage of only increasing the size of the state vector by one. In contrast, Method 1 increases the size of the state vector by the size of $\boldsymbol{\beta}$. This is significant because computational complexity is quadratic in the size of the state vector but linear in the size of the observation vector.
+
+The unobservability of $\mathbf Z_ t$ under Method 2 can be handled with maximum likelihood or Bayesian estimation by working with the adjusted series 
+
+$$
+y_t^* \equiv y_t - \tau_t = \mathbf x_ t^\prime \boldsymbol{\beta} + \epsilon_t
+$$
+
+where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level and seasonal component are specified, this means an initial estimate of the time series component $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^* \equiv \left(\begin{array}{cc} y_1^* & y_2^* & \cdots & y_n^* \end{array}\right)^\prime$.
+
+<code/>pybuc</code> uses Method 2 for estimating static coefficients.
+
 ## State space representation
 The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, and $\mathbf R \in \mathbb{R}^{m \times q}$ denote the observation, state transition, and state error transformation matrices, respectively, where $m$ is the number of state equations and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). 
 
@@ -104,9 +119,10 @@ $$
 where
 
 $$
-\boldsymbol{\alpha}_ t^\prime = \left(\begin{array}{cc} 
+\boldsymbol{\alpha}_ t = \left(\begin{array}{cc} 
                         \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
-                        \end{array}\right)
+                        \end{array}\right)^\prime
 $$
 
 # Estimation
+<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-gamma random variables.   
