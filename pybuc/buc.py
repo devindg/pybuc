@@ -545,33 +545,22 @@ class BayesianUnobservedComponents:
                 if self.level:
                     if self.stochastic_level:
                         V.append(np.array([[1.]]))
-                    else:
-                        V.append(np.array([[]]))
                 if self.slope:
                     if self.stochastic_slope:
                         V.append(np.array([[1.]]))
-                    else:
-                        V.append(np.array([[]]))
                 if self.seasonal > 1:
                     if self.stochastic_seasonal:
                         V.append(np.array([[1.]]))
-                    else:
-                        V.append(np.array([[]]))
                 if len(self.trig_seasonal) > 0:
                     for c, w in enumerate(self.trig_seasonal):
                         _, freq = w
                         if self.stochastic_trig_seasonal[c]:
                             V.append(np.ones((2 * freq, 2 * freq)) / (2 * freq))
-                        else:
-                            V.append(np.array([[]]))
 
                 r, c = 0, 0
                 for v in V:
-                    if v.size == 0:
-                        num_rows, num_cols = 0, 0
-                    else:
-                        num_rows, num_cols = v.shape
-                        A[r:r + num_rows, c:c + num_cols] = v
+                    num_rows, num_cols = v.shape
+                    A[r:r + num_rows, c:c + num_cols] = v
                     r += num_rows
                     c += num_cols
 
