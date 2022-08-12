@@ -88,7 +88,7 @@ if __name__ == '__main__':
                                                 level=True, stochastic_level=True,
                                                 slope=True, stochastic_slope=True,
                                                 seasonal=0, stochastic_seasonal=True,
-                                                trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,))
+                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100

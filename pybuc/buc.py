@@ -135,7 +135,7 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
     Z = state_observation_matrix
     T = state_transition_matrix
     R = state_error_transformation_matrix
-    X = future_regressors
+    X_fut = future_regressors
     m = R.shape[0]
     q = R.shape[1]
 
@@ -145,47 +145,33 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
     smoothed_state = posterior.smoothed_state[burn:]
     num_samp = posterior.num_samp - burn
 
+    if X_fut.size > 0:
+        reg_coeff = posterior.regression_coefficients[burn:]
+
     y_forecast = np.empty((num_samp, num_periods, 1), dtype=np.float64)
     num_periods_zeros = np.zeros((num_periods, 1))
     num_periods_u_zeros = np.zeros((num_periods, q, 1))
     num_periods_ones = np.ones((num_periods, 1))
     num_periods_u_ones = np.ones((num_periods, q, 1))
 
-    if X.size == 0:
-        for s in range(num_samp):
-            obs_error = dist.vec_norm(num_periods_zeros,
-                                      num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
-            if q > 0:
-                state_error = dist.vec_norm(num_periods_u_zeros,
-                                            num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
+    for s in range(num_samp):
+        obs_error = dist.vec_norm(num_periods_zeros,
+                                  num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
+        if q > 0:
+            state_error = dist.vec_norm(num_periods_u_zeros,
+                                        num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
 
-            alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
-            alpha[0] = smoothed_state[s, -1]
-            for t in range(num_periods):
-                y_forecast[s, t] = Z[t].dot(alpha[t]) + obs_error[t]
-                if q > 0:
-                    alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
-                else:
-                    alpha[t + 1] = T.dot(alpha[t])
-    else:
-        reg_coeff = posterior.regression_coefficients[burn:]
-        Z_reg = Z.copy()
-        for s in range(num_samp):
-            obs_error = dist.vec_norm(num_periods_zeros,
-                                      num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
-            if q > 0:
-                state_error = dist.vec_norm(num_periods_u_zeros,
-                                            num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
+        if X_fut.size > 0:
+            Z[:, :, -1] = X_fut.dot(reg_coeff[s])
 
-            alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
-            alpha[0] = smoothed_state[s, -1]
-            Z_reg[:, :, -1] = X.dot(reg_coeff[s])
-            for t in range(num_periods):
-                y_forecast[s, t] = Z_reg[t].dot(alpha[t]) + obs_error[t]
-                if q > 0:
-                    alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
-                else:
-                    alpha[t + 1] = T.dot(alpha[t])
+        alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
+        alpha[0] = smoothed_state[s, -1]
+        for t in range(num_periods):
+            y_forecast[s, t] = Z[t].dot(alpha[t]) + obs_error[t]
+            if q > 0:
+                alpha[t + 1] = T.dot(alpha[t]) + R.dot(state_error[t])
+            else:
+                alpha[t + 1] = T.dot(alpha[t])
 
     return y_forecast
 
@@ -581,8 +567,11 @@ class BayesianUnobservedComponents:
 
                 r, c = 0, 0
                 for v in V:
-                    num_rows, num_cols = v.shape
-                    A[r:r + num_rows, c:c + num_cols] = v
+                    if v.size == 0:
+                        num_rows, num_cols = 0, 0
+                    else:
+                        num_rows, num_cols = v.shape
+                        A[r:r + num_rows, c:c + num_cols] = v
                     r += num_rows
                     c += num_cols
 
@@ -768,11 +757,11 @@ class BayesianUnobservedComponents:
 
         # Initialize arrays for variances and state vector
         if q > 0:
-            var_eta = np.empty((num_samp, q, q), dtype=np.float64)
+            state_error_variance = np.empty((num_samp, q, q), dtype=np.float64)
         else:
-            var_eta = np.array([[]])
+            state_error_variance = np.empty((num_samp, 0, 0))
 
-        var_eps = np.empty((num_samp, 1, 1), dtype=np.float64)
+        outcome_error_variance = np.empty((num_samp, 1, 1), dtype=np.float64)
         smoothed_errors = np.empty((num_samp, n, 1 + q, 1), dtype=np.float64)
         smoothed_state = np.empty((num_samp, n + 1, m, 1), dtype=np.float64)
         smoothed_prediction = np.empty((num_samp, n, 1), dtype=np.float64)
@@ -781,162 +770,93 @@ class BayesianUnobservedComponents:
         state_covariance = np.empty((num_samp, n + 1, m, m), dtype=np.float64)
         outcome_variance = np.empty((num_samp, n, 1, 1), dtype=np.float64)
         init_plus_state_values = np.zeros((m, 1))
+        init_state_values0 = np.zeros((m, 1))
+
+        outcome_error_variance[0] = np.array([[init_error_variances[0]]])
+        if q > 0:
+            state_error_variance[0] = np.diag(init_error_variances[1:])
 
         # Helper matrices
         q_eye = np.eye(q)
         n_ones = np.ones((n, 1))
-        # TODO: collapse this conditional statement into one for loop. Conditionals will be placed in loop.
-        if k == 0:
-            # Start Gibbs sampler
-            for s in range(num_samp):
-                if s == 0:
-                    v_eps = np.array([[init_error_variances[0]]])
-                    if q > 0:
-                        v_eta = np.diag(init_error_variances[1:])
-                    else:
-                        v_eta = var_eta
-                    init_state_values = np.zeros((m, 1))
-                else:
-                    v_eps = var_eps[s - 1]
-                    if q > 0:
-                        v_eta = var_eta[s - 1]
-                    else:
-                        v_eta = var_eta
-                    init_state_values = smoothed_state[s - 1, 0]
 
-                # Filtered state
-                y_kf = kf(y,
-                          Z,
-                          T,
-                          R,
-                          v_eps,
-                          v_eta,
-                          init_state_values,
-                          init_state_covariance)
-
-                filtered_state[s] = y_kf.filtered_state
-                state_covariance[s] = y_kf.state_covariance
-                filtered_prediction[s] = y - y_kf.one_step_ahead_prediction_residual[:, :, 0]
-                outcome_variance[s] = y_kf.outcome_variance
-
-                # Get smoothed state from DK smoother
-                dk = dks(y,
-                         Z,
-                         T,
-                         R,
-                         v_eps,
-                         v_eta,
-                         init_plus_state_values=init_plus_state_values,
-                         init_state_values=init_state_values,
-                         init_state_covariance=init_state_covariance)
-
-                # Smoothed disturbances and state
-                smoothed_errors[s] = dk.simulated_smoothed_errors
-                smoothed_state[s] = dk.simulated_smoothed_state
-                smoothed_prediction[s] = dk.simulated_smoothed_prediction
-
-                # Get new draws for state variances
-                if q > 0:
-                    state_residual = smoothed_errors[s][:, 1:, 0]
-                    state_sse = dot(state_residual.T ** 2, n_ones)
-                    state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
-                    state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
-                    var_eta[s] = q_eye * state_var_post
-
-                # Get new draw for observation variance
-                smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
-                outcome_var_scale_post = (outcome_var_scale_prior
-                                          + 0.5 * dot(smooth_one_step_ahead_prediction_residual.T,
-                                                      smooth_one_step_ahead_prediction_residual))
-                var_eps[s] = dist.vec_ig(outcome_var_shape_post, outcome_var_scale_post)
-
-            results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
-                           filtered_state, filtered_prediction, outcome_variance, state_covariance,
-                           var_eps, var_eta, np.array([[[]]]))
-
-        else:
+        if self.num_regressors > 0:
+            y_nan_indicator = np.isnan(y) * 1.
+            y_no_nan = ao.replace_nan(y)
+            init_state_values0[-1] = 1.
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_var_prior = model.reg_coeff_var_prior
             reg_coeff_var_inv_prior = solve(reg_coeff_var_prior, np.eye(k))
             reg_coeff_var_inv_post = dot(X.T, X) + solve(reg_coeff_var_prior, np.eye(k))
             reg_coeff_var_post = solve(reg_coeff_var_inv_post, np.eye(k))
+            regression_coefficients = np.empty((num_samp, k, 1), dtype=np.float64)
+            regression_coefficients[0] = dot(reg_coeff_var_post,
+                                             (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
+        else:
+            regression_coefficients = np.array([[[]]])
 
-            y_nan_indicator = np.isnan(y) * 1.
-            y_no_nan = ao.replace_nan(y)
+        # Run Gibbs sampler
+        for s in range(1, num_samp):
+            outcome_err_var = outcome_error_variance[s - 1]
+            state_err_var = state_error_variance[s - 1]
 
-            # Run Gibbs sampler
-            regression_coeff = np.empty((num_samp, k, 1), dtype=np.float64)
-            for s in range(num_samp):
-                if s == 0:
-                    v_eps = np.array([[init_error_variances[0]]])
-                    if q > 0:
-                        v_eta = np.diag(init_error_variances[1:])
-                    else:
-                        v_eta = var_eta
-
-                    reg_coeff = dot(reg_coeff_var_post,
-                                    (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
-                    init_state_values = np.zeros((m, 1))
-                    init_state_values[-1] = 1.
-
-                else:
-                    v_eps = var_eps[s - 1]
-                    if q > 0:
-                        v_eta = var_eta[s - 1]
-                    else:
-                        v_eta = var_eta
-
-                    reg_coeff = regression_coeff[s - 1]
-                    init_state_values = smoothed_state[s - 1, 0]
-
+            if self.num_regressors > 0:
+                reg_coeff = regression_coefficients[s - 1]
                 Z[:, :, -1] = X.dot(reg_coeff)
-                # Filtered state
-                y_kf = kf(y,
-                          Z,
-                          T,
-                          R,
-                          v_eps,
-                          v_eta,
-                          init_state=init_state_values,
-                          init_state_covariance=init_state_covariance)
 
-                filtered_state[s] = y_kf.filtered_state
-                state_covariance[s] = y_kf.state_covariance
-                filtered_prediction[s] = y - y_kf.one_step_ahead_prediction_residual[:, :, 0]
-                outcome_variance[s] = y_kf.outcome_variance
+            if s == 1:
+                init_state_values = init_state_values0
+            else:
+                init_state_values = smoothed_state[s - 1, 0]
 
-                # Get smoothed state from DK smoother
-                dk = dks(y,
-                         Z,
-                         T,
-                         R,
-                         v_eps,
-                         v_eta,
-                         init_plus_state_values=init_plus_state_values,
-                         init_state_values=init_state_values,
-                         init_state_covariance=init_state_covariance,
-                         static_regression=self.static_regression)
+            # Filtered state
+            y_kf = kf(y,
+                      Z,
+                      T,
+                      R,
+                      outcome_err_var,
+                      state_err_var,
+                      init_state=init_state_values,
+                      init_state_covariance=init_state_covariance)
 
-                # Smoothed disturbances and state
-                smoothed_errors[s] = dk.simulated_smoothed_errors
-                smoothed_state[s] = dk.simulated_smoothed_state
-                smoothed_prediction[s] = dk.simulated_smoothed_prediction
+            filtered_state[s] = y_kf.filtered_state
+            state_covariance[s] = y_kf.state_covariance
+            filtered_prediction[s] = y - y_kf.one_step_ahead_prediction_residual[:, :, 0]
+            outcome_variance[s] = y_kf.outcome_variance
 
-                # Get new draws for state variances
-                if q > 0:
-                    state_residual = smoothed_errors[s][:, 1:, 0]
-                    state_sse = dot(state_residual.T ** 2, n_ones)
-                    state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
-                    state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
-                    var_eta[s] = q_eye * state_var_post
+            # Get smoothed state from DK smoother
+            dk = dks(y,
+                     Z,
+                     T,
+                     R,
+                     outcome_err_var,
+                     state_err_var,
+                     init_plus_state_values=init_plus_state_values,
+                     init_state_values=init_state_values,
+                     init_state_covariance=init_state_covariance,
+                     static_regression=(self.static_regression * (self.num_regressors > 0)))
 
-                # Get new draw for observation variance
-                smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
-                outcome_var_scale_post = (outcome_var_scale_prior
-                                          + 0.5 * dot(smooth_one_step_ahead_prediction_residual.T,
-                                                      smooth_one_step_ahead_prediction_residual))
-                var_eps[s] = dist.vec_ig(outcome_var_shape_post, outcome_var_scale_post)
+            # Smoothed disturbances and state
+            smoothed_errors[s] = dk.simulated_smoothed_errors
+            smoothed_state[s] = dk.simulated_smoothed_state
+            smoothed_prediction[s] = dk.simulated_smoothed_prediction
 
+            # Get new draws for state variances
+            if q > 0:
+                state_residual = smoothed_errors[s][:, 1:, 0]
+                state_sse = dot(state_residual.T ** 2, n_ones)
+                state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
+                state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
+                state_error_variance[s] = q_eye * state_var_post
+
+            # Get new draw for observation variance
+            smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
+            outcome_var_scale_post = (outcome_var_scale_prior
+                                      + 0.5 * dot(smooth_one_step_ahead_prediction_residual.T,
+                                                  smooth_one_step_ahead_prediction_residual))
+            outcome_error_variance[s] = dist.vec_ig(outcome_var_shape_post, outcome_var_scale_post)
+
+            if self.num_regressors > 0:
                 # Get new draw for regression coefficients
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
@@ -944,15 +864,16 @@ class BayesianUnobservedComponents:
                 reg_coeff_mean_post = dot(reg_coeff_var_post,
                                           (dot(X.T, y_tilde) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
 
-                regression_coeff[s] = (np
-                                       .random.default_rng()
-                                       .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
-                                                            cov=var_eps[s, 0, 0] * reg_coeff_var_post,
-                                                            method='cholesky').reshape(-1, 1))
+                regression_coefficients[s] = (np
+                                              .random.default_rng()
+                                              .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
+                                                                   cov=outcome_error_variance[
+                                                                           s, 0, 0] * reg_coeff_var_post,
+                                                                   method='cholesky').reshape(-1, 1))
 
-            results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
-                           filtered_state, filtered_prediction, outcome_variance, state_covariance,
-                           var_eps, var_eta, regression_coeff)
+        results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
+                       filtered_state, filtered_prediction, outcome_variance, state_covariance,
+                       outcome_error_variance, state_error_variance, regression_coefficients)
 
         return results
 
