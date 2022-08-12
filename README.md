@@ -121,15 +121,20 @@ $$
 where
 
 $$
-\boldsymbol{\alpha}_ t = \left(\begin{array}{cc} 
-                        \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
-                        \end{array}\right)^\prime
+\begin{align}
+    \boldsymbol{\alpha}_ t &= \left(\begin{array}{cc} 
+                            \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
+                            \end{array}\right)^\prime \\
+    \boldsymbol{\eta}_ t &= \left(\begin{array}{cc} 
+                            \eta_{1, t} & \eta_{2, t} & \cdots & \eta_{q, t}
+                            \end{array}\right)^\prime
+\end{align}
 $$
 
 and 
 
 $$
-\mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta =  \mathrm{diag}(\sigma^2_{\eta_1}, \sigma^2_{\eta_2}, ..., \sigma^2_{\eta_m}) \in \mathbb{R}^{m \times m} \hspace{5pt} \textrm{for all } t=1,2,...,n
+\mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta =  \mathrm{diag}(\sigma^2_{\eta_1}, \sigma^2_{\eta_2}, ..., \sigma^2_{\eta_q}) \in \mathbb{R}^{q \times q} \hspace{5pt} \textrm{for all } t=1,2,...,n
 $$
 
 # Estimation
