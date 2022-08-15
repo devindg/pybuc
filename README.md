@@ -138,9 +138,9 @@ $$
 $$
 
 # Estimation
-<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to the latter's estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
+<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to estimation method. The observation vector, state vector, and regression coefficients are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
 
-To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Sampling repeats the following three steps for each sample $s$:
+To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by repeating the following three steps:
 
 <ol>
     <li>Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that <code/>pybuc</code> implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015). </li>
