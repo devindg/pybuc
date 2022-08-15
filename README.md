@@ -138,7 +138,7 @@ $$
 $$
 
 # Estimation
-<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to estimation method. Namely, <code/>pybuc</code> estimates the model parameters in a Bayesian way. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
+<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to estimation method. The observation and state vectors are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
 
 To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Sampling repeats the following three steps for each sample $s$:
 
