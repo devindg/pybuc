@@ -84,21 +84,21 @@ if __name__ == '__main__':
 
     ''' Fit the airline data using Bayesian unobserved components '''
     buc.set_seed(123)
-    bayes_uc = buc.BayesianUnobservedComponents(outcome=y_train,
+    bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 slope=True, stochastic_slope=True,
                                                 seasonal=0, stochastic_seasonal=True,
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
+                                                trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,))
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
     # Print summary of estimated parameters
-    mean_sig_obs = np.mean(post.outcome_error_variance[mcmc_burn:])
+    mean_sig_obs = np.mean(post.response_error_variance[mcmc_burn:])
     mean_sig_lvl = np.mean(post.state_error_variance[:, 0, 0][mcmc_burn:])
     mean_sig_slope = np.mean(post.state_error_variance[:, 1, 1][mcmc_burn:])
     mean_sig_trig = np.mean(post.state_error_variance[:, 2, 2][mcmc_burn:])
-    std_sig_obs = np.std(post.outcome_error_variance[mcmc_burn:])
+    std_sig_obs = np.std(post.response_error_variance[mcmc_burn:])
     std_sig_lvl = np.std(post.state_error_variance[:, 0, 0][mcmc_burn:])
     std_sig_slope = np.std(post.state_error_variance[:, 1, 1][mcmc_burn:])
     std_sig_trig = np.std(post.state_error_variance[:, 2, 2][mcmc_burn:])

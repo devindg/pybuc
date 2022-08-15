@@ -9,8 +9,8 @@ kf = namedtuple('kf',
                  'kalman_gain',
                  'filtered_state',
                  'state_covariance',
-                 'outcome_variance',
-                 'inverse_outcome_variance',
+                 'response_variance',
+                 'inverse_response_variance',
                  'L'])
 
 # @njit
@@ -71,7 +71,7 @@ def kalman_filter(y: np.ndarray,
                   observation_matrix: np.ndarray,
                   state_transition_matrix: np.ndarray,
                   state_error_transformation_matrix: np.ndarray,
-                  outcome_error_variance_matrix: np.ndarray,
+                  response_error_variance_matrix: np.ndarray,
                   state_error_variance_matrix: np.ndarray,
                   init_state: np.ndarray = np.array([[]]),
                   init_state_covariance: np.ndarray = np.array([[]])):
@@ -115,7 +115,7 @@ def kalman_filter(y: np.ndarray,
     # Run Kalman Filter
     for t in range(n):
         v[t] = (1. - y_nan_indicator[t, 0]) * (y_no_nan[t, :] - Z[t].dot(a[t]))
-        F[t] = Z[t].dot(P[t]).dot(Z[t].T) + outcome_error_variance_matrix
+        F[t] = Z[t].dot(P[t]).dot(Z[t].T) + response_error_variance_matrix
         # Get appropriate matrix inversion procedure for F.
         # Matrix inversion is computationally expensive,
         # so it's good to avoid needlessly using matrix inversion

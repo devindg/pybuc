@@ -101,17 +101,17 @@ if __name__ == '__main__':
 
     ''' Fit the airline data using Bayesian unobserved components '''
     buc.set_seed(123)
-    bayes_uc = buc.BayesianUnobservedComponents(outcome=y_train,
+    bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
-                                                regressors=x_train)
+                                                predictors=x_train)
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
     # Print summary of estimated parameters
-    mean_sig_obs = np.mean(post.outcome_error_variance[mcmc_burn:])
+    mean_sig_obs = np.mean(post.response_error_variance[mcmc_burn:])
     mean_sig_lvl = np.mean(post.state_error_variance[:, 0, 0][mcmc_burn:])
-    std_sig_obs = np.std(post.outcome_error_variance[mcmc_burn:])
+    std_sig_obs = np.std(post.response_error_variance[mcmc_burn:])
     std_sig_lvl = np.std(post.state_error_variance[:, 0, 0][mcmc_burn:])
     mean_reg_coeff = np.mean(post.regression_coefficients[mcmc_burn:], axis=0)
     std_reg_coeff = np.std(post.regression_coefficients[mcmc_burn:], axis=0)
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=True)
 
     # Get and plot forecast
-    forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn, future_regressors=x_test)
+    forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn, future_predictors=x_test)
     forecast_mean = np.mean(forecast, axis=0)
     forecast_l95 = np.quantile(forecast, 0.025, axis=0)
     forecast_u95 = np.quantile(forecast, 0.975, axis=0)

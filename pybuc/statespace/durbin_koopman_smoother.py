@@ -11,7 +11,7 @@ dkss = namedtuple('dkss',
                    'simulated_smoothed_prediction'])
 
 slss = namedtuple('slss',
-                  ['simulated_outcome',
+                  ['simulated_response',
                    'simulated_state',
                    'simulated_errors'])
 
@@ -21,7 +21,7 @@ def simulate_linear_state_space(observation_matrix,
                                 state_transition_matrix,
                                 state_error_transformation_matrix,
                                 init_state,
-                                outcome_error_variance,
+                                response_error_variance,
                                 state_error_variance_matrix):
     # Get state and observation transformation matrices
     T = state_transition_matrix
@@ -34,9 +34,9 @@ def simulate_linear_state_space(observation_matrix,
     n = Z.shape[0]
 
     if q > 0:
-        error_variances = np.concatenate((outcome_error_variance, ao.diag_2d(state_error_variance_matrix)))
+        error_variances = np.concatenate((response_error_variance, ao.diag_2d(state_error_variance_matrix)))
     else:
-        error_variances = outcome_error_variance
+        error_variances = response_error_variance
 
     errors = np.empty((n, 1 + q, 1), dtype=np.float64)
     for t in range(n):
@@ -60,7 +60,7 @@ def dk_smoother(y: np.ndarray,
                 observation_matrix: np.ndarray,
                 state_transition_matrix: np.ndarray,
                 state_error_transformation_matrix: np.ndarray,
-                outcome_error_variance_matrix: np.ndarray,
+                response_error_variance_matrix: np.ndarray,
                 state_error_variance_matrix: np.ndarray,
                 init_state_values: np.ndarray,
                 init_plus_state_values: np.ndarray,
@@ -86,10 +86,10 @@ def dk_smoother(y: np.ndarray,
                                           T,
                                           R,
                                           init_plus_state_values,
-                                          outcome_error_variance_matrix,
+                                          response_error_variance_matrix,
                                           state_error_variance_matrix)
 
-    y_plus = sim_lss.simulated_outcome
+    y_plus = sim_lss.simulated_response
     alpha_plus = sim_lss.simulated_state
     w_plus = sim_lss.simulated_errors
 
@@ -99,13 +99,13 @@ def dk_smoother(y: np.ndarray,
                    Z,
                    T,
                    R,
-                   outcome_error_variance_matrix,
+                   response_error_variance_matrix,
                    state_error_variance_matrix,
                    init_state=init_state_values - init_plus_state_values,
                    init_state_covariance=init_state_cov)
 
     v = y_star_kf.one_step_ahead_prediction_residual
-    F_inv = y_star_kf.inverse_outcome_variance
+    F_inv = y_star_kf.inverse_response_variance
     K = y_star_kf.kalman_gain
     L = y_star_kf.L
 
@@ -123,7 +123,7 @@ def dk_smoother(y: np.ndarray,
     alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
     alpha_hat[0] = init_state_values - init_plus_state_values + init_state_covariance.dot(r_init)
     for t in range(n):
-        eps_hat = outcome_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
+        eps_hat = response_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
         if q > 0:
             eta_hat = state_error_variance_matrix.dot(R.T).dot(r[t])
             w_hat[t] = np.concatenate((eps_hat, eta_hat))
