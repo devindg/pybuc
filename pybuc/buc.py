@@ -6,6 +6,8 @@ from collections import namedtuple
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import warnings
+from typing import Union
+import pandas as pd
 
 from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
@@ -178,17 +180,17 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
 
 class BayesianUnobservedComponents:
     def __init__(self,
-                 response: np.ndarray,
+                 response: Union[np.ndarray, pd.Series, pd.DataFrame],
+                 predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]]),
                  level: bool = True,
                  stochastic_level: bool = True,
-                 slope: bool = False,
+                 slope: bool = True,
                  stochastic_slope: bool = True,
                  seasonal: int = 0,
                  stochastic_seasonal: bool = True,
                  trig_seasonal: tuple[tuple] = (),
                  stochastic_trig_seasonal: tuple = (),
                  standardize: bool = False,
-                 predictors: np.ndarray = np.array([[]]),
                  static_regression: bool = True):
 
         self.level = level
@@ -205,45 +207,102 @@ class BayesianUnobservedComponents:
 
         self.model_setup = None
         self.num_fit_ignore = None
+        self.response_name = None
+        self.response_index = None
+        self.predictors_names = None
+        self.predictors_index = None
 
         # TODO: Add functionality for multiple dummy seasonality. 
         # TODO: Add functionality for autoregressive slope.
-        # TODO: Add functionality that accepts Pandas dataframes/series as types for response and predictors
-        if response.ndim == 0:
+
+        # Check and prepare response data
+        # -- data types, name, and index
+        if not isinstance(response, (pd.Series, pd.DataFrame, np.ndarray)):
+            raise ValueError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+        else:
+            if isinstance(response, (pd.Series, pd.DataFrame)):
+                self.response = response.to_numpy()
+                self.response_index = response.index
+                if isinstance(response, pd.Series):
+                    self.response_name = [response.name]
+                else:
+                    self.response_name = response.columns.values.tolist()
+            else:
+                self.response = response
+
+        # -- dimensions
+        if self.response.ndim == 0:
             raise ValueError('The response array must have dimension 1 or 2.')
-        elif response.ndim == 1:
-            self.response = response.reshape(-1, 1)
-        elif response.ndim > 2:
+        elif self.response.ndim == 1:
+            self.response = self.response.reshape(-1, 1)
+        elif self.response.ndim > 2:
             raise ValueError('The response array must have dimension 1 or 2.')
         else:
-            if all(i > 1 for i in response.shape):
+            if all(i > 1 for i in self.response.shape):
                 raise ValueError('The response array must have shape (1, n) or (n, 1), '
                                  'where n is the number of observations. Both the row and column '
                                  'count exceed 1.')
             else:
-                self.response = response.reshape(-1, 1)
+                self.response = self.response.reshape(-1, 1)
 
+        # -- name and index if response is a Numpy array
+        if self.response_name is None:
+            self.response_name = ['y']
+        if self.response_index is None:
+            self.response_index = np.arange(self.num_obs)
+
+        # Check and prepare predictors data
+        # -- data types. names, and index
         if self.has_predictors:
-            if predictors.ndim == 0:
+            if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
+                raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+            else:
+                if isinstance(predictors, (pd.Series, pd.DataFrame)):
+                    self.predictors = predictors.to_numpy()
+                    self.predictors_index = predictors.index
+                    if isinstance(predictors, pd.Series):
+                        self.predictors_names = [predictors.name]
+                    else:
+                        self.predictors_names = predictors.columns.values.tolist()
+                else:
+                    self.predictors = predictors
+
+            # -- dimensions
+            if self.predictors.ndim == 0:
                 raise ValueError('The predictors array must have dimension 1 or 2.')
-            elif predictors.ndim == 1:
+            elif self.predictors.ndim == 1:
                 self.predictors = predictors.reshape(-1, 1)
-            elif predictors.ndim > 2:
+            elif self.predictors.ndim > 2:
                 raise ValueError('The predictors array must have dimension 1 or 2.')
             else:
-                if np.isnan(predictors).any():
+                if np.isnan(self.predictors).any():
                     raise ValueError('The predictors array cannot have null values.')
-                if np.isinf(predictors).any():
+                if np.isinf(self.predictors).any():
                     raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
-                if 1 in predictors.shape:
+                if 1 in self.predictors.shape:
                     self.predictors = predictors.reshape(-1, 1)
-                if predictors.shape[0] != self.num_obs:
-                    raise ValueError('The number of observations in the predictors array must match '
-                                     'the number of observations in the response array.')
-            if self.num_predictors > self.num_obs:
+
+            # -- conformable number of observations
+            if self.predictors.shape[0] != self.response.shape[0]:
+                raise ValueError('The number of observations in the predictors array must match '
+                                 'the number of observations in the response array.')
+
+            # -- warn about model stability if the number of predictors exceeds number of observations
+            if self.predictors.shape[1] > self.predictors.shape[0]:
                 warnings.warn('The number of predictors exceeds the number of observations. '
                               'Results will be sensitive to choice of priors.')
 
+            # -- names and index if predictors is a Numpy array
+            if self.predictors_names is None:
+                self.predictors_names = [f"x_{i}" for i in range(self.num_predictors)]
+            if self.predictors_index is None:
+                self.predictors_index = np.arange(self.num_obs)
+
+            # -- response index matches predictors index
+            if not (self.response_index == self.predictors_index).all():
+                raise ValueError('The response index must match the predictors index.')
+
+        # Check time components
         if seasonal == 1:
             raise ValueError('The seasonal argument takes 0 and integers greater than 1 as valid inputs. '
                              'A value of 1 is not valid.')
@@ -713,7 +772,8 @@ class BayesianUnobservedComponents:
                slope_var_shape_prior=np.nan, slope_var_scale_prior=np.nan,
                season_var_shape_prior=np.nan, season_var_scale_prior=np.nan,
                trig_season_var_shape_prior=np.nan, trig_season_var_scale_prior=np.nan,
-               reg_coeff_mean_prior=np.array([[]]), reg_coeff_var_prior=np.array([[]])):
+               reg_coeff_mean_prior=np.array([[]]), reg_coeff_var_prior=np.array([[]]),
+               seed=None):
 
         # Define variables
         y = self.y
@@ -851,7 +911,7 @@ class BayesianUnobservedComponents:
                                           (dot(X.T, y_tilde) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
 
                 regression_coefficients[s] = (np
-                                              .random.default_rng()
+                                              .random.default_rng(seed)
                                               .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
                                                                    cov=response_error_variance[
                                                                            s, 0, 0] * reg_coeff_var_post,

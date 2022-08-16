@@ -1,5 +1,6 @@
 from pybuc import buc
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.structural import UnobservedComponents
@@ -12,16 +13,16 @@ def rmse(actual, prediction):
 
 
 # Simulate data
-np.random.seed(12345)
+rng = np.random.default_rng(123)
 hold_out_size = 10
 n = 100
 veps = 50
 veta = 10
 beta = np.array([[3.19, -10.24]]).T
-eps = np.random.normal(0, np.sqrt(veps), size=n)
-eta = np.random.normal(0, np.sqrt(veta), size=n)
-x1 = np.random.normal(50, 10, size=n)
-x2 = np.random.normal(200, 40, size=n)
+eps = rng.normal(0, np.sqrt(veps), size=n)
+eta = rng.normal(0, np.sqrt(veta), size=n)
+x1 = rng.normal(50, 10, size=n)
+x2 = rng.normal(200, 40, size=n)
 x = np.c_[x1, x2]
 Z = 1.
 T = 1.
@@ -101,12 +102,13 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using Bayesian unobserved components '''
-    buc.set_seed(123)
+    seed = 123
+    buc.set_seed(seed)
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 predictors=x_train)
 
-    post = bayes_uc.sample(5000)
+    post = bayes_uc.sample(5000, seed=seed)
     mcmc_burn = 100
 
     # Print summary of estimated parameters
@@ -118,13 +120,13 @@ if __name__ == '__main__':
     std_reg_coeff = np.std(post.regression_coefficients[mcmc_burn:], axis=0)
 
     print(f"sigma2.irregular: {mean_sig_obs} ({std_sig_obs}) \n"
-          f"sigma2.level: {mean_sig_lvl} ({std_sig_lvl}) \n" 
+          f"sigma2.level: {mean_sig_lvl} ({std_sig_lvl}) \n"
           f"beta.x1: {mean_reg_coeff[0, 0]} ({std_reg_coeff[0, 0]}) \n"
           f"beta.x2: {mean_reg_coeff[1, 0]} ({std_reg_coeff[1, 0]}) \n")
 
     # Plot in-sample fit against actuals
     yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
-    plt.plot(y_train.flatten())
+    plt.plot(y_train)
     plt.plot(yhat)
     plt.title('Bayesian-UC: In-sample')
     plt.show()
@@ -148,3 +150,9 @@ if __name__ == '__main__':
 
     # Print RMSE
     print(f"BAYES-UC RMSE: {rmse(y_test, forecast_mean)}")
+
+a = (np
+     .random.default_rng(123)
+     .multivariate_normal(mean=np.zeros(2),
+                          cov=np.eye(2),
+                          method='cholesky'))

@@ -34,6 +34,7 @@ if __name__ == '__main__':
     plt.plot(y_train)
     plt.plot(sarima_res.fittedvalues)
     plt.title('SARIMA: In-sample')
+    plt.xticks(rotation=45, ha="right")
     plt.show()
 
     # Get and plot forecast
