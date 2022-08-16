@@ -62,8 +62,7 @@ def _simulate_posterior_predictive_response(posterior, burn=0, num_fit_ignore=0,
     if int(random_sample_size_prop * num_posterior_samp) < 1:
         raise ValueError('random_sample_size_prop implies a sample with less than 1 observation. '
                          'Provide a random_sample_size_prop such that the number of samples '
-                         'such that the number of samples is at least 1 but no larger than the '
-                         'number of posterior samples.')
+                         'is at least 1 but no larger than the number of posterior samples.')
 
     if random_sample_size_prop == 1.:
         num_samp = num_posterior_samp
@@ -141,9 +140,9 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
     m = R.shape[0]
     q = R.shape[1]
 
-    var_eps = posterior.response_error_variance[burn:]
+    response_error_variance = posterior.response_error_variance[burn:]
     if q > 0:
-        var_eta = posterior.state_error_variance[burn:]
+        state_error_variance = posterior.state_error_variance[burn:]
     smoothed_state = posterior.smoothed_state[burn:]
     num_samp = posterior.num_samp - burn
 
@@ -158,10 +157,10 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
 
     for s in range(num_samp):
         obs_error = dist.vec_norm(num_periods_zeros,
-                                  num_periods_ones * np.sqrt(var_eps[s, 0, 0]))
+                                  num_periods_ones * np.sqrt(response_error_variance[s, 0, 0]))
         if q > 0:
             state_error = dist.vec_norm(num_periods_u_zeros,
-                                        num_periods_u_ones * np.sqrt(ao.diag_2d(var_eta[s])))
+                                        num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_variance[s])))
 
         if X_fut.size > 0:
             Z[:, :, -1] = X_fut.dot(reg_coeff[s])
@@ -787,6 +786,7 @@ class BayesianUnobservedComponents:
         X = self.predictors
         k = self.num_predictors
 
+        # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
                                   level_var_shape_prior, level_var_scale_prior,
                                   slope_var_shape_prior, slope_var_scale_prior,
@@ -801,7 +801,7 @@ class BayesianUnobservedComponents:
         init_error_variances = model.init_error_variances
         init_state_covariance = model.init_state_covariance
 
-        # Initialize arrays for variances and state vector
+        # Initialize output arrays
         if q > 0:
             state_error_variance = np.empty((num_samp, q, q), dtype=np.float64)
         else:
@@ -818,6 +818,7 @@ class BayesianUnobservedComponents:
         init_plus_state_values = np.zeros((m, 1))
         init_state_values0 = np.zeros((m, 1))
 
+        # Set initial values for response and state error variances
         response_error_variance[0] = np.array([[init_error_variances[0]]])
         if q > 0:
             state_error_variance[0] = np.diag(init_error_variances[1:])
