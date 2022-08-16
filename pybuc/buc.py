@@ -923,12 +923,14 @@ class BayesianUnobservedComponents:
 
         return results
 
-    def forecast(self, posterior, num_periods, burn=0, future_predictors: np.ndarray = np.array([[]])):
+    def forecast(self, posterior, num_periods, burn=0,
+                 future_predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]])):
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix()
         R = self.state_error_transformation_matrix()
         X_fut = future_predictors
 
+        # TODO: Same as __init__, do a data check on future_predictors
         if self.num_predictors > 0:
             num_fut_obs, num_fut_predictors = X_fut.shape
 

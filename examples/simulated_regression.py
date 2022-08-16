@@ -151,8 +151,3 @@ if __name__ == '__main__':
     # Print RMSE
     print(f"BAYES-UC RMSE: {rmse(y_test, forecast_mean)}")
 
-a = (np
-     .random.default_rng(123)
-     .multivariate_normal(mean=np.zeros(2),
-                          cov=np.eye(2),
-                          method='cholesky'))
