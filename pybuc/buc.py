@@ -37,7 +37,7 @@ model_setup = namedtuple('model_setup',
                           'init_state_covariance'])
 
 
-def is_odd(x: int) -> bool:
+def _is_odd(x: int) -> bool:
     return np.mod(x, 2) != 0
 
 
@@ -206,33 +206,43 @@ class BayesianUnobservedComponents:
         self.model_setup = None
         self.num_fit_ignore = None
 
-        # TODO: (1) Add functionality for multiple dummy seasonality. (2) Add functionality for autoregressive slope.
-
-        if response.ndim != 2:
-            raise ValueError('The response array must have a row and column dimension. '
-                             'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
+        # TODO: Add functionality for multiple dummy seasonality. 
+        # TODO: Add functionality for autoregressive slope.
+        # TODO: Add functionality that accepts Pandas dataframes/series as types for response and predictors
+        if response.ndim == 0:
+            raise ValueError('The response array must have dimension 1 or 2.')
+        elif response.ndim == 1:
+            self.response = response.reshape(-1, 1)
+        elif response.ndim > 2:
+            raise ValueError('The response array must have dimension 1 or 2.')
         else:
-            if response.shape[0] > 1 and response.shape[1] > 1:
-                raise ValueError('The response array has at least 2 rows and 2 columns. '
-                                 'Only 1 row or 1 column is allowed if there are more than '
-                                 '2 columns or 2 rows, respectively. That is, the response '
-                                 'array must take the form of a vector.')
+            if all(i > 1 for i in response.shape):
+                raise ValueError('The response array must have shape (1, n) or (n, 1), '
+                                 'where n is the number of observations. Both the row and column '
+                                 'count exceed 1.')
             else:
                 self.response = response.reshape(-1, 1)
 
         if self.has_predictors:
-            if predictors.ndim != 2:
-                raise ValueError('The predictors array must have a row and column dimension. '
-                                 'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
+            if predictors.ndim == 0:
+                raise ValueError('The predictors array must have dimension 1 or 2.')
+            elif predictors.ndim == 1:
+                self.predictors = predictors.reshape(-1, 1)
+            elif predictors.ndim > 2:
+                raise ValueError('The predictors array must have dimension 1 or 2.')
             else:
-                if predictors.shape[0] != self.response.shape[0]:
-                    raise ValueError('The number of observations in the regressor matrix does not match '
-                                     'the number of observations in the response matrix. The number of '
-                                     'observations must be consistent.')
                 if np.isnan(predictors).any():
-                    raise ValueError('The regressor matrix contains null values, which are not permissible.')
+                    raise ValueError('The predictors array cannot have null values.')
                 if np.isinf(predictors).any():
-                    raise ValueError('The regressor matrix contains Inf and/or -Inf values, which are not permissible.')
+                    raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
+                if 1 in predictors.shape:
+                    self.predictors = predictors.reshape(-1, 1)
+                if predictors.shape[0] != self.num_obs:
+                    raise ValueError('The number of observations in the predictors array must match '
+                                     'the number of observations in the response array.')
+            if self.num_predictors > self.num_obs:
+                warnings.warn('The number of predictors exceeds the number of observations. '
+                              'Results will be sensitive to choice of priors.')
 
         if seasonal == 1:
             raise ValueError('The seasonal argument takes 0 and integers greater than 1 as valid inputs. '
@@ -244,9 +254,9 @@ class BayesianUnobservedComponents:
         if self.slope and not self.level:
             raise ValueError('Slope cannot be specified without a level component.')
 
-        self.check_trig_seasonal()
+        self._check_trig_seasonal()
 
-    def check_trig_seasonal(self):
+    def _check_trig_seasonal(self):
         if len(self.trig_seasonal) > 0:
             if len(self.trig_seasonal) > len(self._stochastic_trig_seasonal):
                 if len(self._stochastic_trig_seasonal) > 0:
@@ -284,7 +294,7 @@ class BayesianUnobservedComponents:
                                      f'the highest possible frequency for the given period, which is period / 2 '
                                      f'if period is even, or (period - 1) / 2 if period is odd. The frequency '
                                      f'passed, {freq}, is not a valid option.')
-                if is_odd(period):
+                if _is_odd(period):
                     if freq > int(period - 1) / 2:
                         raise ValueError('The frequency value for a trigonometric seasonal component cannot '
                                          'exceed (period - 1) / 2 when period is odd.')
@@ -316,7 +326,7 @@ class BayesianUnobservedComponents:
         for c, v in enumerate(self._trig_seasonal):
             period, freq = v
             if freq == 0:
-                if is_odd(freq):
+                if _is_odd(freq):
                     h = int((period - 1) / 2)
                 else:
                     h = int(period / 2)

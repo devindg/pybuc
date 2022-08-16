@@ -9,7 +9,8 @@ from pathlib import Path
 
 # Convenience function for computing root mean squared error
 def rmse(actual, prediction):
-    return np.sqrt(np.mean((actual - prediction) ** 2))
+    act, pred = actual.flatten(), prediction.flatten()
+    return np.sqrt(np.mean((act - pred) ** 2))
 
 
 # Import airline passenger data
