@@ -13,24 +13,25 @@ def rmse(actual, prediction):
 
 
 # Simulate data
-rng = np.random.default_rng(123)
+seed = 123
+np.random.seed(seed)
 hold_out_size = 10
 n = 100
 veps = 50
-veta = 10
+veta = 200
 beta = np.array([[3.19, -10.24]]).T
-eps = rng.normal(0, np.sqrt(veps), size=n)
-eta = rng.normal(0, np.sqrt(veta), size=n)
-x1 = rng.normal(50, 10, size=n)
-x2 = rng.normal(200, 40, size=n)
+eps = np.random.normal(0, np.sqrt(veps), size=n)
+eta = np.random.normal(0, np.sqrt(veta), size=n)
+x1 = np.random.normal(50, 10, size=n)
+x2 = np.random.normal(100, 40, size=n)
 x = np.c_[x1, x2]
 Z = 1.
 T = 1.
 R = 1.
-mu = np.empty(n)
-mu[0] = 15.3
+mu = np.empty(n + 1)
+mu[0] = 1500
 y = np.empty(n)
-for t in range(n - 1):
+for t in range(n):
     mu[t + 1] = mu[t] + eta[t]
 
 for t in range(n):
@@ -102,13 +103,12 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using Bayesian unobserved components '''
-    seed = 123
     buc.set_seed(seed)
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 predictors=x_train)
 
-    post = bayes_uc.sample(5000, seed=seed)
+    post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
     # Print summary of estimated parameters

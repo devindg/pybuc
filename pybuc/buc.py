@@ -82,10 +82,9 @@ def _simulate_posterior_predictive_response(posterior, burn=0, num_fit_ignore=0,
 
 
 def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
-    state_post = (np.random.default_rng()
+    state_post = (np.random
                   .multivariate_normal(mean=state_mean,
-                                       cov=state_covariance,
-                                       method='cholesky').reshape(-1, 1))
+                                       cov=state_covariance).reshape(-1, 1))
 
     return state_post
 
@@ -157,7 +156,7 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
 
     for s in range(num_samp):
         obs_error = dist.vec_norm(num_periods_zeros,
-                                  num_periods_ones * np.sqrt(response_error_variance[s, 0, 0]))
+                                  num_periods_ones * np.sqrt(response_error_variance[s][0, 0]))
         if q > 0:
             state_error = dist.vec_norm(num_periods_u_zeros,
                                         num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_variance[s])))
@@ -181,9 +180,9 @@ class BayesianUnobservedComponents:
     def __init__(self,
                  response: Union[np.ndarray, pd.Series, pd.DataFrame],
                  predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]]),
-                 level: bool = True,
+                 level: bool = False,
                  stochastic_level: bool = True,
-                 slope: bool = True,
+                 slope: bool = False,
                  stochastic_slope: bool = True,
                  seasonal: int = 0,
                  stochastic_seasonal: bool = True,
@@ -211,7 +210,7 @@ class BayesianUnobservedComponents:
         self.predictors_names = None
         self.predictors_index = None
 
-        # TODO: Add functionality for multiple dummy seasonality. 
+        # TODO: Add functionality for multiple dummy seasonality.
         # TODO: Add functionality for autoregressive slope.
 
         # Check and prepare response data
@@ -247,8 +246,6 @@ class BayesianUnobservedComponents:
         # -- name and index if response is a Numpy array
         if self.response_name is None:
             self.response_name = ['y']
-        if self.response_index is None:
-            self.response_index = np.arange(self.num_obs)
 
         # Check and prepare predictors data
         # -- data types. names, and index
@@ -294,8 +291,6 @@ class BayesianUnobservedComponents:
             # -- names and index if predictors is a Numpy array
             if self.predictors_names is None:
                 self.predictors_names = [f"x_{i}" for i in range(self.num_predictors)]
-            if self.predictors_index is None:
-                self.predictors_index = np.arange(self.num_obs)
 
             # -- response index matches predictors index
             if not (self.response_index == self.predictors_index).all():
@@ -637,9 +632,9 @@ class BayesianUnobservedComponents:
 
         # Get priors for specified components
         if np.isnan(response_var_shape_prior):
-            response_var_shape_prior = 1.
+            response_var_shape_prior = 0.001
         if np.isnan(response_var_scale_prior):
-            response_var_scale_prior = 0.01
+            response_var_scale_prior = 0.001
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
         init_response_error_var = [0.01 * self.sd_response ** 2]
@@ -654,10 +649,10 @@ class BayesianUnobservedComponents:
             num_fit_ignore.append(1)
             if self.stochastic_level:
                 if np.isnan(level_var_shape_prior):
-                    level_var_shape_prior = 1.
+                    level_var_shape_prior = 0.001
 
                 if np.isnan(level_var_scale_prior):
-                    level_var_scale_prior = 0.01
+                    level_var_scale_prior = 0.001
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -671,10 +666,10 @@ class BayesianUnobservedComponents:
             num_fit_ignore.append(1)
             if self.stochastic_slope:
                 if np.isnan(slope_var_shape_prior):
-                    slope_var_shape_prior = 1.
+                    slope_var_shape_prior = 0.001
 
                 if np.isnan(slope_var_scale_prior):
-                    slope_var_scale_prior = 0.01
+                    slope_var_scale_prior = 0.001
 
                 state_var_shape_post.append(slope_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(slope_var_scale_prior)
@@ -688,10 +683,10 @@ class BayesianUnobservedComponents:
             num_fit_ignore.append(self.num_indicator_seasonal_state_eqs)
             if self.stochastic_seasonal:
                 if np.isnan(season_var_shape_prior):
-                    season_var_shape_prior = 1.
+                    season_var_shape_prior = 0.001
 
                 if np.isnan(season_var_scale_prior):
-                    season_var_scale_prior = 0.01
+                    season_var_scale_prior = 0.001
 
                 state_var_shape_post.append(season_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(season_var_scale_prior)
@@ -708,10 +703,10 @@ class BayesianUnobservedComponents:
             num_fit_ignore.append(self.num_trig_seasonal_state_eqs)
             if True in self.stochastic_trig_seasonal:
                 if np.isnan(trig_season_var_shape_prior):
-                    trig_season_var_shape_prior = 1.
+                    trig_season_var_shape_prior = 0.001
 
                 if np.isnan(trig_season_var_scale_prior):
-                    trig_season_var_scale_prior = 0.01
+                    trig_season_var_scale_prior = 0.001
 
             i = j
             for c, v in enumerate(self.trig_seasonal):
@@ -771,8 +766,7 @@ class BayesianUnobservedComponents:
                slope_var_shape_prior=np.nan, slope_var_scale_prior=np.nan,
                season_var_shape_prior=np.nan, season_var_scale_prior=np.nan,
                trig_season_var_shape_prior=np.nan, trig_season_var_scale_prior=np.nan,
-               reg_coeff_mean_prior=np.array([[]]), reg_coeff_var_prior=np.array([[]]),
-               seed=None):
+               reg_coeff_mean_prior=np.array([[]]), reg_coeff_var_prior=np.array([[]])):
 
         # Define variables
         y = self.y
@@ -911,12 +905,11 @@ class BayesianUnobservedComponents:
                 reg_coeff_mean_post = dot(reg_coeff_var_post,
                                           (dot(X.T, y_tilde) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
 
+                cov_post = response_error_variance[s][0, 0] * reg_coeff_var_post
                 regression_coefficients[s] = (np
-                                              .random.default_rng(seed)
+                                              .random
                                               .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
-                                                                   cov=response_error_variance[
-                                                                           s, 0, 0] * reg_coeff_var_post,
-                                                                   method='cholesky').reshape(-1, 1))
+                                                                   cov=cov_post).reshape(-1, 1))
 
         results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
                        filtered_state, filtered_prediction, response_variance, state_covariance,
@@ -929,11 +922,40 @@ class BayesianUnobservedComponents:
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix()
         R = self.state_error_transformation_matrix()
-        X_fut = future_predictors
+        X_fut = future_predictors.copy()
 
         # TODO: Same as __init__, do a data check on future_predictors
         if self.num_predictors > 0:
+            # Check and prepare future predictors data
+            if not isinstance(X_fut, (pd.Series, pd.DataFrame, np.ndarray)):
+                raise ValueError("The future_predictors array must be a Numpy array, Pandas Series, "
+                                 "or Pandas DataFrame.")
+            else:
+                if isinstance(X_fut, (pd.Series, pd.DataFrame)):
+                    X_fut = X_fut.to_numpy()
+                    X_fut_index = X_fut.index
+                else:
+                    X_fut_index = None
+
+            # -- dimensions
+            if X_fut.ndim == 0:
+                raise ValueError('The future_predictors array must have dimension 1 or 2.')
+            elif X_fut.ndim == 1:
+                X_fut = X_fut.reshape(-1, 1)
+            elif X_fut.ndim > 2:
+                raise ValueError('The future_predictors array must have dimension 1 or 2.')
+            else:
+                if np.isnan(X_fut).any():
+                    raise ValueError('The future_predictors array cannot have null values.')
+                if np.isinf(X_fut).any():
+                    raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
+                if 1 in X_fut.shape:
+                    X_fut = X_fut.reshape(-1, 1)
+
             num_fut_obs, num_fut_predictors = X_fut.shape
+
+            if X_fut_index is None:
+                X_fut_index = np.arange(self.num_obs, self.num_obs + num_fut_obs)
 
             if self.num_predictors != num_fut_predictors:
                 raise ValueError(f'The number of predictors used for historical estimation {self.num_predictors} '
@@ -948,7 +970,7 @@ class BayesianUnobservedComponents:
                 if num_periods < num_fut_obs:
                     warnings.warn(f'The number of requested forecast periods {num_periods} is less than the '
                                   f'number of observations provided in future_predictors {num_fut_obs}. '
-                                  f'Therefore, only the first {num_periods} observations will be used '
+                                  f'Only the first {num_periods} observations will be used '
                                   f'in future_predictors.')
 
         y_forecast = _forecast(posterior,
@@ -1004,7 +1026,9 @@ class BayesianUnobservedComponents:
         lb = np.quantile(filtered_prediction, conf_int_lb, axis=0)
         ub = np.quantile(filtered_prediction, conf_int_ub, axis=0)
         ax[0].fill_between(index, lb, ub, alpha=0.2)
-        ax[0].title.set_text('Observed response')
+        ax[0].title.set_text('Predicted vs. observed response')
+        ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - conf_int_level)}% prediction interval'),
+                     loc='upper left')
         for i, c in enumerate(components):
             if c == 'Irregular':
                 resid = y[np.newaxis] - prediction
