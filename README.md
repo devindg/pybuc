@@ -81,7 +81,7 @@ where $\tau_t$ represents the time series component of the structural time serie
 ## State space representation (example)
 The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, $\mathbf R \in \mathbb{R}^{m \times q}$, and $\boldsymbol{\alpha}_ t \in \mathbb{R}^{m \times 1}$ denote the observation matrix, state transition matrix, state error transformation matrix, and unobserved state vector, respectively, where $m$ is the number of state equations and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). 
 
-There are $m = 1 + 1 + h * 2 + 1 = 7$ state equations and $q = 1 + 1 + h * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is 1 for all $t$ by construction. The observation, state transition, and state error transformation matrices may be written as
+There are $m = 1 + 1 + h * 2 + 1 = 7$ state equations and $q = 1 + 1 + h * 2 = 6$ stochastic state equations. There are 6 stochastic state equations because the state value for the regression component is not stochastic; it is 1 for all $t$ by construction. The observation, state transition, and state error transformation matrices may be written as
 
 $$
 \begin{align}
