@@ -62,10 +62,11 @@ if __name__ == '__main__':
     sarima_forecast = sarima_res.get_forecast(hold_out_size, exog=x_test).summary_frame(alpha=0.05)
     plt.plot(y_test)
     plt.plot(sarima_forecast['mean'])
-    plt.plot(sarima_forecast['mean_ci_lower'])
-    plt.plot(sarima_forecast['mean_ci_upper'])
+    plt.fill_between(sarima_forecast.index,
+                     sarima_forecast['mean_ci_lower'],
+                     sarima_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('SARIMA: Forecast')
-    plt.legend(['Actual', 'Mean', 'LB', 'UB'])
+    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
     plt.show()
 
     # Print RMSE
@@ -93,10 +94,11 @@ if __name__ == '__main__':
     mle_uc_forecast = mle_uc_res.get_forecast(hold_out_size, exog=x_test).summary_frame(alpha=0.05)
     plt.plot(y_test)
     plt.plot(mle_uc_forecast['mean'])
-    plt.plot(mle_uc_forecast['mean_ci_lower'])
-    plt.plot(mle_uc_forecast['mean_ci_upper'])
+    plt.fill_between(mle_uc_forecast.index,
+                     mle_uc_forecast['mean_ci_lower'],
+                     mle_uc_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('MLE UC: Forecast')
-    plt.legend(['Actual', 'Mean', 'LB', 'UB'])
+    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
     plt.show()
 
     # Print RMSE
@@ -137,15 +139,14 @@ if __name__ == '__main__':
     # Get and plot forecast
     forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn, future_predictors=x_test)
     forecast_mean = np.mean(forecast, axis=0)
-    forecast_l95 = np.quantile(forecast, 0.025, axis=0)
-    forecast_u95 = np.quantile(forecast, 0.975, axis=0)
+    forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
+    forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
 
-    plt.plot(bayes_uc.future_time_index, y_test)
-    plt.plot(bayes_uc.future_time_index, forecast_mean)
-    plt.plot(bayes_uc.future_time_index, forecast_l95)
-    plt.plot(bayes_uc.future_time_index, forecast_u95)
+    plt.plot(y_test)
+    plt.plot(forecast_mean)
+    plt.fill_between(np.arange(forecast_mean.size), forecast_l95, forecast_u95, alpha=0.2)
     plt.title('Bayesian UC: Forecast')
-    plt.legend(['Actual', 'Mean', 'LB', 'UB'])
+    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
     plt.show()
 
     # Print RMSE
