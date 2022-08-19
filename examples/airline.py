@@ -15,12 +15,14 @@ def rmse(actual, prediction):
 
 # Import airline passenger data
 air = pd.read_csv(Path('../examples/data/airline-passengers.csv'), header=0, index_col=0)
-air = air.to_numpy().astype(float)
+air = air.astype(float)
+air.index = pd.to_datetime(air.index)
 hold_out_size = 12
-
 # Create train and test sets
-y_train = air[:-hold_out_size, :]
-y_test = air[-hold_out_size:, :]
+# y_train = air[:-hold_out_size, :]
+# y_test = air[-hold_out_size:, :]
+y_train = air.iloc[:-hold_out_size]
+y_test = air[-hold_out_size:]
 
 if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
@@ -48,7 +50,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Print RMSE
-    print(f"SARIMA RMSE: {rmse(y_test.flatten(), sarima_forecast['mean'].to_numpy())}")
+    print(f"SARIMA RMSE: {rmse(y_test.to_numpy(), sarima_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using MLE unobserved components '''
     mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
@@ -82,7 +84,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Print RMSE
-    print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
+    print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using Bayesian unobserved components '''
     buc.set_seed(123)
@@ -112,8 +114,8 @@ if __name__ == '__main__':
 
     # Plot in-sample fit against actuals
     yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
-    plt.plot(y_train.flatten())
-    plt.plot(yhat)
+    plt.plot(y_train)
+    plt.plot(y_train.index, yhat)
     plt.title('Bayesian-UC: In-sample')
     plt.show()
 
@@ -127,12 +129,12 @@ if __name__ == '__main__':
     forecast_u95 = np.quantile(forecast, 0.975, axis=0)
 
     plt.plot(y_test)
-    plt.plot(forecast_mean)
-    plt.plot(forecast_l95)
-    plt.plot(forecast_u95)
+    plt.plot(bayes_uc.future_time_index, forecast_mean)
+    plt.plot(bayes_uc.future_time_index, forecast_l95)
+    plt.plot(bayes_uc.future_time_index, forecast_u95)
     plt.title('Bayesian UC: Forecast')
     plt.legend(['Actual', 'Mean', 'LB', 'UB'])
     plt.show()
 
     # Print RMSE
-    print(f"BAYES-UC RMSE: {rmse(y_test, forecast_mean)}")
+    print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")

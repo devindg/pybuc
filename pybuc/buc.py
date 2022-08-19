@@ -108,8 +108,7 @@ def _simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, ra
     if int(random_sample_size_prop * num_posterior_samp) < 1:
         raise ValueError('random_sample_size_prop implies a sample with less than 1 observation. '
                          'Provide a random_sample_size_prop such that the number of samples '
-                         'such that the number of samples is at least 1 but no larger than the '
-                         'number of posterior samples.')
+                         'is at least 1 but no larger than the number of posterior samples.')
 
     if random_sample_size_prop == 1.:
         num_samp = num_posterior_samp
@@ -206,9 +205,9 @@ class BayesianUnobservedComponents:
         self.model_setup = None
         self.num_fit_ignore = None
         self.response_name = None
-        self.response_index = None
         self.predictors_names = None
-        self.predictors_index = None
+        self.historical_time_index = None
+        self.future_time_index = None
 
         # TODO: Add functionality for multiple dummy seasonality.
         # TODO: Add functionality for autoregressive slope.
@@ -218,90 +217,104 @@ class BayesianUnobservedComponents:
         if not isinstance(response, (pd.Series, pd.DataFrame, np.ndarray)):
             raise ValueError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
         else:
+            response = response.copy()
             if isinstance(response, (pd.Series, pd.DataFrame)):
-                self.response = response.to_numpy()
-                self.response_index = response.index
+                if not isinstance(response.index, pd.DatetimeIndex):
+                    raise ValueError("Pandas' DatetimeIndex is currently the only supported "
+                                     "index type for Pandas objects.")
+                else:
+                    if response.index.freq is None:
+                        warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred for response.')
+                        response.index.freq = pd.infer_freq(response.index)
+
                 if isinstance(response, pd.Series):
                     self.response_name = [response.name]
                 else:
                     self.response_name = response.columns.values.tolist()
-            else:
-                self.response = response
+
+                response = response.sort_index()
+                self.historical_time_index = response.index
+                response = response.to_numpy()
 
         # -- dimensions
-        if self.response.ndim == 0:
+        if response.ndim == 0:
             raise ValueError('The response array must have dimension 1 or 2.')
-        elif self.response.ndim == 1:
-            self.response = self.response.reshape(-1, 1)
-        elif self.response.ndim > 2:
+        elif response.ndim == 1:
+            response = response.reshape(-1, 1)
+        elif response.ndim > 2:
             raise ValueError('The response array must have dimension 1 or 2.')
         else:
-            if all(i > 1 for i in self.response.shape):
+            if all(i > 1 for i in response.shape):
                 raise ValueError('The response array must have shape (1, n) or (n, 1), '
                                  'where n is the number of observations. Both the row and column '
                                  'count exceed 1.')
             else:
-                self.response = self.response.reshape(-1, 1)
+                response = response.reshape(-1, 1)
 
-        # -- name and index if response is a Numpy array
-        if self.response_name is None:
-            self.response_name = ['y']
+        self.response = response
+        if self.historical_time_index is None:
+            self.historical_time_index = np.arange(response.shape[0])
 
-        # Check and prepare predictors data
-        # -- data types. names, and index
+        # Check and prepare predictor data
         if self.has_predictors:
+            predictors = predictors.copy()
+            # -- check if correct data type
             if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
                 raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
-            else:
-                if isinstance(predictors, (pd.Series, pd.DataFrame)):
-                    self.predictors = predictors.to_numpy()
-                    self.predictors_index = predictors.index
-                    if isinstance(predictors, pd.Series):
-                        self.predictors_names = [predictors.name]
-                    else:
-                        self.predictors_names = predictors.columns.values.tolist()
-                else:
-                    self.predictors = predictors
 
-            # -- dimensions
-            if self.predictors.ndim == 0:
+            # -- check if response and predictors are same date type.
+            if not isinstance(predictors, type(response)):
+                raise ValueError('Object types for response and predictors arrays must match.')
+
+            # -- get predictor names if a Pandas object and sort index
+            if isinstance(predictors, (pd.Series, pd.DataFrame)):
+                if not isinstance(predictors.index, pd.DatetimeIndex):
+                    raise ValueError("Pandas' DatetimeIndex is currently the only supported "
+                                     "index type for Pandas objects.")
+                else:
+                    if not (predictors.index == self.historical_time_index).all():
+                        raise ValueError('The response and predictors indexes must match.')
+
+                if isinstance(predictors, pd.Series):
+                    self.predictors_names = [predictors.name]
+                else:
+                    self.predictors_names = predictors.columns.values.tolist()
+
+                predictors = predictors.sort_index().to_numpy()
+
+            # -- dimension and null/inf checks
+            if predictors.ndim == 0:
                 raise ValueError('The predictors array must have dimension 1 or 2.')
-            elif self.predictors.ndim == 1:
-                self.predictors = predictors.reshape(-1, 1)
-            elif self.predictors.ndim > 2:
+            elif predictors.ndim == 1:
+                predictors = predictors.reshape(-1, 1)
+            elif predictors.ndim > 2:
                 raise ValueError('The predictors array must have dimension 1 or 2.')
             else:
-                if np.isnan(self.predictors).any():
+                if np.isnan(predictors).any():
                     raise ValueError('The predictors array cannot have null values.')
-                if np.isinf(self.predictors).any():
+                if np.isinf(predictors).any():
                     raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
-                if 1 in self.predictors.shape:
-                    self.predictors = predictors.reshape(-1, 1)
+                if 1 in predictors.shape:
+                    predictors = predictors.reshape(-1, 1)
 
             # -- conformable number of observations
-            if self.predictors.shape[0] != self.response.shape[0]:
+            if predictors.shape[0] != response.shape[0]:
                 raise ValueError('The number of observations in the predictors array must match '
                                  'the number of observations in the response array.')
 
             # -- warn about model stability if the number of predictors exceeds number of observations
-            if self.predictors.shape[1] > self.predictors.shape[0]:
+            if predictors.shape[1] > predictors.shape[0]:
                 warnings.warn('The number of predictors exceeds the number of observations. '
                               'Results will be sensitive to choice of priors.')
 
-            # -- names and index if predictors is a Numpy array
-            if self.predictors_names is None:
-                self.predictors_names = [f"x_{i}" for i in range(self.num_predictors)]
-
-            # -- response index matches predictors index
-            if not (self.response_index == self.predictors_index).all():
-                raise ValueError('The response index must match the predictors index.')
+            self.predictors = predictors
 
         # Check time components
         if seasonal == 1:
             raise ValueError('The seasonal argument takes 0 and integers greater than 1 as valid inputs. '
                              'A value of 1 is not valid.')
 
-        if self.seasonal == 0 and not self.level:
+        if self.seasonal == 0 and len(self.trig_seasonal) == 0 and not self.level:
             raise ValueError('At least a level or seasonal component must be specified.')
 
         if self.slope and not self.level:
@@ -897,7 +910,7 @@ class BayesianUnobservedComponents:
                                                    smooth_one_step_ahead_prediction_residual))
             response_error_variance[s] = dist.vec_ig(response_var_shape_post, response_var_scale_post)
 
-            if self.num_predictors > 0:
+            if self.has_predictors:
                 # Get new draw for regression coefficients
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
@@ -922,54 +935,86 @@ class BayesianUnobservedComponents:
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix()
         R = self.state_error_transformation_matrix()
-        X_fut = future_predictors.copy()
 
-        # TODO: Same as __init__, do a data check on future_predictors
-        if self.num_predictors > 0:
-            # Check and prepare future predictors data
-            if not isinstance(X_fut, (pd.Series, pd.DataFrame, np.ndarray)):
+        if isinstance(self.historical_time_index, pd.DatetimeIndex):
+            freq = self.historical_time_index.freq
+            last_historical_date = self.historical_time_index[-1]
+            first_future_date = last_historical_date + 1 * freq
+            last_future_date = last_historical_date + num_periods * freq
+            self.future_time_index = pd.date_range(first_future_date, last_future_date, freq=freq)
+        else:
+            self.future_time_index = np.arange(self.num_obs, self.num_obs + num_periods)
+
+        if self.has_predictors:
+            future_predictors = future_predictors.copy()
+            # Check and prepare future predictor data
+            # -- data types match across predictors and future_predictors
+            if not isinstance(future_predictors, type(self.predictors)):
+                raise ValueError('Object types for predictors and future_predictors must match.')
+
+            # -- check if object type is valid
+            if not isinstance(future_predictors, (pd.Series, pd.DataFrame, np.ndarray)):
                 raise ValueError("The future_predictors array must be a Numpy array, Pandas Series, "
                                  "or Pandas DataFrame.")
             else:
-                if isinstance(X_fut, (pd.Series, pd.DataFrame)):
-                    X_fut = X_fut.to_numpy()
-                    X_fut_index = X_fut.index
-                else:
-                    X_fut_index = None
+                # -- if Pandas type, grab index and column names
+                if isinstance(future_predictors, (pd.Series, pd.DataFrame)):
+                    if not isinstance(future_predictors.index, type(self.future_time_index)):
+                        raise ValueError('The future_predictors index and predictors index must be of the same type.')
+
+                    if not (future_predictors.index == self.future_time_index).all():
+                        raise ValueError('The future_predictors index must match the future time index '
+                                         'implied by the last observed date for the response and the '
+                                         'number of desired forecast periods. Check the class attribute '
+                                         'future_time_index to verify that it is correct.')
+
+                    if isinstance(future_predictors, pd.Series):
+                        future_predictors_names = [future_predictors.name]
+                    else:
+                        future_predictors_names = future_predictors.columns.values.tolist()
+
+                    if len(future_predictors_names) != self.num_predictors:
+                        raise ValueError(
+                            f'The number of predictors used for historical estimation {self.num_predictors} '
+                            f'does not match the number of predictors specified for forecasting '
+                            f'{len(future_predictors_names)}. The same set of predictors must be used.')
+                    else:
+                        if not all(self.predictors_names[i] == future_predictors_names[i]
+                                   for i in range(self.num_predictors)):
+                            raise ValueError('The order and names of the columns in predictors must match '
+                                             'the order and names in future_predictors.')
+
+                    future_predictors = future_predictors.sort_index().to_numpy()
 
             # -- dimensions
-            if X_fut.ndim == 0:
+            if future_predictors.ndim == 0:
                 raise ValueError('The future_predictors array must have dimension 1 or 2.')
-            elif X_fut.ndim == 1:
-                X_fut = X_fut.reshape(-1, 1)
-            elif X_fut.ndim > 2:
+            elif future_predictors.ndim == 1:
+                future_predictors = future_predictors.reshape(-1, 1)
+            elif future_predictors.ndim > 2:
                 raise ValueError('The future_predictors array must have dimension 1 or 2.')
             else:
-                if np.isnan(X_fut).any():
+                if np.isnan(future_predictors).any():
                     raise ValueError('The future_predictors array cannot have null values.')
-                if np.isinf(X_fut).any():
+                if np.isinf(future_predictors).any():
                     raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
-                if 1 in X_fut.shape:
-                    X_fut = X_fut.reshape(-1, 1)
+                if 1 in future_predictors.shape:
+                    future_predictors = future_predictors.reshape(-1, 1)
 
-            num_fut_obs, num_fut_predictors = X_fut.shape
-
-            if X_fut_index is None:
-                X_fut_index = np.arange(self.num_obs, self.num_obs + num_fut_obs)
-
-            if self.num_predictors != num_fut_predictors:
+            # Final sanity checks
+            if self.num_predictors != future_predictors.shape[1]:
                 raise ValueError(f'The number of predictors used for historical estimation {self.num_predictors} '
                                  f'does not match the number of predictors specified for forecasting '
-                                 f'{num_fut_predictors}. The same set of predictors must be used.')
+                                 f'{future_predictors.shape[1]}. The same set of predictors must be used.')
 
-            if num_periods > num_fut_obs:
+            if num_periods > future_predictors.shape[0]:
                 raise ValueError(f'The number of requested forecast periods {num_periods} exceeds the '
-                                 f'number of observations provided in future_predictors {num_fut_obs}. '
+                                 f'number of observations provided in future_predictors {future_predictors.shape[0]}. '
                                  f'The former must be no larger than the latter.')
             else:
-                if num_periods < num_fut_obs:
+                if num_periods < future_predictors.shape[0]:
                     warnings.warn(f'The number of requested forecast periods {num_periods} is less than the '
-                                  f'number of observations provided in future_predictors {num_fut_obs}. '
+                                  f'number of observations provided in future_predictors {future_predictors.shape[0]}. '
                                   f'Only the first {num_periods} observations will be used '
                                   f'in future_predictors.')
 
@@ -979,7 +1024,7 @@ class BayesianUnobservedComponents:
                                Z,
                                T,
                                R,
-                               X_fut)
+                               future_predictors)
 
         return y_forecast
 
@@ -996,9 +1041,9 @@ class BayesianUnobservedComponents:
         y = self.y[num_fit_ignore:, 0]
         n = self.num_obs
         Z = self.observation_matrix(num_rows=n - num_fit_ignore)
+        historical_time_index = self.historical_time_index[num_fit_ignore:]
         model = self.model_setup
         components = model.components
-        index = np.arange(n - num_fit_ignore)
         conf_int_lb = 0.5 * conf_int_level
         conf_int_ub = 1. - 0.5 * conf_int_level
 
@@ -1021,38 +1066,38 @@ class BayesianUnobservedComponents:
                                                          self.static_regression)
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
-        ax[0].plot(y)
-        ax[0].plot(np.mean(filtered_prediction, axis=0))
+        ax[0].plot(historical_time_index, y)
+        ax[0].plot(historical_time_index, np.mean(filtered_prediction, axis=0))
         lb = np.quantile(filtered_prediction, conf_int_lb, axis=0)
         ub = np.quantile(filtered_prediction, conf_int_ub, axis=0)
-        ax[0].fill_between(index, lb, ub, alpha=0.2)
+        ax[0].fill_between(historical_time_index, lb, ub, alpha=0.2)
         ax[0].title.set_text('Predicted vs. observed response')
         ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - conf_int_level)}% prediction interval'),
                      loc='upper left')
         for i, c in enumerate(components):
             if c == 'Irregular':
                 resid = y[np.newaxis] - prediction
-                ax[i + 1].plot(np.mean(resid, axis=0))
+                ax[i + 1].plot(historical_time_index, np.mean(resid, axis=0))
                 lb = np.quantile(resid, conf_int_lb, axis=0)
                 ub = np.quantile(resid, conf_int_ub, axis=0)
-                ax[i + 1].fill_between(index, lb, ub, alpha=0.2)
+                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
                 pass
 
             elif c == 'Regression':
                 reg_component = X.dot(reg_coeff)
-                ax[i + 1].plot(np.mean(reg_component, axis=1))
+                ax[i + 1].plot(historical_time_index, np.mean(reg_component, axis=1))
                 lb = np.quantile(reg_component, conf_int_lb, axis=1)
                 ub = np.quantile(reg_component, conf_int_ub, axis=1)
-                ax[i + 1].fill_between(index, lb, ub, alpha=0.2)
+                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
             elif c == 'Trend':
                 time_component = state[:, :, 1, 0]
-                ax[i + 1].plot(np.mean(time_component, axis=0))
+                ax[i + 1].plot(historical_time_index, np.mean(time_component, axis=0))
                 lb = np.quantile(time_component, conf_int_lb, axis=0)
                 ub = np.quantile(time_component, conf_int_ub, axis=0)
-                ax[i + 1].fill_between(index, lb, ub, alpha=0.2)
+                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
             else:
@@ -1062,10 +1107,10 @@ class BayesianUnobservedComponents:
                 B = state[:, :, start_index:end_index, 0]
                 time_component = (A[np.newaxis] * B).sum(axis=2)
 
-                ax[i + 1].plot(np.mean(time_component, axis=0))
+                ax[i + 1].plot(historical_time_index, np.mean(time_component, axis=0))
                 lb = np.quantile(time_component, conf_int_lb, axis=0)
                 ub = np.quantile(time_component, conf_int_ub, axis=0)
-                ax[i + 1].fill_between(index, lb, ub, alpha=0.2)
+                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
         fig.tight_layout()
