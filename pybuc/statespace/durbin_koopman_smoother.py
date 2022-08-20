@@ -65,7 +65,7 @@ def dk_smoother(y: np.ndarray,
                 init_state_values: np.ndarray,
                 init_plus_state_values: np.ndarray,
                 init_state_covariance: np.ndarray,
-                static_regression: bool = False):
+                has_predictors: bool = False):
     # Get state and observation transformation matrices
     T = state_transition_matrix
     Z = observation_matrix
@@ -77,7 +77,7 @@ def dk_smoother(y: np.ndarray,
     n = y.shape[0]
 
     init_state_cov = init_state_covariance.copy()
-    if static_regression:
+    if has_predictors:
         init_state_cov[-1, -1] = 1e6
     else:
         init_state_cov = init_state_covariance

@@ -90,8 +90,8 @@ def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
 
 
 def _simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, random_sample_size_prop=1.,
-                                         has_predictors=False, static_regression=False):
-    if has_predictors and static_regression:
+                                         has_predictors=False):
+    if has_predictors:
         mean = posterior.filtered_state[burn:, num_fit_ignore:-1, :-1, 0]
         cov = posterior.state_covariance[burn:, num_fit_ignore:-1, :-1, :-1]
     else:
@@ -187,8 +187,7 @@ class BayesianUnobservedComponents:
                  stochastic_seasonal: bool = True,
                  trig_seasonal: tuple[tuple] = (),
                  stochastic_trig_seasonal: tuple = (),
-                 standardize: bool = False,
-                 static_regression: bool = True):
+                 standardize: bool = False):
 
         self.level = level
         self.stochastic_level = stochastic_level
@@ -200,7 +199,6 @@ class BayesianUnobservedComponents:
         self._stochastic_trig_seasonal = stochastic_trig_seasonal
         self.standardize = standardize
         self.predictors = predictors
-        self.static_regression = static_regression
 
         self.model_setup = None
         self.num_fit_ignore = None
@@ -462,7 +460,7 @@ class BayesianUnobservedComponents:
     def num_state_eqs(self):
         return ((self.level + self.slope) * 1
                 + self.num_seasonal_state_eqs
-                + (self.num_predictors > 0) * 1)
+                + self.has_predictors * 1)
 
     @property
     def num_stochastic_states(self):
@@ -521,11 +519,12 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0:
             Z[:, :, j::2] = 1.
             j += self.num_trig_seasonal_state_eqs
-        if self.num_predictors > 0:
+        if self.has_predictors:
             Z[:, :, j] = 0.
 
         return Z
 
+    @property
     def state_transition_matrix(self):
         m = self.num_state_eqs
         T = np.zeros((m, m), dtype=np.float64)
@@ -553,11 +552,12 @@ class BayesianUnobservedComponents:
                     T[i:i + 2, j:j + 2] = self.trig_transition_matrix(2. * np.pi * k / period)
                     i += 2
                     j += 2
-        if self.num_predictors > 0:
+        if self.has_predictors:
             T[i, j] = 1.
 
         return T
 
+    @property
     def state_error_transformation_matrix(self):
         m = self.num_state_eqs
         q = self.num_stochastic_states
@@ -594,6 +594,7 @@ class BayesianUnobservedComponents:
 
         return R
 
+    @property
     def posterior_state_error_variance_transformation_matrix(self):
         q = self.num_stochastic_states
         A = np.zeros((q, q), dtype=np.float64)
@@ -738,7 +739,7 @@ class BayesianUnobservedComponents:
                 i += 2 * h
             j += self.num_trig_seasonal_state_eqs
 
-        if self.num_predictors > 0:
+        if self.has_predictors:
             components['Regression'] = dict()
             X = self.predictors
             init_state_variances.append(0.)
@@ -787,9 +788,9 @@ class BayesianUnobservedComponents:
         q = self.num_stochastic_states
         m = self.num_state_eqs
         Z = self.observation_matrix()
-        T = self.state_transition_matrix()
-        R = self.state_error_transformation_matrix()
-        A = self.posterior_state_error_variance_transformation_matrix()
+        T = self.state_transition_matrix
+        R = self.state_error_transformation_matrix
+        A = self.posterior_state_error_variance_transformation_matrix
         X = self.predictors
         k = self.num_predictors
 
@@ -834,7 +835,7 @@ class BayesianUnobservedComponents:
         q_eye = np.eye(q)
         n_ones = np.ones((n, 1))
 
-        if self.num_predictors > 0:
+        if self.has_predictors:
             y_nan_indicator = np.isnan(y) * 1.
             y_no_nan = ao.replace_nan(y)
             init_state_values0[-1] = 1.
@@ -854,7 +855,7 @@ class BayesianUnobservedComponents:
             response_err_var = response_error_variance[s - 1]
             state_err_var = state_error_variance[s - 1]
 
-            if self.num_predictors > 0:
+            if self.has_predictors:
                 reg_coeff = regression_coefficients[s - 1]
                 Z[:, :, -1] = X.dot(reg_coeff)
 
@@ -888,7 +889,7 @@ class BayesianUnobservedComponents:
                      init_plus_state_values=init_plus_state_values,
                      init_state_values=init_state_values,
                      init_state_covariance=init_state_covariance,
-                     static_regression=(self.static_regression * (self.num_predictors > 0)))
+                     has_predictors=self.has_predictors)
 
             # Smoothed disturbances and state
             smoothed_errors[s] = dk.simulated_smoothed_errors
@@ -933,8 +934,8 @@ class BayesianUnobservedComponents:
     def forecast(self, posterior, num_periods, burn=0,
                  future_predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]])):
         Z = self.observation_matrix(num_rows=num_periods)
-        T = self.state_transition_matrix()
-        R = self.state_error_transformation_matrix()
+        T = self.state_transition_matrix
+        R = self.state_error_transformation_matrix
 
         if isinstance(self.historical_time_index, pd.DatetimeIndex):
             freq = self.historical_time_index.freq
@@ -1034,7 +1035,7 @@ class BayesianUnobservedComponents:
         if num_fit_ignore == -1:
             num_fit_ignore = self.num_fit_ignore
 
-        if self.num_predictors > 0:
+        if self.has_predictors:
             X = self.predictors[num_fit_ignore:, :]
             reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
 
@@ -1062,8 +1063,7 @@ class BayesianUnobservedComponents:
                                                          burn,
                                                          num_fit_ignore,
                                                          random_sample_size_prop,
-                                                         self.has_predictors,
-                                                         self.static_regression)
+                                                         self.has_predictors)
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
         ax[0].plot(historical_time_index, y)
