@@ -1,5 +1,5 @@
 # pybuc
-<code/>pybuc</code> ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, <code/>bsts</code>, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the _papers_ directory of this repository. While there are plans to expand the feature set of <code/>pybuc</code>, currently there is no roadmap for the release of new features. The current version of <code/>pybuc</code> includes the following options for modeling and forecasting a structural time series: 
+`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the _papers_ directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
 
 <ul>
     <li>Stochastic or non-stochastic level</li>
@@ -9,7 +9,7 @@
     <li>Regression with static coefficients</li>
 </ul>
 
-Note that the way <code/>pybuc</code> estimates regression coefficients is methodologically different than <code/>bsts</code>. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
+Note that the way `pybuc` estimates regression coefficients is methodologically different than `bsts`. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
 
 Fast computation is achieved using [Numba](https://numba.pydata.org/), a high performance just-in-time (JIT) compiler for Python.
 
@@ -17,7 +17,7 @@ Fast computation is achieved using [Numba](https://numba.pydata.org/), a high pe
 A structural time series model with level, trend, seasonal, and regression components takes the form:
 
 $$
-y_t = \mu_t + \gamma_t + \mathbf x_ t^\prime \boldsymbol{\beta} + \epsilon_t
+y_t = \mu_t + \gamma_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
 $$
 
 where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
@@ -76,7 +76,7 @@ $$
 
 where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level and seasonal component are specified, this means an initial estimate of the time series component $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^* \equiv \left(\begin{array}{cc} y_1^* & y_2^* & \cdots & y_n^* \end{array}\right)^\prime$.
 
-<code/>pybuc</code> uses Method 2 for estimating static coefficients.
+`pybuc` uses Method 2 for estimating static coefficients.
 
 ## State space representation (example)
 The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, regression, and irregular components are specified, and the seasonal component takes a trigonometric form with periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, $\mathbf T \in \mathbb{R}^{m \times m}$, $\mathbf R \in \mathbb{R}^{m \times q}$, and $\boldsymbol{\alpha}_ t \in \mathbb{R}^{m \times 1}$ denote the observation matrix, state transition matrix, state error transformation matrix, and unobserved state vector, respectively, where $m$ is the number of state equations and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, which is defined by the number of positive state variance parameters). 
@@ -138,12 +138,12 @@ $$
 $$
 
 # Estimation
-<code/>pybuc</code> mirrors R's <code/>bsts</code> with respect to estimation method. The observation vector, state vector, and regression coefficients are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
+`pybuc` mirrors R's `bsts` with respect to estimation method. The observation vector, state vector, and regression coefficients are assumed to be conditionally normal random variables, and the error variances are assumed to be conditionally independent inverse-Gamma random variables. These model assumptions imply conditional conjugacy of the model's parameters. Consequently, a Gibbs sampler is used to sample from each parameter's posterior distribution.
 
-To achieve fast sampling, <code/>pybuc</code> follows <code/>bsts</code>'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by repeating the following three steps:
+To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by repeating the following three steps:
 
 <ol>
-    <li>Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that <code/>pybuc</code> implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015). </li>
+    <li>Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that `pybuc` implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015). </li>
     <li>Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's simulation disturbance smoother.</li>
     <li>Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^*$ is defined above.
 </ol>
