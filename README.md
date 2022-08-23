@@ -4,7 +4,7 @@
 <ul>
     <li>Stochastic or non-stochastic level</li>
     <li>Stochastic or non-stochastic slope (assuming a level state is specified)</li>
-    <li>Stochastic or non-stochastic "dummy" seasonality</li>
+    <li>Multiple stochastic or non-stochastic "dummy" seasonality</li>
     <li>Multiple stochastic or non-stochastic trigonometric seasonality</li>
     <li>Regression with static coefficients</li>
 </ul>
