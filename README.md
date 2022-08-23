@@ -1,5 +1,5 @@
 # pybuc
-`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the _papers_ directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
+`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the *papers* directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
 
 
 - Stochastic or non-stochastic level
@@ -46,13 +46,13 @@ $$
 where $j$ indexes the number of periods in a seasonal cycle, $S$ is the number of periods in a seasonal cycle, and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle should, on average, be zero.
 
 ### Trigonometric form
-Another way to model seasonality is through a trigonometric represenation, which exploits the periodicity of sine and cosine functions. Specifically, seasonality is modeled as
+Another way to model seasonality is through a trigonometric representation, which exploits the periodicity of sine and cosine functions. Specifically, seasonality is modeled as
 
 $$
 \gamma_t = \sum_{j=1}^h \gamma_{j, t}
 $$
 
-where $j$ indexes the number of harmonics to represent seasonality of periodity $S$ and $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. The state transition equations for each harmonic, $\gamma_{j, t}$, are represented by a real and imaginary part, specifically
+where $j$ indexes the number of harmonics to represent seasonality of periodicity $S$ and $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. The state transition equations for each harmonic, $\gamma_{j, t}$, are represented by a real and imaginary part, specifically
 
 $$
 \begin{align}
@@ -61,20 +61,20 @@ $$
 \end{align}
 $$
 
-where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^* , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
+where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^ * , t}$ are distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 
 ## Regression
-There are two ways to configure the model matrices to account for a regression component with static coefficients. The most common way (Method 1) is to append $\mathbf x_ t^\prime$ to $\mathbf Z_ t$ and $\boldsymbol{\beta}_ t$ to the state vector, $\boldsymbol{\alpha}_ t$ (see state space represenation below), with the constraints $\boldsymbol{\beta}_ 0 = \boldsymbol{\beta}$ and $\boldsymbol{\beta}_ t = \boldsymbol{\beta}_ {t-1}$ for all $t$. Another, less common way (Method 2) is to append $\mathbf x_ t^\prime \boldsymbol{\beta}$ to $\mathbf Z_ t$ and 1 to the state vector. 
+There are two ways to configure the model matrices to account for a regression component with static coefficients. The most common way (Method 1) is to append $\mathbf x_t^\prime$ to $\mathbf Z_t$ and $\boldsymbol{\beta}_t$ to the state vector, $\boldsymbol{\alpha}_t$ (see state space representation below), with the constraints $\boldsymbol{\beta}_0 = \boldsymbol{\beta}$ and $\boldsymbol{\beta}_t = \boldsymbol{\beta}_{t-1}$ for all $t$. Another, less common way (Method 2) is to append $\mathbf x_t^\prime \boldsymbol{\beta}$ to $\mathbf Z_t$ and 1 to the state vector. 
 
-While both methods can be accomodated by the Kalman filter, Method 1 is a direct extension of the Kalman filter as it maintains the observability of $\mathbf Z_ t$ and treats the regression coefficients as unobserved states. Method 2 does not fit naturally into the conventional framework of the Kalman filter, but it offers the significant advantage of only increasing the size of the state vector by one. In contrast, Method 1 increases the size of the state vector by the size of $\boldsymbol{\beta}$. This is significant because computational complexity is quadratic in the size of the state vector but linear in the size of the observation vector.
+While both methods can be accommodated by the Kalman filter, Method 1 is a direct extension of the Kalman filter as it maintains the observability of $\mathbf Z_t$ and treats the regression coefficients as unobserved states. Method 2 does not fit naturally into the conventional framework of the Kalman filter, but it offers the significant advantage of only increasing the size of the state vector by one. In contrast, Method 1 increases the size of the state vector by the size of $\boldsymbol{\beta}$. This is significant because computational complexity is quadratic in the size of the state vector but linear in the size of the observation vector.
 
-The unobservability of $\mathbf Z_ t$ under Method 2 can be handled with maximum likelihood or Bayesian estimation by working with the adjusted series 
+The unobservability of $\mathbf Z_t$ under Method 2 can be handled with maximum likelihood or Bayesian estimation by working with the adjusted series 
 
 $$
 y_t^* \equiv y_t - \tau_t = \mathbf x_ t^\prime \boldsymbol{\beta} + \epsilon_t
 $$
 
-where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level and seasonal component are specified, this means an initial estimate of the time series component $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^* \equiv \left(\begin{array}{cc} y_1^* & y_2^* & \cdots & y_n^* \end{array}\right)^\prime$.
+where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level and seasonal component are specified, this means an initial estimate of the time series component $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(\begin{array}{cc} y_1^ * & y_2^ * & \cdots & y_n^ * \end{array}\right)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
