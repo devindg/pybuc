@@ -141,6 +141,7 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
     response_error_variance = posterior.response_error_variance[burn:]
     if q > 0:
         state_error_variance = posterior.state_error_variance[burn:]
+
     smoothed_state = posterior.smoothed_state[burn:]
     num_samp = posterior.num_samp - burn
 
@@ -189,19 +190,7 @@ class BayesianUnobservedComponents:
                  stochastic_trig_seasonal: tuple = (),
                  standardize: bool = False):
 
-        self.level = level
-        self.stochastic_level = stochastic_level
-        self.slope = slope
-        self.stochastic_slope = stochastic_slope
-        self.dummy_seasonal = dummy_seasonal
-        self._stochastic_dummy_seasonal = stochastic_dummy_seasonal
-        self._trig_seasonal = trig_seasonal
-        self._stochastic_trig_seasonal = stochastic_trig_seasonal
-        self.standardize = standardize
-        self.predictors = predictors
-
         self.model_setup = None
-        self.num_fit_ignore = None
         self.response_name = None
         self.predictors_names = None
         self.historical_time_index = None
@@ -209,7 +198,7 @@ class BayesianUnobservedComponents:
 
         # TODO: Add functionality for autoregressive slope.
 
-        # Check and prepare response data
+        # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
         if not isinstance(response, (pd.Series, pd.DataFrame, np.ndarray)):
             raise ValueError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
@@ -248,154 +237,134 @@ class BayesianUnobservedComponents:
             else:
                 response = response.reshape(-1, 1)
 
-        self.response = response
-        if self.historical_time_index is None:
-            self.historical_time_index = np.arange(response.shape[0])
+        # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
+        # -- check if correct data type
+        if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
+            raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+        else:
+            if predictors.size > 0:
+                predictors = predictors.copy()
+                # -- check if response and predictors are same date type.
+                if not isinstance(predictors, type(response)):
+                    raise ValueError('Object types for response and predictors arrays must match.')
 
-        # Check and prepare predictor data
-        if self.has_predictors:
-            predictors = predictors.copy()
-            # -- check if correct data type
-            if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
-                raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+                # -- get predictor names if a Pandas object and sort index
+                if isinstance(predictors, (pd.Series, pd.DataFrame)):
+                    if not isinstance(predictors.index, pd.DatetimeIndex):
+                        raise ValueError("Pandas' DatetimeIndex is currently the only supported "
+                                         "index type for Pandas objects.")
+                    else:
+                        if not (predictors.index == self.historical_time_index).all():
+                            raise ValueError('The response and predictors indexes must match.')
 
-            # -- check if response and predictors are same date type.
-            if not isinstance(predictors, type(response)):
-                raise ValueError('Object types for response and predictors arrays must match.')
+                    if isinstance(predictors, pd.Series):
+                        self.predictors_names = [predictors.name]
+                    else:
+                        self.predictors_names = predictors.columns.values.tolist()
 
-            # -- get predictor names if a Pandas object and sort index
-            if isinstance(predictors, (pd.Series, pd.DataFrame)):
-                if not isinstance(predictors.index, pd.DatetimeIndex):
-                    raise ValueError("Pandas' DatetimeIndex is currently the only supported "
-                                     "index type for Pandas objects.")
-                else:
-                    if not (predictors.index == self.historical_time_index).all():
-                        raise ValueError('The response and predictors indexes must match.')
+                    predictors = predictors.sort_index().to_numpy()
 
-                if isinstance(predictors, pd.Series):
-                    self.predictors_names = [predictors.name]
-                else:
-                    self.predictors_names = predictors.columns.values.tolist()
-
-                predictors = predictors.sort_index().to_numpy()
-
-            # -- dimension and null/inf checks
-            if predictors.ndim == 0:
-                raise ValueError('The predictors array must have dimension 1 or 2.')
-            elif predictors.ndim == 1:
-                predictors = predictors.reshape(-1, 1)
-            elif predictors.ndim > 2:
-                raise ValueError('The predictors array must have dimension 1 or 2.')
-            else:
-                if np.isnan(predictors).any():
-                    raise ValueError('The predictors array cannot have null values.')
-                if np.isinf(predictors).any():
-                    raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
-                if 1 in predictors.shape:
+                # -- dimension and null/inf checks
+                if predictors.ndim == 0:
+                    raise ValueError('The predictors array must have dimension 1 or 2.')
+                elif predictors.ndim == 1:
                     predictors = predictors.reshape(-1, 1)
+                elif predictors.ndim > 2:
+                    raise ValueError('The predictors array must have dimension 1 or 2.')
+                else:
+                    if np.isnan(predictors).any():
+                        raise ValueError('The predictors array cannot have null values.')
+                    if np.isinf(predictors).any():
+                        raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
+                    if 1 in predictors.shape:
+                        predictors = predictors.reshape(-1, 1)
 
-            # -- conformable number of observations
-            if predictors.shape[0] != response.shape[0]:
-                raise ValueError('The number of observations in the predictors array must match '
-                                 'the number of observations in the response array.')
+                # -- conformable number of observations
+                if predictors.shape[0] != response.shape[0]:
+                    raise ValueError('The number of observations in the predictors array must match '
+                                     'the number of observations in the response array.')
 
-            # -- warn about model stability if the number of predictors exceeds number of observations
-            if predictors.shape[1] > predictors.shape[0]:
-                warnings.warn('The number of predictors exceeds the number of observations. '
-                              'Results will be sensitive to choice of priors.')
+                # -- warn about model stability if the number of predictors exceeds number of observations
+                if predictors.shape[1] > predictors.shape[0]:
+                    warnings.warn('The number of predictors exceeds the number of observations. '
+                                  'Results will be sensitive to choice of priors.')
 
-            self.predictors = predictors
-
-        # Check time components
-        self._check_dummy_seasonal()
-        self._check_trig_seasonal()
-
-        if not isinstance(self.level, bool) or not isinstance(self.stochastic_level, bool):
-            raise ValueError('level and stochastic_level must be of boolean type.')
-
-        if not isinstance(self.slope, bool) or not isinstance(self.stochastic_slope, bool):
-            raise ValueError('slope and stochastic_slope must be of boolean type.')
-
-        if len(self.dummy_seasonal) == 0 and len(self.trig_seasonal) == 0 and not self.level:
-            raise ValueError('At least a level or seasonal component must be specified.')
-
-        if self.slope and not self.level:
-            raise ValueError('Slope cannot be specified without a level component.')
-
-    def _check_dummy_seasonal(self):
-        if not isinstance(self.dummy_seasonal, tuple):
+        # CHECK AND PREPARE DUMMY SEASONAL
+        if not isinstance(dummy_seasonal, tuple):
             raise ValueError('dummy_seasonal must be a tuple.')
 
-        if len(self.dummy_seasonal) > 0:
-            if not all(isinstance(v, int) for v in self.dummy_seasonal):
+        if not isinstance(stochastic_dummy_seasonal, tuple):
+            raise ValueError('stochastic_dummy_seasonal must be a tuple.')
+
+        if len(dummy_seasonal) > 0:
+            if not all(isinstance(v, int) for v in dummy_seasonal):
                 raise ValueError('The period for a dummy seasonal component must be an integer.')
-            if any(v < 2 for v in self.dummy_seasonal):
+
+            if any(v < 2 for v in dummy_seasonal):
                 raise ValueError('The period for a dummy seasonal component must be an integer greater than 1.')
 
-            if len(self._stochastic_dummy_seasonal) > 0:
-                if not all(isinstance(v, bool) for v in self._stochastic_dummy_seasonal):
+            if len(stochastic_dummy_seasonal) > 0:
+                if not all(isinstance(v, bool) for v in stochastic_dummy_seasonal):
                     raise ValueError('If an non-empty tuple is passed for the stochastic specification '
                                      'of the dummy seasonal components, all elements must be of boolean type.')
 
-            if len(self.dummy_seasonal) > len(self._stochastic_dummy_seasonal):
-                if len(self._stochastic_dummy_seasonal) > 0:
+            if len(dummy_seasonal) > len(stochastic_dummy_seasonal):
+                if len(stochastic_dummy_seasonal) > 0:
                     raise ValueError('Some of the dummy seasonal components were given a stochastic '
                                      'specification, but not all. Partial specification of the stochastic '
                                      'profile is not allowed. Either leave the stochastic specification blank '
                                      'by passing an empty tuple (), which will default to True '
                                      'for all components, or pass a stochastic specification '
                                      'for each seasonal component.')
-            elif len(self.dummy_seasonal) < len(self._stochastic_dummy_seasonal):
+
+            if len(dummy_seasonal) < len(stochastic_dummy_seasonal):
                 raise ValueError('The tuple which specifies the number of stochastic dummy seasonal components '
                                  'has greater length than the tuple that specifies the number of dummy seasonal '
                                  'components. Either pass a blank tuple () for the stochastic profile, or a '
                                  'boolean tuple of same length as the tuple that specifies the number of '
                                  'dummy seasonal components.')
-            else:
-                pass
 
         else:
-            if len(self._stochastic_dummy_seasonal) > 0:
-                raise ValueError('No dummy seasonal components were specified, but a non-empty '
-                                 'stochastic profile was passed for dummy seasonality. If no '
-                                 'dummy seasonal components are desired, then an empty stochastic '
-                                 'profile, i.e., (), should be passed to stochastic_seasonal. An '
-                                 'empty stochastic profile is passed by default.')
+            if len(stochastic_dummy_seasonal) > 0:
+                warnings.warn('No dummy seasonal components were specified, but a non-empty '
+                              'stochastic profile was passed for dummy seasonality. If dummy '
+                              'seasonal components are desired, specify the period for each '
+                              'component via a tuple passed to the dummy_seasonal argument. '
+                              'Otherwise, the stochastic profile for dummy seasonality will '
+                              'be treated as inadvertent and ignored.')
 
-        return
-
-    @property
-    def stochastic_dummy_seasonal(self):
-        if len(self.dummy_seasonal) > len(self._stochastic_dummy_seasonal):
-            if len(self._stochastic_dummy_seasonal) == 0:
-                return (True,) * len(self.dummy_seasonal)
-        else:
-            return self._stochastic_dummy_seasonal
-
-    def _check_trig_seasonal(self):
-        if not isinstance(self._trig_seasonal, tuple):
+        # CHECK AND PREPARE TRIGONOMETRIC SEASONAL
+        if not isinstance(trig_seasonal, tuple):
             raise ValueError('trig_seasonal must be a tuple.')
 
-        if len(self._trig_seasonal) > 0:
-            if not all(isinstance(v, tuple) for v in self._trig_seasonal):
+        if not isinstance(stochastic_trig_seasonal, tuple):
+            raise ValueError('stochastic_trig_seasonal must be a tuple.')
+
+        if len(trig_seasonal) > 0:
+            if not all(isinstance(v, tuple) for v in trig_seasonal):
                 raise ValueError('Each element in trig_seasonal must be a tuple.')
-            if not all(len(v) == 2 for v in self._trig_seasonal):
+
+            if not all(len(v) == 2 for v in trig_seasonal):
                 raise ValueError('A (period, num_harmonics) tuple must be provided for each specified trigonometric '
                                  'seasonal component.')
-            if not all(isinstance(v[0], int) for v in self._trig_seasonal):
+
+            if not all(isinstance(v[0], int) for v in trig_seasonal):
                 raise ValueError('The period for a specified trigonometric seasonal component must be an integer.')
-            if not all(isinstance(v[1], int) for v in self._trig_seasonal):
+
+            if not all(isinstance(v[1], int) for v in trig_seasonal):
                 raise ValueError('The number of harmonics for a specified trigonometric seasonal component must '
                                  'be an integer.')
-            if any(v[0] < 2 for v in self._trig_seasonal):
+
+            if any(v[0] < 2 for v in trig_seasonal):
                 raise ValueError('The period for a trigonometric seasonal component must be an integer greater than 1.')
-            if any(v[1] < 1 and v[1] != 0 for v in self._trig_seasonal):
+
+            if any(v[1] < 1 and v[1] != 0 for v in trig_seasonal):
                 raise ValueError('The number of harmonics for a trigonometric seasonal component can take 0 or '
                                  'integers at least as large as 1 as valid options. A value of 0 will enforce '
                                  'the highest possible number of harmonics for the given period, which is period / 2 '
                                  'if period is even, or (period - 1) / 2 if period is odd.')
 
-            for v in self._trig_seasonal:
+            for v in trig_seasonal:
                 period, num_harmonics = v
                 if _is_odd(period):
                     if num_harmonics > int(period - 1) / 2:
@@ -406,14 +375,13 @@ class BayesianUnobservedComponents:
                         raise ValueError('The number of harmonics for a trigonometric seasonal component cannot '
                                          'exceed period / 2 when period is even.')
 
-            if len(self._stochastic_trig_seasonal) > 0:
-                if not all(isinstance(v, bool) for v in self._stochastic_trig_seasonal):
+            if len(stochastic_trig_seasonal) > 0:
+                if not all(isinstance(v, bool) for v in stochastic_trig_seasonal):
                     raise ValueError('If an non-empty tuple is passed for the stochastic specification '
-                                     'of the trigonometric seasonal components, all elements must be of '
-                                     'boolean type.')
+                                     'of the trigonometric seasonal components, all elements must be of boolean type.')
 
-            if len(self._trig_seasonal) > len(self._stochastic_trig_seasonal):
-                if len(self._stochastic_trig_seasonal) > 0:
+            if len(trig_seasonal) > len(stochastic_trig_seasonal):
+                if len(stochastic_trig_seasonal) > 0:
                     raise ValueError('Some of the trigonometric seasonal components '
                                      'were given a stochastic specification, but not all. '
                                      'Partial specification of the stochastic profile is not '
@@ -421,50 +389,74 @@ class BayesianUnobservedComponents:
                                      'by passing an empty tuple (), which will default to True '
                                      'for all components, or pass a stochastic specification '
                                      'for each seasonal component.')
-            elif len(self._trig_seasonal) < len(self._stochastic_trig_seasonal):
+
+            if len(trig_seasonal) < len(stochastic_trig_seasonal):
                 raise ValueError('The tuple which specifies the number of stochastic trigonometric '
                                  'seasonal components has greater length than the tuple that specifies '
                                  'the number of trigonometric seasonal components. Either pass a blank '
                                  'tuple () for the stochastic profile, or a boolean tuple of same length '
                                  'as the tuple that specifies the number of trigonometric seasonal components.')
-            else:
-                pass
 
         else:
-            if len(self._stochastic_trig_seasonal) > 0:
-                raise ValueError('No trigonometric seasonal components were specified, but a non-empty '
-                                 'stochastic profile was passed for trigonometric seasonality. If no '
-                                 'trigonometric seasonal components are desired, then an empty stochastic '
-                                 'profile, i.e., (), should be passed to stochastic_trig_seasonal. An '
-                                 'empty stochastic profile is passed by default.')
+            warnings.warn('No trigonometric seasonal components were specified, but a non-empty '
+                          'stochastic profile was passed for trigonometric seasonality. If trigonometric '
+                          'seasonal components are desired, specify the period for each '
+                          'component via a tuple passed to the trig_seasonal argument. '
+                          'Otherwise, the stochastic profile for trigonometric seasonality will '
+                          'be treated as inadvertent and ignored.')
 
-        return
+        # FINAL VALIDITY CHECKS
+        if not isinstance(level, bool) or not isinstance(stochastic_level, bool):
+            raise ValueError('level and stochastic_level must be of boolean type.')
 
-    @property
-    def trig_seasonal(self):
-        f = ()
-        for c, v in enumerate(self._trig_seasonal):
-            period, freq = v
-            if freq == 0:
-                if _is_odd(freq):
-                    h = int((period - 1) / 2)
+        if not isinstance(slope, bool) or not isinstance(stochastic_slope, bool):
+            raise ValueError('slope and stochastic_slope must be of boolean type.')
+
+        if len(dummy_seasonal) == 0 and len(trig_seasonal) == 0 and not level:
+            raise ValueError('At least a level or seasonal component must be specified.')
+
+        if slope and not level:
+            raise ValueError('Slope cannot be specified without a level component.')
+
+        # ASSIGN CLASS ATTRIBUTES
+        self.response = response
+        self.predictors = predictors
+        self.level = level
+        self.stochastic_level = stochastic_level
+        self.slope = slope
+        self.stochastic_slope = stochastic_slope
+        self.standardize = standardize
+        self.dummy_seasonal = dummy_seasonal
+
+        if len(dummy_seasonal) > 0:
+            if len(stochastic_dummy_seasonal) == 0:
+                self.stochastic_dummy_seasonal = (True,) * len(dummy_seasonal)
+        else:
+            self.stochastic_dummy_seasonal = stochastic_dummy_seasonal
+
+        if len(trig_seasonal) > 0:
+            self.trig_seasonal = ()
+            for c, v in enumerate(trig_seasonal):
+                period, num_harmonics = v
+                if num_harmonics == 0:
+                    if _is_odd(num_harmonics):
+                        h = int((period - 1) / 2)
+                    else:
+                        h = int(period / 2)
                 else:
-                    h = int(period / 2)
-            else:
-                h = freq
+                    h = num_harmonics
 
-            g = (period, h)
-            f = f + (g,)
+                v_updated = (period, h)
+                self.trig_seasonal = self.trig_seasonal + (v_updated,)
 
-        return f
-
-    @property
-    def stochastic_trig_seasonal(self):
-        if len(self._trig_seasonal) > len(self._stochastic_trig_seasonal):
-            if len(self._stochastic_trig_seasonal) == 0:
-                return (True,) * len(self._trig_seasonal)
+            if len(stochastic_trig_seasonal) == 0:
+                self.stochastic_trig_seasonal = (True,) * len(trig_seasonal)
         else:
-            return self._stochastic_trig_seasonal
+            self.trig_seasonal = trig_seasonal
+            self.stochastic_trig_seasonal = stochastic_trig_seasonal
+
+        if self.historical_time_index is None:
+            self.historical_time_index = np.arange(response.shape[0])
 
     @property
     def num_dummy_seasonal_state_eqs(self):
@@ -516,7 +508,7 @@ class BayesianUnobservedComponents:
 
     @property
     def has_predictors(self):
-        if self.predictors.size != 0:
+        if self.predictors.size > 0:
             return True
         else:
             return False
@@ -739,10 +731,8 @@ class BayesianUnobservedComponents:
         state_var_shape_post = []
         init_state_error_var = []
         init_state_variances = []
-        num_fit_ignore = []
         j = 0
         if self.level:
-            num_fit_ignore.append(1)
             if self.stochastic_level:
                 if np.isnan(level_var_shape_prior):
                     level_var_shape_prior = 0.001
@@ -759,7 +749,6 @@ class BayesianUnobservedComponents:
             j += 1
 
         if self.slope:
-            num_fit_ignore.append(1)
             if self.stochastic_slope:
                 if np.isnan(slope_var_shape_prior):
                     slope_var_shape_prior = 0.001
@@ -776,7 +765,6 @@ class BayesianUnobservedComponents:
             j += 1
 
         if len(self.dummy_seasonal) > 0:
-            num_fit_ignore.append(self.num_dummy_seasonal_state_eqs)
             if True in self.stochastic_dummy_seasonal:
                 if np.isnan(dum_season_var_shape_prior):
                     dum_season_var_shape_prior = 0.001
@@ -800,7 +788,6 @@ class BayesianUnobservedComponents:
             j += self.num_dummy_seasonal_state_eqs
 
         if len(self.trig_seasonal) > 0:
-            num_fit_ignore.append(self.num_trig_seasonal_state_eqs)
             if True in self.stochastic_trig_seasonal:
                 if np.isnan(trig_season_var_shape_prior):
                     trig_season_var_shape_prior = 0.001
@@ -843,7 +830,6 @@ class BayesianUnobservedComponents:
                       'A g=1/n Zellner g-prior will be enforced.')
                 reg_coeff_var_prior = g * (0.5 * dot(X.T, X) + 0.5 * np.diag(dot(X.T, X)))
 
-        self.num_fit_ignore = sum(num_fit_ignore)
         state_var_shape_post = np.array(state_var_shape_post).reshape(-1, 1)
         state_var_scale_prior = np.array(state_var_scale_prior).reshape(-1, 1)
         init_error_variances = np.concatenate((init_response_error_var, init_state_error_var))
@@ -1120,7 +1106,7 @@ class BayesianUnobservedComponents:
                         random_sample_size_prop=1., smoothed=True):
 
         if num_fit_ignore == -1:
-            num_fit_ignore = self.num_fit_ignore
+            num_fit_ignore = self.num_state_eqs
 
         if self.has_predictors:
             X = self.predictors[num_fit_ignore:, :]
