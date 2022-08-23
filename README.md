@@ -126,7 +126,7 @@ $$
                             \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
                             \end{array}\right)^\prime \\
     \boldsymbol{\eta}_ t &= \left(\begin{array}{cc} 
-                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma_ 1, t} & \eta_{\gamma_ 1^\*, t} & \eta_{\gamma_ 2, t} & \eta_{\gamma_ 2^\*, t}
+                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma_ 1, t} & \eta_{\gamma_ 1^*, t} & \eta_{\gamma_ 2, t} & \eta_{\gamma_ 2^*, t}
                             \end{array}\right)^\prime
 \end{align}
 $$
@@ -134,7 +134,7 @@ $$
 and 
 
 $$
-\mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta =  \mathrm{diag}(\sigma^2_{\eta_\mu}, \sigma^2_{\eta_\delta}, \sigma^2_{\eta_{\gamma_ 1}}, \sigma^2_{\eta_{\gamma_ 1^\*}}, \sigma^2_{\eta_{\gamma_ 2}}, \sigma^2_{\eta_{\gamma_ 2^\*}}) \in \mathbb{R}^{6 \times 6} \hspace{5pt} \textrm{for all } t=1,2,...,n
+\mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta =  \mathrm{diag}(\sigma^2_{\eta_\mu}, \sigma^2_{\eta_\delta}, \sigma^2_{\eta_{\gamma_ 1}}, \sigma^2_{\eta_{\gamma_ 1^*}}, \sigma^2_{\eta_{\gamma_ 2}}, \sigma^2_{\eta_{\gamma_ 2^*}}) \in \mathbb{R}^{6 \times 6} \hspace{5pt} \textrm{for all } t=1,2,...,n
 $$
 
 # Estimation
@@ -144,6 +144,6 @@ To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Ko
 
 1. Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that `pybuc` implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015).
 2. Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's simulation disturbance smoother.
-3. Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^\*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^\*$ is defined above.
+3. Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf{y}^*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf{y}^*$ is defined above.
 
 By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their posterior inverse-Gamma distributions.
