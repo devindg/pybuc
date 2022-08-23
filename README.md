@@ -1,13 +1,13 @@
 # pybuc
 `pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the _papers_ directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
 
-<ul>
-    <li>Stochastic or non-stochastic level</li>
-    <li>Stochastic or non-stochastic slope (assuming a level state is specified)</li>
-    <li>Multiple stochastic or non-stochastic "dummy" seasonality</li>
-    <li>Multiple stochastic or non-stochastic trigonometric seasonality</li>
-    <li>Regression with static coefficients</li>
-</ul>
+
+- Stochastic or non-stochastic level
+- Stochastic or non-stochastic slope (assuming a level state is specified)
+- Multiple stochastic or non-stochastic "dummy" seasonality
+- Multiple stochastic or non-stochastic trigonometric seasonality
+- Regression with static coefficients
+
 
 Note that the way `pybuc` estimates regression coefficients is methodologically different than `bsts`. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
 
@@ -16,7 +16,9 @@ Fast computation is achieved using [Numba](https://numba.pydata.org/), a high pe
 # Model
 A structural time series model with level, trend, seasonal, and regression components takes the form:
 
-$$y_t = \mu_t + \gamma_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t$$
+$$
+y_t = \mu_t + \gamma_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
+$$
 
 where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
 
@@ -140,10 +142,8 @@ $$
 
 To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Koopman (2002) simulation smoother. For any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by repeating the following three steps:
 
-<ol>
-    <li>Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that `pybuc` implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015). </li>
-    <li>Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's simulation disturbance smoother.</li>
-    <li>Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^*$ is defined above.
-</ol>
+1. Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ \eta(s-1))$. Note that `pybuc` implements a correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015).
+2. Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's simulation disturbance smoother.
+3. Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^\*, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^\*$ is defined above.
 
 By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their posterior inverse-Gamma distributions.
