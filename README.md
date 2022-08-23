@@ -126,7 +126,7 @@ $$
                             \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
                             \end{array}\right)^\prime \\
     \boldsymbol{\eta}_ t &= \left(\begin{array}{cc} 
-                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma_ 1, t} & \eta_{\gamma_1^\*, t} & \eta_{\gamma_2, t} & \eta_{\gamma_2^\*, t}
+                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma_ 1, t} & \eta_{\gamma_ 1^\*, t} & \eta_{\gamma_ 2, t} & \eta_{\gamma_ 2^\*, t}
                             \end{array}\right)^\prime
 \end{align}
 $$
