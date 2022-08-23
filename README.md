@@ -16,9 +16,7 @@ Fast computation is achieved using [Numba](https://numba.pydata.org/), a high pe
 # Model
 A structural time series model with level, trend, seasonal, and regression components takes the form:
 
-$$
-y_t = \mu_t + \gamma_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
-$$
+$$y_t = \mu_t + \gamma_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t$$
 
 where $\mu_t$ specifies an unobserved dynamic level component, $\gamma_t$ an unobserved dynamic seasonal component, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations governing the evolution of the unobserved states are known as the state equations.
 
@@ -149,5 +147,3 @@ To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Ko
 </ol>
 
 By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their posterior inverse-Gamma distributions.
-
-
