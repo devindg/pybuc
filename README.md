@@ -1,5 +1,5 @@
 # pybuc
-`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is presently a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the *papers* directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
+`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is a feature-limited version of R's Bayesian structural time series package, `bsts`, written by Steven L. Scott. The source paper can be found [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the *papers* directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap for the release of new features. The current version of `pybuc` includes the following options for modeling and forecasting a structural time series: 
 
 
 - Stochastic or non-stochastic level
@@ -9,7 +9,7 @@
 - Regression with static coefficients
 
 
-Note that the way `pybuc` estimates regression coefficients is methodologically different than `bsts`. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
+Note that the way `pybuc` estimates regression coefficients is methodologically different than `bsts`. The former uses a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture commonly known as the spike-and-slab prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when the number of predictors in the regression component exceeds the number of observed data points.
 
 Fast computation is achieved using [Numba](https://numba.pydata.org/), a high performance just-in-time (JIT) compiler for Python.
 
