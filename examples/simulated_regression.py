@@ -135,6 +135,7 @@ if __name__ == '__main__':
 
     # Plot time series components
     bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=True)
+    plt.show()
 
     # Get and plot forecast
     forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn, future_predictors=x_test)

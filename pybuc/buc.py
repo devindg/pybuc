@@ -84,7 +84,8 @@ def _simulate_posterior_predictive_response(posterior, burn=0, num_fit_ignore=0,
 def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
     state_post = (np.random
                   .multivariate_normal(mean=state_mean,
-                                       cov=state_covariance).reshape(-1, 1))
+                                       cov=state_covariance,
+                                       tol=1e-6).reshape(-1, 1))
 
     return state_post
 
@@ -195,6 +196,7 @@ class BayesianUnobservedComponents:
         self.predictors_names = None
         self.historical_time_index = None
         self.future_time_index = None
+        self.num_fit_ignore = None
 
         # TODO: Add functionality for autoregressive slope.
 
@@ -419,7 +421,7 @@ class BayesianUnobservedComponents:
         if slope and not level:
             raise ValueError('Slope cannot be specified without a level component.')
 
-        # ASSIGN CLASS ATTRIBUTES
+        # ASSIGN CLASS ATTRIBUTES IF ALL VALIDITY CHECKS ARE PASSED
         self.response = response
         self.predictors = predictors
         self.level = level
@@ -731,6 +733,7 @@ class BayesianUnobservedComponents:
         state_var_shape_post = []
         init_state_error_var = []
         init_state_variances = []
+        seasonal_period = (0,)
         j = 0
         if self.level:
             if self.stochastic_level:
@@ -774,6 +777,7 @@ class BayesianUnobservedComponents:
 
             i = j
             for c, v in enumerate(self.dummy_seasonal):
+                seasonal_period = seasonal_period + (v, )
                 if self.stochastic_dummy_seasonal[c]:
                     state_var_shape_post.append(dum_season_var_shape_prior + 0.5 * n)
                     state_var_scale_prior.append(dum_season_var_scale_prior)
@@ -799,6 +803,7 @@ class BayesianUnobservedComponents:
             for c, v in enumerate(self.trig_seasonal):
                 f, h = v
                 num_terms = 2 * h
+                seasonal_period = seasonal_period + (f, )
                 if self.stochastic_trig_seasonal[c]:
                     for k in range(num_terms):
                         state_var_shape_post.append(trig_season_var_shape_prior + 0.5 * n)
@@ -834,6 +839,7 @@ class BayesianUnobservedComponents:
         state_var_scale_prior = np.array(state_var_scale_prior).reshape(-1, 1)
         init_error_variances = np.concatenate((init_response_error_var, init_state_error_var))
         init_state_covariance = np.diag(init_state_variances)
+        self.num_fit_ignore = max(1 + max(seasonal_period), self.num_state_eqs)
 
         self.model_setup = model_setup(components,
                                        response_var_scale_prior,
@@ -900,9 +906,9 @@ class BayesianUnobservedComponents:
         init_state_values0 = np.zeros((m, 1))
 
         # Set initial values for response and state error variances
-        response_error_variance[0] = np.array([[init_error_variances[0]]])
+        response_error_variance0 = np.array([[init_error_variances[0]]])
         if q > 0:
-            state_error_variance[0] = np.diag(init_error_variances[1:])
+            state_error_variance0 = np.diag(init_error_variances[1:])
 
         # Helper matrices
         q_eye = np.eye(q)
@@ -918,24 +924,29 @@ class BayesianUnobservedComponents:
             reg_coeff_var_inv_post = dot(X.T, X) + solve(reg_coeff_var_prior, np.eye(k))
             reg_coeff_var_post = solve(reg_coeff_var_inv_post, np.eye(k))
             regression_coefficients = np.empty((num_samp, k, 1), dtype=np.float64)
-            regression_coefficients[0] = dot(reg_coeff_var_post,
-                                             (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
+            regression_coefficients0 = dot(reg_coeff_var_post,
+                                           (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
         else:
             regression_coefficients = np.array([[[]]])
 
         # Run Gibbs sampler
-        for s in range(1, num_samp):
-            response_err_var = response_error_variance[s - 1]
-            state_err_var = state_error_variance[s - 1]
-
-            if self.has_predictors:
-                reg_coeff = regression_coefficients[s - 1]
-                Z[:, :, -1] = X.dot(reg_coeff)
-
-            if s == 1:
+        for s in range(num_samp):
+            if s == 0:
                 init_state_values = init_state_values0
+                response_err_var = response_error_variance0
+                state_err_var = state_error_variance0
             else:
                 init_state_values = smoothed_state[s - 1, 0]
+                response_err_var = response_error_variance[s - 1]
+                state_err_var = state_error_variance[s - 1]
+
+            if self.has_predictors:
+                if s == 0:
+                    reg_coeff = regression_coefficients0
+                else:
+                    reg_coeff = regression_coefficients[s - 1]
+
+                Z[:, :, -1] = X.dot(reg_coeff)
 
             # Filtered state
             y_kf = kf(y,
@@ -1106,7 +1117,7 @@ class BayesianUnobservedComponents:
                         random_sample_size_prop=1., smoothed=True):
 
         if num_fit_ignore == -1:
-            num_fit_ignore = self.num_state_eqs
+            num_fit_ignore = self.num_fit_ignore
 
         if self.has_predictors:
             X = self.predictors[num_fit_ignore:, :]
@@ -1137,6 +1148,7 @@ class BayesianUnobservedComponents:
                                                          num_fit_ignore,
                                                          random_sample_size_prop,
                                                          self.has_predictors)
+
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
         ax[0].plot(historical_time_index, y)
@@ -1155,7 +1167,6 @@ class BayesianUnobservedComponents:
                 ub = np.quantile(resid, conf_int_ub, axis=0)
                 ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
-                pass
 
             elif c == 'Regression':
                 reg_component = X.dot(reg_coeff)
@@ -1187,6 +1198,5 @@ class BayesianUnobservedComponents:
                 ax[i + 1].title.set_text(c)
 
         fig.tight_layout()
-        plt.show()
 
         return

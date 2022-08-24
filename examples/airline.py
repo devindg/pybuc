@@ -56,7 +56,7 @@ if __name__ == '__main__':
     mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
                                   level=True, stochastic_level=True,
                                   trend=True, stochastic_trend=True,
-                                  freq_seasonal=[{'period': 12, 'harmonics': 6}],
+                                  freq_seasonal=[{'period': 12, 'harmonics': 4}],
                                   stochastic_freq_seasonal=[True])
 
     # Fit the model via maximum likelihood
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    mle_uc_res.plot_components(legend_loc='lower right', figsize=(15, 9), which='smoothed')
+    mle_uc_res.plot_components(legend_loc='lower right', figsize=(15, 9), which='filtered')
     plt.show()
 
     # Get and plot forecast
@@ -93,7 +93,7 @@ if __name__ == '__main__':
                                                 level=True, stochastic_level=True,
                                                 slope=True, stochastic_slope=True,
                                                 dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=())
+                                                trig_seasonal=((12, 4), ), stochastic_trig_seasonal=())
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
@@ -121,7 +121,8 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=True)
+    bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=False, random_sample_size_prop=0.2)
+    plt.show()
 
     # Get and plot forecast
     forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn)
