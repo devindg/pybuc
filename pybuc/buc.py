@@ -39,10 +39,6 @@ model_setup = namedtuple('model_setup',
                           'init_state_covariance'])
 
 
-def _is_odd(x: int) -> bool:
-    return np.mod(x, 2) != 0
-
-
 @njit
 def set_seed(value):
     np.random.seed(value)
@@ -368,7 +364,7 @@ class BayesianUnobservedComponents:
 
             for v in trig_seasonal:
                 period, num_harmonics = v
-                if _is_odd(period):
+                if ao.is_odd(period):
                     if num_harmonics > int(period - 1) / 2:
                         raise ValueError('The number of harmonics for a trigonometric seasonal component cannot '
                                          'exceed (period - 1) / 2 when period is odd.')
@@ -442,7 +438,7 @@ class BayesianUnobservedComponents:
             for c, v in enumerate(trig_seasonal):
                 period, num_harmonics = v
                 if num_harmonics == 0:
-                    if _is_odd(num_harmonics):
+                    if ao.is_odd(num_harmonics):
                         h = int((period - 1) / 2)
                     else:
                         h = int(period / 2)

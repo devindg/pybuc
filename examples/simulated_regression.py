@@ -19,7 +19,7 @@ hold_out_size = 10
 n = 100
 veps = 50
 veta = 200
-beta = np.array([[3.19, -10.24]]).T
+beta = np.array([[3.15, -10.24]]).T
 eps = np.random.normal(0, np.sqrt(veps), size=n)
 eta = np.random.normal(0, np.sqrt(veta), size=n)
 x1 = np.random.normal(50, 10, size=n)

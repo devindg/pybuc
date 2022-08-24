@@ -50,3 +50,8 @@ def is_square(x: np.ndarray) -> bool:
         return True
     else:
         return False
+
+
+@njit
+def is_odd(x: int) -> bool:
+    return np.mod(x, 2) != 0
