@@ -398,12 +398,13 @@ class BayesianUnobservedComponents:
                                  'as the tuple that specifies the number of trigonometric seasonal components.')
 
         else:
-            warnings.warn('No trigonometric seasonal components were specified, but a non-empty '
-                          'stochastic profile was passed for trigonometric seasonality. If trigonometric '
-                          'seasonal components are desired, specify the period for each '
-                          'component via a tuple passed to the trig_seasonal argument. '
-                          'Otherwise, the stochastic profile for trigonometric seasonality will '
-                          'be treated as inadvertent and ignored.')
+            if len(stochastic_trig_seasonal) > 0:
+                warnings.warn('No trigonometric seasonal components were specified, but a non-empty '
+                              'stochastic profile was passed for trigonometric seasonality. If trigonometric '
+                              'seasonal components are desired, specify the period for each '
+                              'component via a tuple passed to the trig_seasonal argument. '
+                              'Otherwise, the stochastic profile for trigonometric seasonality will '
+                              'be treated as inadvertent and ignored.')
 
         # FINAL VALIDITY CHECKS
         if not isinstance(level, bool) or not isinstance(stochastic_level, bool):
@@ -427,15 +428,15 @@ class BayesianUnobservedComponents:
         self.stochastic_slope = stochastic_slope
         self.standardize = standardize
         self.dummy_seasonal = dummy_seasonal
+        self.stochastic_dummy_seasonal = stochastic_dummy_seasonal
+        self.trig_seasonal = trig_seasonal
+        self.stochastic_trig_seasonal = stochastic_trig_seasonal
 
-        if len(dummy_seasonal) > 0:
-            if len(stochastic_dummy_seasonal) == 0:
-                self.stochastic_dummy_seasonal = (True,) * len(dummy_seasonal)
-        else:
-            self.stochastic_dummy_seasonal = stochastic_dummy_seasonal
+        if len(dummy_seasonal) > 0 and len(stochastic_dummy_seasonal) == 0:
+            self.stochastic_dummy_seasonal = (True,) * len(dummy_seasonal)
 
         if len(trig_seasonal) > 0:
-            self.trig_seasonal = ()
+            ts = ()
             for c, v in enumerate(trig_seasonal):
                 period, num_harmonics = v
                 if num_harmonics == 0:
@@ -447,13 +448,12 @@ class BayesianUnobservedComponents:
                     h = num_harmonics
 
                 v_updated = (period, h)
-                self.trig_seasonal = self.trig_seasonal + (v_updated,)
+                ts = ts + (v_updated,)
+
+            self.trig_seasonal = ts
 
             if len(stochastic_trig_seasonal) == 0:
                 self.stochastic_trig_seasonal = (True,) * len(trig_seasonal)
-        else:
-            self.trig_seasonal = trig_seasonal
-            self.stochastic_trig_seasonal = stochastic_trig_seasonal
 
         if self.historical_time_index is None:
             self.historical_time_index = np.arange(response.shape[0])
