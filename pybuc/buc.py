@@ -195,6 +195,7 @@ class BayesianUnobservedComponents:
         self.num_fit_ignore = None
 
         # TODO: Add functionality for autoregressive slope.
+        # TODO: Add summary() function that summarizes the mean/standard deviation of the estimated parameters
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -927,7 +928,7 @@ class BayesianUnobservedComponents:
 
         # Run Gibbs sampler
         for s in range(num_samp):
-            if s == 0:
+            if s < 1:
                 init_state_values = init_state_values0
                 response_err_var = response_error_variance0
                 state_err_var = state_error_variance0
@@ -937,7 +938,7 @@ class BayesianUnobservedComponents:
                 state_err_var = state_error_variance[s - 1]
 
             if self.has_predictors:
-                if s == 0:
+                if s < 1:
                     reg_coeff = regression_coefficients0
                 else:
                     reg_coeff = regression_coefficients[s - 1]
