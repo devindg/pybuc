@@ -70,7 +70,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    mle_uc_res.plot_components(legend_loc='lower right', figsize=(15, 9), which='filtered')
+    mle_uc_res.plot_components(legend_loc='lower right', figsize=(15, 9), which='smoothed')
     plt.show()
 
     # Get and plot forecast
@@ -121,7 +121,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=False, random_sample_size_prop=0.2)
+    bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=True)
     plt.show()
 
     # Get and plot forecast
