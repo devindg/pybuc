@@ -1233,7 +1233,7 @@ class BayesianUnobservedComponents:
                 mean_reg_coeff = np.mean(reg_coeff, axis=0)
                 std_reg_coeff = np.std(reg_coeff, axis=0)
                 for k in range(self.num_predictors):
-                    summary_d[f"Posterior.Mean[beta.{self.predictors_names[k]}"] = mean_reg_coeff[k]
-                    summary_d[f"Posterior.StdDev[beta.{self.predictors_names[k]}"] = std_reg_coeff[k]
+                    summary_d[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
+                    summary_d[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
 
         return summary_d
