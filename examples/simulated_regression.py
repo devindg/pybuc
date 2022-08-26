@@ -114,17 +114,8 @@ if __name__ == '__main__':
     mcmc_burn = 100
 
     # Print summary of estimated parameters
-    mean_sig_obs = np.mean(post.response_error_variance[mcmc_burn:])
-    mean_sig_lvl = np.mean(post.state_error_variance[:, 0, 0][mcmc_burn:])
-    std_sig_obs = np.std(post.response_error_variance[mcmc_burn:])
-    std_sig_lvl = np.std(post.state_error_variance[:, 0, 0][mcmc_burn:])
-    mean_reg_coeff = np.mean(post.regression_coefficients[mcmc_burn:], axis=0)
-    std_reg_coeff = np.std(post.regression_coefficients[mcmc_burn:], axis=0)
-
-    print(f"sigma2.irregular: {mean_sig_obs} ({std_sig_obs}) \n"
-          f"sigma2.level: {mean_sig_lvl} ({std_sig_lvl}) \n"
-          f"beta.x1: {mean_reg_coeff[0, 0]} ({std_reg_coeff[0, 0]}) \n"
-          f"beta.x2: {mean_reg_coeff[1, 0]} ({std_reg_coeff[1, 0]}) \n")
+    for key, value in bayes_uc.summary(post, burn=mcmc_burn).items():
+        print(key, ' : ', value)
 
     # Plot in-sample fit against actuals
     yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)

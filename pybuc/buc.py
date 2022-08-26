@@ -45,10 +45,10 @@ def set_seed(value):
 
 
 @njit(cache=True)
-def _simulate_posterior_predictive_response(posterior, burn=0, num_fit_ignore=0,
+def _simulate_posterior_predictive_response(posterior, burn=0, num_first_obs_ignore=0,
                                             random_sample_size_prop=1.):
-    response_mean = posterior.filtered_prediction[burn:, num_fit_ignore:, 0]
-    response_variance = posterior.response_variance[burn:, num_fit_ignore:, 0]
+    response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+    response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
     num_posterior_samp = response_mean.shape[0]
     n = response_mean.shape[1]
 
@@ -86,14 +86,14 @@ def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
     return state_post
 
 
-def _simulate_posterior_predictive_state(posterior, burn=0, num_fit_ignore=0, random_sample_size_prop=1.,
+def _simulate_posterior_predictive_state(posterior, burn=0, num_first_obs_ignore=0, random_sample_size_prop=1.,
                                          has_predictors=False):
     if has_predictors:
-        mean = posterior.filtered_state[burn:, num_fit_ignore:-1, :-1, 0]
-        cov = posterior.state_covariance[burn:, num_fit_ignore:-1, :-1, :-1]
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1, 0]
+        cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1, :-1, :-1]
     else:
-        mean = posterior.filtered_state[burn:, num_fit_ignore:-1, :, 0]
-        cov = posterior.state_covariance[burn:, num_fit_ignore:-1]
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :, 0]
+        cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1]
 
     num_posterior_samp = mean.shape[0]
     n = mean.shape[1]
@@ -183,7 +183,7 @@ class BayesianUnobservedComponents:
                  stochastic_slope: bool = True,
                  dummy_seasonal: tuple = (),
                  stochastic_dummy_seasonal: tuple = (),
-                 trig_seasonal: tuple[tuple] = (),
+                 trig_seasonal: tuple = (),
                  stochastic_trig_seasonal: tuple = (),
                  standardize: bool = False):
 
@@ -192,10 +192,9 @@ class BayesianUnobservedComponents:
         self.predictors_names = None
         self.historical_time_index = None
         self.future_time_index = None
-        self.num_fit_ignore = None
+        self.num_first_obs_ignore = None
 
         # TODO: Add functionality for autoregressive slope.
-        # TODO: Add summary() function that summarizes the mean/standard deviation of the estimated parameters
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -456,6 +455,10 @@ class BayesianUnobservedComponents:
 
         if self.historical_time_index is None:
             self.historical_time_index = np.arange(response.shape[0])
+
+        if self.has_predictors:
+            if self.predictors_names is None:
+                self.predictors_names = [f"x{i + 1}" for i in range(self.num_predictors)]
 
     @property
     def num_dummy_seasonal_state_eqs(self):
@@ -745,7 +748,7 @@ class BayesianUnobservedComponents:
                 init_state_error_var.append(0.01 * self.sd_response ** 2)
 
             init_state_variances.append(1e6)
-            components['Level'] = dict(start_index=j, end_index=j + 1)
+            components['Level'] = dict(start_index=j, end_index=j + 1, stochastic=self.stochastic_level)
             j += 1
 
         if self.slope:
@@ -760,7 +763,7 @@ class BayesianUnobservedComponents:
                 state_var_scale_prior.append(slope_var_scale_prior)
                 init_state_error_var.append(0.01 * self.sd_response ** 2)
 
-            components['Trend'] = dict()
+            components['Trend'] = dict(stochastic=self.stochastic_slope)
             init_state_variances.append(1e6)
             j += 1
 
@@ -784,7 +787,8 @@ class BayesianUnobservedComponents:
                     init_state_variances.append(1e6)
 
                 components[f'Dummy-Seasonal.{v}'] = dict(start_index=i,
-                                                         end_index=i + (v - 1) + 1)
+                                                         end_index=i + (v - 1) + 1,
+                                                         stochastic=self.stochastic_dummy_seasonal[c])
                 i += v - 1
             j += self.num_dummy_seasonal_state_eqs
 
@@ -811,7 +815,8 @@ class BayesianUnobservedComponents:
                     init_state_variances.append(1e6)
 
                 components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_index=i,
-                                                                     end_index=i + num_terms + 1)
+                                                                     end_index=i + num_terms + 1,
+                                                                     stochastic=self.stochastic_trig_seasonal[c])
                 i += 2 * h
             j += self.num_trig_seasonal_state_eqs
 
@@ -836,7 +841,7 @@ class BayesianUnobservedComponents:
         state_var_scale_prior = np.array(state_var_scale_prior).reshape(-1, 1)
         init_error_variances = np.concatenate((init_response_error_var, init_state_error_var))
         init_state_covariance = np.diag(init_state_variances)
-        self.num_fit_ignore = max(1 + max(seasonal_period), self.num_state_eqs)
+        self.num_first_obs_ignore = max(1 + max(seasonal_period), self.num_state_eqs)
 
         self.model_setup = model_setup(components,
                                        response_var_scale_prior,
@@ -1110,20 +1115,20 @@ class BayesianUnobservedComponents:
 
         return y_forecast
 
-    def plot_components(self, posterior, burn=0, num_fit_ignore=-1, conf_int_level=0.05,
+    def plot_components(self, posterior, burn=0, num_first_obs_ignore=-1, conf_int_level=0.05,
                         random_sample_size_prop=1., smoothed=True):
 
-        if num_fit_ignore == -1:
-            num_fit_ignore = self.num_fit_ignore
+        if num_first_obs_ignore == -1:
+            num_first_obs_ignore = self.num_first_obs_ignore
 
         if self.has_predictors:
-            X = self.predictors[num_fit_ignore:, :]
+            X = self.predictors[num_first_obs_ignore:, :]
             reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
 
-        y = self.y[num_fit_ignore:, 0]
+        y = self.y[num_first_obs_ignore:, 0]
         n = self.num_obs
-        Z = self.observation_matrix(num_rows=n - num_fit_ignore)
-        historical_time_index = self.historical_time_index[num_fit_ignore:]
+        Z = self.observation_matrix(num_rows=n - num_first_obs_ignore)
+        historical_time_index = self.historical_time_index[num_first_obs_ignore:]
         model = self.model_setup
         components = model.components
         conf_int_lb = 0.5 * conf_int_level
@@ -1131,18 +1136,18 @@ class BayesianUnobservedComponents:
 
         filtered_prediction = _simulate_posterior_predictive_response(posterior,
                                                                       burn,
-                                                                      num_fit_ignore,
+                                                                      num_first_obs_ignore,
                                                                       random_sample_size_prop)
-        smoothed_prediction = posterior.smoothed_prediction[burn:, num_fit_ignore:, 0]
+        smoothed_prediction = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
 
         if smoothed:
             prediction = smoothed_prediction
-            state = posterior.smoothed_state[burn:, num_fit_ignore:n, :, :]
+            state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
         else:
             prediction = filtered_prediction
             state = _simulate_posterior_predictive_state(posterior,
                                                          burn,
-                                                         num_fit_ignore,
+                                                         num_first_obs_ignore,
                                                          random_sample_size_prop,
                                                          self.has_predictors)
 
@@ -1165,15 +1170,7 @@ class BayesianUnobservedComponents:
                 ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
-            elif c == 'Regression':
-                reg_component = X.dot(reg_coeff)
-                ax[i + 1].plot(historical_time_index, np.mean(reg_component, axis=1))
-                lb = np.quantile(reg_component, conf_int_lb, axis=1)
-                ub = np.quantile(reg_component, conf_int_ub, axis=1)
-                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
-                ax[i + 1].title.set_text(c)
-
-            elif c == 'Trend':
+            if c == 'Trend':
                 time_component = state[:, :, 1, 0]
                 ax[i + 1].plot(historical_time_index, np.mean(time_component, axis=0))
                 lb = np.quantile(time_component, conf_int_lb, axis=0)
@@ -1181,9 +1178,9 @@ class BayesianUnobservedComponents:
                 ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
-            else:
-                idx = components[c]
-                start_index, end_index = idx['start_index'], idx['end_index']
+            if c not in ('Irregular', 'Regression', 'Trend'):
+                v = components[c]
+                start_index, end_index = v['start_index'], v['end_index']
                 A = Z[:, 0, start_index:end_index]
                 B = state[:, :, start_index:end_index, 0]
                 time_component = (A[np.newaxis] * B).sum(axis=2)
@@ -1194,6 +1191,49 @@ class BayesianUnobservedComponents:
                 ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
                 ax[i + 1].title.set_text(c)
 
+            if c == 'Regression':
+                reg_component = X.dot(reg_coeff)
+                ax[i + 1].plot(historical_time_index, np.mean(reg_component, axis=1))
+                lb = np.quantile(reg_component, conf_int_lb, axis=1)
+                ub = np.quantile(reg_component, conf_int_ub, axis=1)
+                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
+                ax[i + 1].title.set_text(c)
+
         fig.tight_layout()
 
         return
+    
+    def summary(self, posterior, burn=0, conf_int_level=0.05):
+        components = self.model_setup.components
+        resp_err_var = posterior.response_error_variance[burn:]
+        state_err_var = posterior.state_error_variance[burn:]
+        summary_d = dict()
+        summary_d['Number of posterior samples (after burn)'] = posterior.num_samp - burn
+
+        i = 0
+        for c in components:
+            if c == 'Irregular':
+                summary_d[f"Posterior.Mean[{c} Variance]"] = np.mean(resp_err_var)
+                summary_d[f"Posterior.StdDev[{c} Variance]"] = np.std(resp_err_var)
+
+            if c not in ('Irregular', 'Regression'):
+                v = components[c]
+                if v['stochastic']:
+                    summary_d[f"Posterior.Mean[{c} Variance]"] = np.mean(state_err_var[:, i, i])
+                    summary_d[f"Posterior.StdDev[{c} Variance]"] = np.std(state_err_var[:, i, i])
+
+                    if 'Trigonometric' not in c:
+                        i += 1
+                    else:
+                        delta = v['end_index'] - v['start_index'] - 1
+                        i += delta
+
+            if c == 'Regression':
+                reg_coeff = posterior.regression_coefficients[burn:, :, 0]
+                mean_reg_coeff = np.mean(reg_coeff, axis=0)
+                std_reg_coeff = np.std(reg_coeff, axis=0)
+                for k in range(self.num_predictors):
+                    summary_d[f"Posterior.Mean[beta.{self.predictors_names[k]}"] = mean_reg_coeff[k]
+                    summary_d[f"Posterior.StdDev[beta.{self.predictors_names[k]}"] = std_reg_coeff[k]
+
+        return summary_d

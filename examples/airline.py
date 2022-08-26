@@ -93,25 +93,14 @@ if __name__ == '__main__':
                                                 level=True, stochastic_level=True,
                                                 slope=True, stochastic_slope=True,
                                                 dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=())
+                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
 
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
     # Print summary of estimated parameters
-    mean_sig_obs = np.mean(post.response_error_variance[mcmc_burn:])
-    mean_sig_lvl = np.mean(post.state_error_variance[:, 0, 0][mcmc_burn:])
-    mean_sig_slope = np.mean(post.state_error_variance[:, 1, 1][mcmc_burn:])
-    mean_sig_trig = np.mean(post.state_error_variance[:, 2, 2][mcmc_burn:])
-    std_sig_obs = np.std(post.response_error_variance[mcmc_burn:])
-    std_sig_lvl = np.std(post.state_error_variance[:, 0, 0][mcmc_burn:])
-    std_sig_slope = np.std(post.state_error_variance[:, 1, 1][mcmc_burn:])
-    std_sig_trig = np.std(post.state_error_variance[:, 2, 2][mcmc_burn:])
-
-    print(f"sigma2.irregular: {mean_sig_obs} ({std_sig_obs}) \n"
-          f"sigma2.level: {mean_sig_lvl} ({std_sig_lvl}) \n"
-          f"sigma2.trend: {mean_sig_slope} ({std_sig_slope}) \n"
-          f"sigma2.freq_seasonal_12(6): {mean_sig_trig} ({std_sig_trig})")
+    for key, value in bayes_uc.summary(post, burn=mcmc_burn).items():
+        print(key, ' : ', value)
 
     # Plot in-sample fit against actuals
     yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
