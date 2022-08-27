@@ -109,7 +109,6 @@ if __name__ == '__main__':
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 predictors=x_train)
-
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
