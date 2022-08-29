@@ -114,7 +114,7 @@ def kalman_filter(y: np.ndarray,
 
     # Run Kalman Filter
     for t in range(n):
-        v[t] = (1. - y_nan_indicator[t]) * (y_no_nan[t] - Z[t].dot(a[t]))
+        v[t] = (1. - y_nan_indicator[t, 0]) * (y_no_nan[t, :] - Z[t].dot(a[t]))
         F[t] = Z[t].dot(P[t]).dot(Z[t].T) + response_error_variance_matrix
         # Get appropriate matrix inversion procedure for F.
         # Matrix inversion is computationally expensive,
