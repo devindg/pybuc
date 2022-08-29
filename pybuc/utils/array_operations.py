@@ -38,20 +38,30 @@ def mat_inv(z):
 
 @njit
 def is_2d(x: np.ndarray) -> bool:
-    if x.ndim == 2:
-        return True
-    else:
-        return False
+    return x.ndim == 2
 
 
 @njit
 def is_square(x: np.ndarray) -> bool:
-    if x.shape[0] == x.shape[1]:
-        return True
-    else:
-        return False
+    return x.shape[0] == x.shape[1]
 
 
 @njit
 def is_odd(x: int) -> bool:
     return np.mod(x, 2) != 0
+
+
+@njit
+def is_symmetric(x: np.ndarray) -> bool:
+    return (x == x.T).all()
+
+
+@njit
+def is_positive_definite(x: np.ndarray) -> bool:
+    # noinspection PyBroadException
+    try:
+        np.linalg.cholesky(x)
+        return True
+    except Exception:
+        return False
+

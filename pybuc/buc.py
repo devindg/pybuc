@@ -24,7 +24,7 @@ post = namedtuple('post',
                    'response_variance',
                    'state_covariance',
                    'response_error_variance',
-                   'state_error_variance',
+                   'state_error_covariance',
                    'regression_coefficients'])
 
 model_setup = namedtuple('model_setup',
@@ -34,7 +34,7 @@ model_setup = namedtuple('model_setup',
                           'state_var_scale_prior',
                           'state_var_shape_post',
                           'reg_coeff_mean_prior',
-                          'reg_coeff_var_prior',
+                          'reg_coeff_cov_prior',
                           'init_error_variances',
                           'init_state_covariance'])
 
@@ -45,8 +45,10 @@ def set_seed(value):
 
 
 @njit(cache=True)
-def _simulate_posterior_predictive_response(posterior, burn=0, num_first_obs_ignore=0,
-                                            random_sample_size_prop=1.):
+def _simulate_posterior_predictive_response(posterior: post,
+                                            burn: int = 0,
+                                            num_first_obs_ignore: int = 0,
+                                            random_sample_size_prop: float = 1.) -> np.ndarray:
     response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
     response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
     num_posterior_samp = response_mean.shape[0]
@@ -77,7 +79,8 @@ def _simulate_posterior_predictive_response(posterior, burn=0, num_first_obs_ign
     return y_post
 
 
-def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
+def _simulate_posterior_predictive_state_worker(state_mean: np.ndarray,
+                                                state_covariance: np.ndarray) -> np.ndarray:
     state_post = (np.random
                   .multivariate_normal(mean=state_mean,
                                        cov=state_covariance,
@@ -86,8 +89,11 @@ def _simulate_posterior_predictive_state_worker(state_mean, state_covariance):
     return state_post
 
 
-def _simulate_posterior_predictive_state(posterior, burn=0, num_first_obs_ignore=0, random_sample_size_prop=1.,
-                                         has_predictors=False):
+def _simulate_posterior_predictive_state(posterior: post,
+                                         burn: int = 0,
+                                         num_first_obs_ignore: int = 0,
+                                         random_sample_size_prop: float = 1.,
+                                         has_predictors: bool = False) -> np.ndarray:
     if has_predictors:
         mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1, 0]
         cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1, :-1, :-1]
@@ -126,8 +132,13 @@ def _simulate_posterior_predictive_state(posterior, burn=0, num_first_obs_ignore
 
 
 @njit(cache=True)
-def _forecast(posterior, num_periods, burn, state_observation_matrix, state_transition_matrix,
-              state_error_transformation_matrix, future_predictors=np.array([[]])):
+def _forecast(posterior: post,
+              num_periods: int,
+              state_observation_matrix: np.ndarray,
+              state_transition_matrix: np.ndarray,
+              state_error_transformation_matrix: np.ndarray,
+              future_predictors: np.ndarray = np.array([[]]),
+              burn: int = 0) -> np.ndarray:
     Z = state_observation_matrix
     T = state_transition_matrix
     R = state_error_transformation_matrix
@@ -137,7 +148,7 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
 
     response_error_variance = posterior.response_error_variance[burn:]
     if q > 0:
-        state_error_variance = posterior.state_error_variance[burn:]
+        state_error_covariance = posterior.state_error_covariance[burn:]
 
     smoothed_state = posterior.smoothed_state[burn:]
     num_samp = posterior.num_samp - burn
@@ -156,7 +167,7 @@ def _forecast(posterior, num_periods, burn, state_observation_matrix, state_tran
                                   num_periods_ones * np.sqrt(response_error_variance[s][0, 0]))
         if q > 0:
             state_error = dist.vec_norm(num_periods_u_zeros,
-                                        num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_variance[s])))
+                                        num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_covariance[s])))
 
         if X_fut.size > 0:
             Z[:, :, -1] = X_fut.dot(reg_coeff[s])
@@ -193,6 +204,7 @@ class BayesianUnobservedComponents:
         self.historical_time_index = None
         self.future_time_index = None
         self.num_first_obs_ignore = None
+        self.posterior = None
 
         # TODO: Add functionality for autoregressive slope.
 
@@ -263,19 +275,21 @@ class BayesianUnobservedComponents:
                     predictors = predictors.sort_index().to_numpy()
 
                 # -- dimension and null/inf checks
+                if predictors.dtype != 'float64':
+                    raise ValueError('All values in the predictors array must be of type float.')
                 if predictors.ndim == 0:
-                    raise ValueError('The predictors array must have dimension 1 or 2.')
-                elif predictors.ndim == 1:
+                    raise ValueError('The predictors array must have dimension 1 or 2. Dimension is 0.')
+                if predictors.ndim == 1:
                     predictors = predictors.reshape(-1, 1)
-                elif predictors.ndim > 2:
-                    raise ValueError('The predictors array must have dimension 1 or 2.')
-                else:
-                    if np.isnan(predictors).any():
-                        raise ValueError('The predictors array cannot have null values.')
-                    if np.isinf(predictors).any():
-                        raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
+                if predictors.ndim > 2:
+                    raise ValueError('The predictors array must have dimension 1 or 2. Dimension exceeds 2.')
+                if predictors.ndim == 2:
                     if 1 in predictors.shape:
                         predictors = predictors.reshape(-1, 1)
+                if np.isnan(predictors).any():
+                    raise ValueError('The predictors array cannot have null values.')
+                if np.isinf(predictors).any():
+                    raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
 
                 # -- conformable number of observations
                 if predictors.shape[0] != response.shape[0]:
@@ -461,7 +475,7 @@ class BayesianUnobservedComponents:
                 self.predictors_names = [f"x{i + 1}" for i in range(self.num_predictors)]
 
     @property
-    def num_dummy_seasonal_state_eqs(self):
+    def num_dummy_seasonal_state_eqs(self) -> int:
         if len(self.dummy_seasonal) == 0:
             return 0
         else:
@@ -472,7 +486,7 @@ class BayesianUnobservedComponents:
         return num_eqs
 
     @property
-    def num_stochastic_dummy_seasonal_state_eqs(self):
+    def num_stochastic_dummy_seasonal_state_eqs(self) -> int:
         num_stochastic = 0
         for c, v in enumerate(self.dummy_seasonal):
             num_stochastic += 1 * self.stochastic_dummy_seasonal[c]
@@ -480,7 +494,7 @@ class BayesianUnobservedComponents:
         return num_stochastic
 
     @property
-    def num_trig_seasonal_state_eqs(self):
+    def num_trig_seasonal_state_eqs(self) -> int:
         if len(self.trig_seasonal) == 0:
             return 0
         else:
@@ -492,7 +506,7 @@ class BayesianUnobservedComponents:
         return num_eqs
 
     @property
-    def num_stochastic_trig_seasonal_state_eqs(self):
+    def num_stochastic_trig_seasonal_state_eqs(self) -> int:
         num_stochastic = 0
         for c, v in enumerate(self.trig_seasonal):
             _, freq = v
@@ -501,69 +515,70 @@ class BayesianUnobservedComponents:
         return num_stochastic
 
     @property
-    def num_seasonal_state_eqs(self):
+    def num_seasonal_state_eqs(self) -> int:
         return self.num_dummy_seasonal_state_eqs + self.num_trig_seasonal_state_eqs
 
     @property
-    def num_stochastic_seasonal_state_eqs(self):
+    def num_stochastic_seasonal_state_eqs(self) -> int:
         return self.num_stochastic_dummy_seasonal_state_eqs + self.num_stochastic_trig_seasonal_state_eqs
 
     @property
-    def has_predictors(self):
+    def has_predictors(self) -> bool:
         if self.predictors.size > 0:
             return True
         else:
             return False
 
     @property
-    def num_predictors(self):
+    def num_predictors(self) -> int:
         if self.predictors.size == 0:
             return 0
         else:
             return self.predictors.shape[1]
 
     @property
-    def num_state_eqs(self):
+    def num_state_eqs(self) -> int:
         return ((self.level + self.slope) * 1
                 + self.num_seasonal_state_eqs
                 + self.has_predictors * 1)
 
     @property
-    def num_stochastic_states(self):
+    def num_stochastic_states(self) -> int:
         return ((self.level * self.stochastic_level
                  + self.slope * self.stochastic_slope) * 1
                 + self.num_stochastic_seasonal_state_eqs)
 
     @property
-    def num_obs(self):
+    def num_obs(self) -> int:
         return self.response.shape[0]
 
     @property
-    def mean_response(self):
+    def mean_response(self) -> np.ndarray:
         return np.nanmean(self.response)
 
     @property
-    def sd_response(self):
+    def sd_response(self) -> np.ndarray:
         return np.nanstd(self.response)
 
     @property
-    def z_response(self):
+    def z_response(self) -> np.ndarray:
         return (self.response - self.mean_response) / self.sd_response
 
     @property
-    def y(self):
+    def y(self) -> np.ndarray:
         if self.standardize:
             return self.z_response
         else:
             return self.response
 
     @staticmethod
-    def trig_transition_matrix(freq):
+    def trig_transition_matrix(freq: int) -> np.ndarray:
         real_part = np.array([[np.cos(freq), np.sin(freq)]])
         imaginary_part = np.array([[-np.sin(freq), np.cos(freq)]])
         return np.concatenate((real_part, imaginary_part), axis=0)
 
-    def observation_matrix(self, num_rows=0):
+    def observation_matrix(self,
+                           num_rows: int = 0) -> np.ndarray:
         if num_rows == 0:
             num_rows = self.num_obs
         m = self.num_state_eqs
@@ -597,7 +612,7 @@ class BayesianUnobservedComponents:
         return Z
 
     @property
-    def state_transition_matrix(self):
+    def state_transition_matrix(self) -> np.ndarray:
         m = self.num_state_eqs
         T = np.zeros((m, m), dtype=np.float64)
 
@@ -631,7 +646,7 @@ class BayesianUnobservedComponents:
         return T
 
     @property
-    def state_error_transformation_matrix(self):
+    def state_error_transformation_matrix(self) -> np.ndarray:
         m = self.num_state_eqs
         q = self.num_stochastic_states
         R = np.zeros((m, q), dtype=np.float64)
@@ -669,7 +684,7 @@ class BayesianUnobservedComponents:
         return R
 
     @property
-    def posterior_state_error_variance_transformation_matrix(self):
+    def posterior_state_error_covariance_transformation_matrix(self) -> np.ndarray:
         q = self.num_stochastic_states
         A = np.zeros((q, q), dtype=np.float64)
 
@@ -705,12 +720,12 @@ class BayesianUnobservedComponents:
         return A
 
     def _model_setup(self,
-                     response_var_shape_prior, response_var_scale_prior,
-                     level_var_shape_prior, level_var_scale_prior,
-                     slope_var_shape_prior, slope_var_scale_prior,
-                     dum_season_var_shape_prior, dum_season_var_scale_prior,
-                     trig_season_var_shape_prior, trig_season_var_scale_prior,
-                     reg_coeff_mean_prior, reg_coeff_var_prior):
+                     response_var_shape_prior: float, response_var_scale_prior: float,
+                     level_var_shape_prior: float, level_var_scale_prior: float,
+                     slope_var_shape_prior: float, slope_var_scale_prior: float,
+                     dum_season_var_shape_prior: tuple, dum_season_var_scale_prior: tuple,
+                     trig_season_var_shape_prior: tuple, trig_season_var_scale_prior: tuple,
+                     reg_coeff_mean_prior: np.ndarray, reg_coeff_cov_prior: np.ndarray) -> model_setup:
 
         n = self.num_obs
 
@@ -748,7 +763,10 @@ class BayesianUnobservedComponents:
                 init_state_error_var.append(0.01 * self.sd_response ** 2)
 
             init_state_variances.append(1e6)
-            components['Level'] = dict(start_index=j, end_index=j + 1, stochastic=self.stochastic_level)
+            components['Level'] = dict(start_obs_mat_col_index=j,
+                                       end_obs_mat_col_index=j + 1,
+                                       state_error_cov_diag_index=j,
+                                       stochastic=self.stochastic_level)
             j += 1
 
         if self.slope:
@@ -763,59 +781,62 @@ class BayesianUnobservedComponents:
                 state_var_scale_prior.append(slope_var_scale_prior)
                 init_state_error_var.append(0.01 * self.sd_response ** 2)
 
-            components['Trend'] = dict(stochastic=self.stochastic_slope)
+            components['Trend'] = dict(state_error_cov_diag_index=j,
+                                       stochastic=self.stochastic_slope)
             init_state_variances.append(1e6)
             j += 1
 
         if len(self.dummy_seasonal) > 0:
             if True in self.stochastic_dummy_seasonal:
-                if np.isnan(dum_season_var_shape_prior):
-                    dum_season_var_shape_prior = 0.001
+                if len(dum_season_var_shape_prior) == 0:
+                    dum_season_var_shape_prior = (0.001,) * len(self.dummy_seasonal)
 
-                if np.isnan(dum_season_var_scale_prior):
-                    dum_season_var_scale_prior = 0.001
+                if len(dum_season_var_scale_prior) == 0:
+                    dum_season_var_scale_prior = (0.001,) * len(self.dummy_seasonal)
 
             i = j
             for c, v in enumerate(self.dummy_seasonal):
-                seasonal_period = seasonal_period + (v, )
+                seasonal_period = seasonal_period + (v,)
                 if self.stochastic_dummy_seasonal[c]:
-                    state_var_shape_post.append(dum_season_var_shape_prior + 0.5 * n)
-                    state_var_scale_prior.append(dum_season_var_scale_prior)
+                    state_var_shape_post.append(dum_season_var_shape_prior[c] + 0.5 * n)
+                    state_var_scale_prior.append(dum_season_var_scale_prior[c])
                     init_state_error_var.append(0.01 * self.sd_response ** 2)
 
                 for k in range(v - 1):
                     init_state_variances.append(1e6)
 
-                components[f'Dummy-Seasonal.{v}'] = dict(start_index=i,
-                                                         end_index=i + (v - 1) + 1,
+                components[f'Dummy-Seasonal.{v}'] = dict(start_obs_mat_col_index=i,
+                                                         end_obs_mat_col_index=i + (v - 1) + 1,
+                                                         state_error_cov_diag_index=i,
                                                          stochastic=self.stochastic_dummy_seasonal[c])
                 i += v - 1
             j += self.num_dummy_seasonal_state_eqs
 
         if len(self.trig_seasonal) > 0:
             if True in self.stochastic_trig_seasonal:
-                if np.isnan(trig_season_var_shape_prior):
-                    trig_season_var_shape_prior = 0.001
+                if len(trig_season_var_shape_prior) == 0:
+                    trig_season_var_shape_prior = (0.001,) * len(self.trig_seasonal)
 
-                if np.isnan(trig_season_var_scale_prior):
-                    trig_season_var_scale_prior = 0.001
+                if len(trig_season_var_scale_prior) == 0:
+                    trig_season_var_scale_prior = (0.001,) * len(self.trig_seasonal)
 
             i = j
             for c, v in enumerate(self.trig_seasonal):
                 f, h = v
                 num_terms = 2 * h
-                seasonal_period = seasonal_period + (f, )
+                seasonal_period = seasonal_period + (f,)
                 if self.stochastic_trig_seasonal[c]:
                     for k in range(num_terms):
-                        state_var_shape_post.append(trig_season_var_shape_prior + 0.5 * n)
-                        state_var_scale_prior.append(trig_season_var_scale_prior)
+                        state_var_shape_post.append(trig_season_var_shape_prior[c] + 0.5 * n)
+                        state_var_scale_prior.append(trig_season_var_scale_prior[c])
                         init_state_error_var.append(0.01 * self.sd_response ** 2)
 
                 for k in range(num_terms):
                     init_state_variances.append(1e6)
 
-                components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_index=i,
-                                                                     end_index=i + num_terms + 1,
+                components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_obs_mat_col_index=i,
+                                                                     end_obs_mat_col_index=i + num_terms + 1,
+                                                                     state_error_cov_diag_index=i,
                                                                      stochastic=self.stochastic_trig_seasonal[c])
                 i += 2 * h
             j += self.num_trig_seasonal_state_eqs
@@ -830,12 +851,12 @@ class BayesianUnobservedComponents:
                       'A 0-mean prior will be enforced.')
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
 
-            if reg_coeff_var_prior.size == 0:
+            if reg_coeff_cov_prior.size == 0:
                 kappa = 1.
                 g = kappa / n
                 print('No variance prior was provided for the regression coefficient vector. '
                       'A g=1/n Zellner g-prior will be enforced.')
-                reg_coeff_var_prior = g * (0.5 * dot(X.T, X) + 0.5 * np.diag(dot(X.T, X)))
+                reg_coeff_cov_prior = g * (0.5 * dot(X.T, X) + 0.5 * np.diag(dot(X.T, X)))
 
         state_var_shape_post = np.array(state_var_shape_post).reshape(-1, 1)
         state_var_scale_prior = np.array(state_var_scale_prior).reshape(-1, 1)
@@ -849,19 +870,184 @@ class BayesianUnobservedComponents:
                                        state_var_scale_prior,
                                        state_var_shape_post,
                                        reg_coeff_mean_prior,
-                                       reg_coeff_var_prior,
+                                       reg_coeff_cov_prior,
                                        init_error_variances,
                                        init_state_covariance)
 
         return self.model_setup
 
-    def sample(self, num_samp=1000,
-               response_var_shape_prior=np.nan, response_var_scale_prior=np.nan,
-               level_var_shape_prior=np.nan, level_var_scale_prior=np.nan,
-               slope_var_shape_prior=np.nan, slope_var_scale_prior=np.nan,
-               dum_season_var_shape_prior=np.nan, dum_season_var_scale_prior=np.nan,
-               trig_season_var_shape_prior=np.nan, trig_season_var_scale_prior=np.nan,
-               reg_coeff_mean_prior=np.array([[]]), reg_coeff_var_prior=np.array([[]])):
+    def sample(self,
+               num_samp: int,
+               response_var_shape_prior: float = np.nan, response_var_scale_prior: float = np.nan,
+               level_var_shape_prior: float = np.nan, level_var_scale_prior: float = np.nan,
+               slope_var_shape_prior: float = np.nan, slope_var_scale_prior: float = np.nan,
+               dum_season_var_shape_prior: tuple = (), dum_season_var_scale_prior: tuple = (),
+               trig_season_var_shape_prior: tuple = (), trig_season_var_scale_prior: tuple = (),
+               reg_coeff_mean_prior: np.ndarray = np.array([[]]), reg_coeff_cov_prior: np.ndarray = np.array([[]])
+               ) -> post:
+
+        if not isinstance(num_samp, int):
+            raise ValueError('num_samp must be of type float.')
+        else:
+            if not num_samp > 0:
+                raise ValueError('num_samp must a strictly positive integer.')
+
+        # Response variance check
+        if not isinstance(response_var_shape_prior, float):
+            raise ValueError('response_var_shape_prior must be of type float.')
+        else:
+            if not np.isnan(response_var_shape_prior):
+                if not response_var_shape_prior > 0:
+                    raise ValueError('response_var_shape_prior must be a strictly positive float.')
+
+        if not isinstance(response_var_scale_prior, float):
+            raise ValueError('response_var_scale_prior must be of type float.')
+        else:
+            if not np.isnan(response_var_scale_prior):
+                if not response_var_scale_prior > 0:
+                    raise ValueError('response_var_scale_prior must be a strictly positive float.')
+
+        # Level variance check
+        if self.level:
+            if not isinstance(level_var_shape_prior, float):
+                raise ValueError('level_var_shape_prior must be of type float.')
+            else:
+                if not np.isnan(level_var_shape_prior):
+                    if not level_var_shape_prior > 0:
+                        raise ValueError('level_var_shape_prior must be a strictly positive float.')
+
+            if not isinstance(level_var_scale_prior, float):
+                raise ValueError('level_var_scale_prior must be of type float.')
+            else:
+                if not np.isnan(level_var_scale_prior):
+                    if not level_var_scale_prior > 0:
+                        raise ValueError('level_var_scale_prior must be a strictly positive float.')
+
+        # Slope variance check
+        if self.slope:
+            if not isinstance(slope_var_shape_prior, float):
+                raise ValueError('slope_var_shape_prior must be of type float.')
+            else:
+                if not np.isnan(slope_var_shape_prior):
+                    if not slope_var_shape_prior > 0:
+                        raise ValueError('slope_var_shape_prior must be a strictly positive float.')
+
+            if not isinstance(slope_var_scale_prior, float):
+                raise ValueError('slope_var_scale_prior must be of type float.')
+            else:
+                if not np.isnan(slope_var_scale_prior):
+                    if not slope_var_scale_prior > 0:
+                        raise ValueError('slope_var_scale_prior must be a strictly positive float.')
+
+        # Dummy seasonal check
+        if len(self.dummy_seasonal) > 0:
+            if not isinstance(dum_season_var_shape_prior, tuple):
+                raise ValueError('dum_seasonal_var_shape_prior must be a tuple of floats'
+                                 'to accommodate potentially multiple seasonality.')
+            else:
+                if len(dum_season_var_shape_prior) > 0:
+                    if len(dum_season_var_shape_prior) != len(self.dummy_seasonal):
+                        raise ValueError('A non-empty tuple for dum_season_var_shape_prior must have the same '
+                                         'length as dummy_seasonal. That is, for each periodicity in dummy_seasonal, '
+                                         'there must be a corresponding shape prior.')
+                    if not all(isinstance(i, float) for i in dum_season_var_shape_prior):
+                        raise ValueError('All values in dum_season_var_shape_prior must be of type float.')
+                    if not all(i > 0 for i in dum_season_var_shape_prior):
+                        raise ValueError('All values in dum_season_var_shape_prior must be strictly positive floats.')
+
+            if not isinstance(dum_season_var_scale_prior, tuple):
+                raise ValueError('dum_seasonal_var_scale_prior must be of type tuple '
+                                 'to account for multiple seasonality.')
+            else:
+                if len(dum_season_var_scale_prior) > 0:
+                    if len(dum_season_var_scale_prior) != len(self.dummy_seasonal):
+                        raise ValueError('A non-empty tuple for dum_season_var_scale_prior must have the same '
+                                         'length as dummy_seasonal. That is, for each periodicity in dummy_seasonal, '
+                                         'there must be a corresponding scale prior.')
+                    if not all(isinstance(i, float) for i in dum_season_var_scale_prior):
+                        raise ValueError('All values in dum_season_var_scale_prior must be of type float.')
+                    if not all(i > 0 for i in dum_season_var_scale_prior):
+                        raise ValueError('All values in dum_season_var_scale_prior must be strictly positive floats.')
+
+        # Trigonometric seasonal check
+        if len(self.trig_seasonal) > 0:
+            if not isinstance(trig_season_var_shape_prior, tuple):
+                raise ValueError('trig_seasonal_var_shape_prior must be a tuple of floats'
+                                 'to accommodate potentially multiple seasonality.')
+            else:
+                if len(trig_season_var_shape_prior) > 0:
+                    if len(trig_season_var_shape_prior) != len(self.trig_seasonal):
+                        raise ValueError('A non-empty tuple for trig_season_var_shape_prior must have the same '
+                                         'length as trig_seasonal. That is, for each periodicity in trig_seasonal, '
+                                         'there must be a corresponding shape prior.')
+                    if not all(isinstance(i, float) for i in trig_season_var_shape_prior):
+                        raise ValueError('All values in trig_season_var_shape_prior must be of type float.')
+                    if not all(i > 0 for i in trig_season_var_shape_prior):
+                        raise ValueError('All values in trig_season_var_shape_prior must be strictly positive floats.')
+
+            if not isinstance(trig_season_var_scale_prior, tuple):
+                raise ValueError('trig_seasonal_var_scale_prior must be of type tuple '
+                                 'to account for multiple seasonality.')
+            else:
+                if len(trig_season_var_scale_prior) > 0:
+                    if len(trig_season_var_scale_prior) != len(self.trig_seasonal):
+                        raise ValueError('A non-empty tuple for trig_season_var_scale_prior must have the same '
+                                         'length as trig_seasonal. That is, for each periodicity in trig_seasonal, '
+                                         'there must be a corresponding scale prior.')
+                    if not all(isinstance(i, float) for i in trig_season_var_scale_prior):
+                        raise ValueError('All values in trig_season_var_scale_prior must be of type float.')
+                    if not all(i > 0 for i in trig_season_var_scale_prior):
+                        raise ValueError('All values in trig_season_var_scale_prior must be strictly positive floats.')
+
+        # Predictors check
+        if self.has_predictors:
+            if not isinstance(reg_coeff_mean_prior, np.ndarray):
+                raise ValueError('reg_coeff_mean_prior must be of type Numpy ndarray.')
+            else:
+                if reg_coeff_mean_prior.size > 0:
+                    if reg_coeff_mean_prior.dtype != 'float64':
+                        raise ValueError('All values in reg_coeff_mean_prior must be of type float.')
+                    if reg_coeff_mean_prior.ndim == 0:
+                        raise ValueError('reg_coeff_mean_prior must have dimension 1 or 2. Dimension is 0.')
+                    if reg_coeff_mean_prior.ndim == 1:
+                        reg_coeff_mean_prior = reg_coeff_mean_prior.reshape(-1, 1)
+                    if reg_coeff_mean_prior.ndim > 2:
+                        raise ValueError('reg_coeff_mean_prior must have dimension 1 or 2. Dimension exceeds 2.')
+                    if reg_coeff_mean_prior.ndim == 2:
+                        if 1 in reg_coeff_mean_prior.shape:
+                            reg_coeff_mean_prior = reg_coeff_mean_prior.reshape(-1, 1)
+                    if reg_coeff_mean_prior.shape[0] != self.num_predictors:
+                        raise ValueError('The number of elements in reg_coeff_mean_prior must match the number '
+                                         'of predictors.')
+                    if np.isnan(reg_coeff_mean_prior).any():
+                        raise ValueError('reg_coeff_mean_prior cannot have null values.')
+                    if np.isinf(reg_coeff_mean_prior).any():
+                        raise ValueError('reg_coeff_mean_prior cannot have Inf and/or -Inf values.')
+
+            if not isinstance(reg_coeff_cov_prior, np.ndarray):
+                raise ValueError('reg_coeff_cov_prior must be of type Numpy ndarray.')
+            else:
+                if reg_coeff_cov_prior.size > 0:
+                    if reg_coeff_cov_prior.dtype != 'float64':
+                        raise ValueError('All values in reg_coeff_cov_prior must be of type float.')
+                    if reg_coeff_cov_prior.ndim != 2:
+                        raise ValueError('reg_coeff_cov_prior must have dimension 2.')
+                    if np.isnan(reg_coeff_cov_prior).any():
+                        raise ValueError('reg_coeff_cov_prior cannot have null values.')
+                    if np.isinf(reg_coeff_cov_prior).any():
+                        raise ValueError('reg_coeff_cov_prior cannot have Inf and/or -Inf values.')
+                    if reg_coeff_cov_prior.shape[0] != reg_coeff_cov_prior.shape[1]:
+                        raise ValueError('reg_coeff_cov_prior must be square, i.e., the number '
+                                         'of rows must match the number of columns.')
+                    if not ao.is_positive_definite(reg_coeff_cov_prior):
+                        raise ValueError('reg_coeff_cov_prior must be a positive definite matrix.')
+                    if not ao.is_symmetric(reg_coeff_cov_prior):
+                        raise ValueError('reg_coeff_cov_prior must be a symmetric matrix.')
+                    if reg_coeff_mean_prior.size > 0:
+                        if reg_coeff_cov_prior.shape[0] != self.num_predictors:
+                            raise ValueError('The number of rows and number of columns in '
+                                             'reg_coeff_cov_prior must match the number of rows '
+                                             'in reg_coeff_mean_prior (i.e., the number of predictors).')
 
         # Define variables
         y = self.y
@@ -871,7 +1057,7 @@ class BayesianUnobservedComponents:
         Z = self.observation_matrix()
         T = self.state_transition_matrix
         R = self.state_error_transformation_matrix
-        A = self.posterior_state_error_variance_transformation_matrix
+        A = self.posterior_state_error_covariance_transformation_matrix
         X = self.predictors
         k = self.num_predictors
 
@@ -881,7 +1067,7 @@ class BayesianUnobservedComponents:
                                   slope_var_shape_prior, slope_var_scale_prior,
                                   dum_season_var_shape_prior, dum_season_var_scale_prior,
                                   trig_season_var_shape_prior, trig_season_var_scale_prior,
-                                  reg_coeff_mean_prior, reg_coeff_var_prior)
+                                  reg_coeff_mean_prior, reg_coeff_cov_prior)
 
         response_var_scale_prior = model.response_var_scale_prior
         response_var_shape_post = model.response_var_shape_post
@@ -892,9 +1078,9 @@ class BayesianUnobservedComponents:
 
         # Initialize output arrays
         if q > 0:
-            state_error_variance = np.empty((num_samp, q, q), dtype=np.float64)
+            state_error_covariance = np.empty((num_samp, q, q), dtype=np.float64)
         else:
-            state_error_variance = np.empty((num_samp, 0, 0))
+            state_error_covariance = np.empty((num_samp, 0, 0))
 
         response_error_variance = np.empty((num_samp, 1, 1), dtype=np.float64)
         smoothed_errors = np.empty((num_samp, n, 1 + q, 1), dtype=np.float64)
@@ -910,7 +1096,7 @@ class BayesianUnobservedComponents:
         # Set initial values for response and state error variances
         response_error_variance0 = np.array([[init_error_variances[0]]])
         if q > 0:
-            state_error_variance0 = np.diag(init_error_variances[1:])
+            state_error_covariance0 = np.diag(init_error_variances[1:])
 
         # Helper matrices
         q_eye = np.eye(q)
@@ -921,12 +1107,12 @@ class BayesianUnobservedComponents:
             y_no_nan = ao.replace_nan(y)
             init_state_values0[-1] = 1.
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
-            reg_coeff_var_prior = model.reg_coeff_var_prior
-            reg_coeff_var_inv_prior = solve(reg_coeff_var_prior, np.eye(k))
-            reg_coeff_var_inv_post = dot(X.T, X) + solve(reg_coeff_var_prior, np.eye(k))
-            reg_coeff_var_post = solve(reg_coeff_var_inv_post, np.eye(k))
+            reg_coeff_cov_prior = model.reg_coeff_cov_prior
+            reg_coeff_var_inv_prior = solve(reg_coeff_cov_prior, np.eye(k))
+            reg_coeff_var_inv_post = dot(X.T, X) + solve(reg_coeff_cov_prior, np.eye(k))
+            reg_coeff_cov_post = solve(reg_coeff_var_inv_post, np.eye(k))
             regression_coefficients = np.empty((num_samp, k, 1), dtype=np.float64)
-            regression_coefficients0 = dot(reg_coeff_var_post,
+            regression_coefficients0 = dot(reg_coeff_cov_post,
                                            (dot(X.T, y) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
         else:
             regression_coefficients = np.array([[[]]])
@@ -936,11 +1122,11 @@ class BayesianUnobservedComponents:
             if s < 1:
                 init_state_values = init_state_values0
                 response_err_var = response_error_variance0
-                state_err_var = state_error_variance0
+                state_err_cov = state_error_covariance0
             else:
                 init_state_values = smoothed_state[s - 1, 0]
                 response_err_var = response_error_variance[s - 1]
-                state_err_var = state_error_variance[s - 1]
+                state_err_cov = state_error_covariance[s - 1]
 
             if self.has_predictors:
                 if s < 1:
@@ -956,7 +1142,7 @@ class BayesianUnobservedComponents:
                       T,
                       R,
                       response_err_var,
-                      state_err_var,
+                      state_err_cov,
                       init_state=init_state_values,
                       init_state_covariance=init_state_covariance)
 
@@ -971,7 +1157,7 @@ class BayesianUnobservedComponents:
                      T,
                      R,
                      response_err_var,
-                     state_err_var,
+                     state_err_cov,
                      init_plus_state_values=init_plus_state_values,
                      init_state_values=init_state_values,
                      init_state_covariance=init_state_covariance,
@@ -988,7 +1174,7 @@ class BayesianUnobservedComponents:
                 state_sse = dot(state_residual.T ** 2, n_ones)
                 state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
                 state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
-                state_error_variance[s] = q_eye * state_var_post
+                state_error_covariance[s] = q_eye * state_var_post
 
             # Get new draw for observation variance
             smooth_one_step_ahead_prediction_residual = smoothed_errors[s, :, 0]
@@ -1002,26 +1188,40 @@ class BayesianUnobservedComponents:
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                 y_tilde = y_adj - smooth_time_prediction  # y with smooth time prediction subtracted out
-                reg_coeff_mean_post = dot(reg_coeff_var_post,
+                reg_coeff_mean_post = dot(reg_coeff_cov_post,
                                           (dot(X.T, y_tilde) + dot(reg_coeff_var_inv_prior, reg_coeff_mean_prior)))
 
-                cov_post = response_error_variance[s][0, 0] * reg_coeff_var_post
+                cov_post = response_error_variance[s][0, 0] * reg_coeff_cov_post
                 regression_coefficients[s] = (np
                                               .random
                                               .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
                                                                    cov=cov_post).reshape(-1, 1))
 
-        results = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
-                       filtered_state, filtered_prediction, response_variance, state_covariance,
-                       response_error_variance, state_error_variance, regression_coefficients)
+        self.posterior = post(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
+                              filtered_state, filtered_prediction, response_variance, state_covariance,
+                              response_error_variance, state_error_covariance, regression_coefficients)
 
-        return results
+        return self.posterior
 
-    def forecast(self, posterior, num_periods, burn=0,
+    def forecast(self,
+                 num_periods: int,
+                 burn: int = 0,
                  future_predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]])):
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix
         R = self.state_error_transformation_matrix
+
+        if not isinstance(num_periods, int):
+            raise ValueError('num_periods must be of type integer.')
+        else:
+            if not num_periods > 0:
+                raise ValueError('num_periods must be a strictly positive integer.')
+
+        if not isinstance(burn, int):
+            raise ValueError('burn must be of type integer.')
+        else:
+            if burn < 0:
+                raise ValueError('burn must be a non-negative integer.')
 
         if isinstance(self.historical_time_index, pd.DatetimeIndex):
             freq = self.historical_time_index.freq
@@ -1075,18 +1275,18 @@ class BayesianUnobservedComponents:
 
             # -- dimensions
             if future_predictors.ndim == 0:
-                raise ValueError('The future_predictors array must have dimension 1 or 2.')
-            elif future_predictors.ndim == 1:
+                raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension is 0.')
+            if future_predictors.ndim == 1:
                 future_predictors = future_predictors.reshape(-1, 1)
-            elif future_predictors.ndim > 2:
-                raise ValueError('The future_predictors array must have dimension 1 or 2.')
-            else:
-                if np.isnan(future_predictors).any():
-                    raise ValueError('The future_predictors array cannot have null values.')
-                if np.isinf(future_predictors).any():
-                    raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
+            if future_predictors.ndim > 2:
+                raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension exceeds 2.')
+            if future_predictors.ndim == 2:
                 if 1 in future_predictors.shape:
                     future_predictors = future_predictors.reshape(-1, 1)
+            if np.isnan(future_predictors).any():
+                raise ValueError('The future_predictors array cannot have null values.')
+            if np.isinf(future_predictors).any():
+                raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
 
             # Final sanity checks
             if self.num_predictors != future_predictors.shape[1]:
@@ -1105,25 +1305,50 @@ class BayesianUnobservedComponents:
                                   f'Only the first {num_periods} observations will be used '
                                   f'in future_predictors.')
 
-        y_forecast = _forecast(posterior,
+        y_forecast = _forecast(self.posterior,
                                num_periods,
-                               burn,
                                Z,
                                T,
                                R,
-                               future_predictors)
+                               future_predictors,
+                               burn)
 
         return y_forecast
 
-    def plot_components(self, posterior, burn=0, num_first_obs_ignore=-1, conf_int_level=0.05,
-                        random_sample_size_prop=1., smoothed=True):
+    def plot_components(self,
+                        burn: int = 0,
+                        conf_int_level: float = 0.05,
+                        random_sample_size_prop: float = 1.,
+                        smoothed: bool = True):
 
-        if num_first_obs_ignore == -1:
-            num_first_obs_ignore = self.num_first_obs_ignore
+        if not isinstance(burn, int):
+            raise ValueError('burn must be of type integer.')
+        else:
+            if burn < 0:
+                raise ValueError('burn must be a non-negative integer.')
+
+        if not isinstance(conf_int_level, float):
+            raise ValueError('conf_int_level must be of type float.')
+        else:
+            if conf_int_level <= 0 or conf_int_level >= 1:
+                raise ValueError('conf_int_level must be a value in the '
+                                 'interval (0, 1).')
+
+        if not isinstance(random_sample_size_prop, float):
+            raise ValueError('random_sample_size_prop must be of type float.')
+        else:
+            if random_sample_size_prop <= 0 or random_sample_size_prop > 1:
+                raise ValueError('random_sample_size_prop must be a value in the '
+                                 'interval (0, 1].')
+
+        if not isinstance(smoothed, bool):
+            raise ValueError('smoothed must be of type bool.')
+
+        num_first_obs_ignore = self.num_first_obs_ignore
 
         if self.has_predictors:
             X = self.predictors[num_first_obs_ignore:, :]
-            reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
+            reg_coeff = self.posterior.regression_coefficients[burn:, :, 0].T
 
         y = self.y[num_first_obs_ignore:, 0]
         n = self.num_obs
@@ -1134,18 +1359,18 @@ class BayesianUnobservedComponents:
         conf_int_lb = 0.5 * conf_int_level
         conf_int_ub = 1. - 0.5 * conf_int_level
 
-        filtered_prediction = _simulate_posterior_predictive_response(posterior,
+        filtered_prediction = _simulate_posterior_predictive_response(self.posterior,
                                                                       burn,
                                                                       num_first_obs_ignore,
                                                                       random_sample_size_prop)
-        smoothed_prediction = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
+        smoothed_prediction = self.posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
 
         if smoothed:
             prediction = smoothed_prediction
-            state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
+            state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
         else:
             prediction = filtered_prediction
-            state = _simulate_posterior_predictive_state(posterior,
+            state = _simulate_posterior_predictive_state(self.posterior,
                                                          burn,
                                                          num_first_obs_ignore,
                                                          random_sample_size_prop,
@@ -1161,6 +1386,7 @@ class BayesianUnobservedComponents:
         ax[0].title.set_text('Predicted vs. observed response')
         ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - conf_int_level)}% prediction interval'),
                      loc='upper left')
+
         for i, c in enumerate(components):
             if c == 'Irregular':
                 resid = y[np.newaxis] - prediction
@@ -1180,7 +1406,7 @@ class BayesianUnobservedComponents:
 
             if c not in ('Irregular', 'Regression', 'Trend'):
                 v = components[c]
-                start_index, end_index = v['start_index'], v['end_index']
+                start_index, end_index = v['start_obs_mat_col_index'], v['end_obs_mat_col_index']
                 A = Z[:, 0, start_index:end_index]
                 B = state[:, :, start_index:end_index, 0]
                 time_component = (A[np.newaxis] * B).sum(axis=2)
@@ -1202,38 +1428,61 @@ class BayesianUnobservedComponents:
         fig.tight_layout()
 
         return
-    
-    def summary(self, posterior, burn=0, conf_int_level=0.05):
-        components = self.model_setup.components
-        resp_err_var = posterior.response_error_variance[burn:]
-        state_err_var = posterior.state_error_variance[burn:]
-        summary_d = dict()
-        summary_d['Number of posterior samples (after burn)'] = posterior.num_samp - burn
 
-        i = 0
+    def summary(self,
+                burn: int = 0,
+                conf_int_level: float = 0.05) -> dict:
+        if not isinstance(burn, int):
+            raise ValueError('burn must be of type integer.')
+        else:
+            if burn < 0:
+                raise ValueError('burn must be a non-negative integer.')
+
+        if not isinstance(conf_int_level, float):
+            raise ValueError('conf_int_level must be of type float.')
+        else:
+            if conf_int_level <= 0 or conf_int_level >= 1:
+                raise ValueError('conf_int_level must be a value in the '
+                                 'interval (0, 1).')
+
+        components = self.model_setup.components
+        resp_err_var = self.posterior.response_error_variance[burn:]
+        state_err_cov = self.posterior.state_error_covariance[burn:]
+        summary_d = dict()
+        summary_d['Number of posterior samples (after burn)'] = self.posterior.num_samp - burn
+
         for c in components:
             if c == 'Irregular':
-                summary_d[f"Posterior.Mean[{c} Variance]"] = np.mean(resp_err_var)
-                summary_d[f"Posterior.StdDev[{c} Variance]"] = np.std(resp_err_var)
+                summary_d[f"Posterior.Mean[{c}]"] = np.mean(resp_err_var)
+                summary_d[f"Posterior.StdDev[{c}]"] = np.std(resp_err_var)
+                summary_d[f"Posterior.ConfInt.LB[{c}]"] = np.quantile(resp_err_var,
+                                                                      0.5 * conf_int_level)
+                summary_d[f"Posterior.ConfInt.UB[{c}]"] = np.quantile(resp_err_var,
+                                                                      1. - 0.5 * conf_int_level)
 
             if c not in ('Irregular', 'Regression'):
                 v = components[c]
-                if v['stochastic']:
-                    summary_d[f"Posterior.Mean[{c} Variance]"] = np.mean(state_err_var[:, i, i])
-                    summary_d[f"Posterior.StdDev[{c} Variance]"] = np.std(state_err_var[:, i, i])
+                stochastic = v['stochastic']
+                cov_idx = v['state_error_cov_diag_index']
 
-                    if 'Trigonometric' not in c:
-                        i += 1
-                    else:
-                        delta = v['end_index'] - v['start_index'] - 1
-                        i += delta
+                if stochastic:
+                    summary_d[f"Posterior.Mean[{c}]"] = np.mean(state_err_cov[:, cov_idx, cov_idx])
+                    summary_d[f"Posterior.StdDev[{c}]"] = np.std(state_err_cov[:, cov_idx, cov_idx])
+                    summary_d[f"Posterior.ConfInt.LB[{c}]"] = np.quantile(state_err_cov[:, cov_idx, cov_idx],
+                                                                          0.5 * conf_int_level)
+                    summary_d[f"Posterior.ConfInt.UB[{c}]"] = np.quantile(state_err_cov[:, cov_idx, cov_idx],
+                                                                          1. - 0.5 * conf_int_level)
 
             if c == 'Regression':
-                reg_coeff = posterior.regression_coefficients[burn:, :, 0]
+                reg_coeff = self.posterior.regression_coefficients[burn:, :, 0]
                 mean_reg_coeff = np.mean(reg_coeff, axis=0)
                 std_reg_coeff = np.std(reg_coeff, axis=0)
+                ci_lb_reg_coeff = np.quantile(reg_coeff, 0.5 * conf_int_level, axis=0)
+                ci_ub_reg_coeff = np.quantile(reg_coeff, 1. - 0.5 * conf_int_level, axis=0)
                 for k in range(self.num_predictors):
                     summary_d[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
                     summary_d[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
+                    summary_d[f"Posterior.ConfInt.LB[beta.{self.predictors_names[k]}]"] = ci_lb_reg_coeff[k]
+                    summary_d[f"Posterior.ConfInt.UB[beta.{self.predictors_names[k]}]"] = ci_ub_reg_coeff[k]
 
         return summary_d

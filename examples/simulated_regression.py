@@ -113,7 +113,7 @@ if __name__ == '__main__':
     mcmc_burn = 100
 
     # Print summary of estimated parameters
-    for key, value in bayes_uc.summary(post, burn=mcmc_burn).items():
+    for key, value in bayes_uc.summary(burn=mcmc_burn).items():
         print(key, ' : ', value)
 
     # Plot in-sample fit against actuals
@@ -124,11 +124,11 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(post, burn=mcmc_burn, smoothed=True)
+    bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
     plt.show()
 
     # Get and plot forecast
-    forecast = bayes_uc.forecast(post, hold_out_size, mcmc_burn, future_predictors=x_test)
+    forecast = bayes_uc.forecast(hold_out_size, mcmc_burn, future_predictors=x_test)
     forecast_mean = np.mean(forecast, axis=0)
     forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
     forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
@@ -142,4 +142,3 @@ if __name__ == '__main__':
 
     # Print RMSE
     print(f"BAYES-UC RMSE: {rmse(y_test, forecast_mean)}")
-
