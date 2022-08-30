@@ -49,6 +49,16 @@ def _simulate_posterior_predictive_response(posterior: post,
                                             burn: int = 0,
                                             num_first_obs_ignore: int = 0,
                                             random_sample_size_prop: float = 1.) -> np.ndarray:
+
+    """
+
+    :param posterior:
+    :param burn:
+    :param num_first_obs_ignore:
+    :param random_sample_size_prop:
+    :return:
+    """
+
     response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
     response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
     num_posterior_samp = response_mean.shape[0]
@@ -94,6 +104,16 @@ def _simulate_posterior_predictive_state(posterior: post,
                                          num_first_obs_ignore: int = 0,
                                          random_sample_size_prop: float = 1.,
                                          has_predictors: bool = False) -> np.ndarray:
+    """
+
+    :param posterior:
+    :param burn:
+    :param num_first_obs_ignore:
+    :param random_sample_size_prop:
+    :param has_predictors:
+    :return:
+    """
+
     if has_predictors:
         mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1, 0]
         cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1, :-1, :-1]
@@ -139,6 +159,18 @@ def _forecast(posterior: post,
               state_error_transformation_matrix: np.ndarray,
               future_predictors: np.ndarray = np.array([[]]),
               burn: int = 0) -> np.ndarray:
+    """
+
+    :param posterior:
+    :param num_periods:
+    :param state_observation_matrix:
+    :param state_transition_matrix:
+    :param state_error_transformation_matrix:
+    :param future_predictors:
+    :param burn:
+    :return:
+    """
+
     Z = state_observation_matrix
     T = state_transition_matrix
     R = state_error_transformation_matrix
@@ -197,6 +229,21 @@ class BayesianUnobservedComponents:
                  trig_seasonal: tuple = (),
                  stochastic_trig_seasonal: tuple = (),
                  standardize: bool = False):
+
+        """
+
+        :param response:
+        :param predictors:
+        :param level:
+        :param stochastic_level:
+        :param slope:
+        :param stochastic_slope:
+        :param dummy_seasonal:
+        :param stochastic_dummy_seasonal:
+        :param trig_seasonal:
+        :param stochastic_trig_seasonal:
+        :param standardize:
+        """
 
         self.model_setup = None
         self.response_name = None
@@ -886,6 +933,24 @@ class BayesianUnobservedComponents:
                reg_coeff_mean_prior: np.ndarray = np.array([[]]), reg_coeff_cov_prior: np.ndarray = np.array([[]])
                ) -> post:
 
+        """
+
+        :param num_samp:
+        :param response_var_shape_prior:
+        :param response_var_scale_prior:
+        :param level_var_shape_prior:
+        :param level_var_scale_prior:
+        :param slope_var_shape_prior:
+        :param slope_var_scale_prior:
+        :param dum_season_var_shape_prior:
+        :param dum_season_var_scale_prior:
+        :param trig_season_var_shape_prior:
+        :param trig_season_var_scale_prior:
+        :param reg_coeff_mean_prior:
+        :param reg_coeff_cov_prior:
+        :return:
+        """
+
         if not isinstance(num_samp, int):
             raise ValueError('num_samp must be of type float.')
         else:
@@ -1207,6 +1272,15 @@ class BayesianUnobservedComponents:
                  num_periods: int,
                  burn: int = 0,
                  future_predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]])):
+
+        """
+
+        :param num_periods:
+        :param burn:
+        :param future_predictors:
+        :return:
+        """
+
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix
         R = self.state_error_transformation_matrix
@@ -1321,6 +1395,15 @@ class BayesianUnobservedComponents:
                         random_sample_size_prop: float = 1.,
                         smoothed: bool = True):
 
+        """
+
+        :param burn:
+        :param conf_int_level:
+        :param random_sample_size_prop:
+        :param smoothed:
+        :return:
+        """
+
         if not isinstance(burn, int):
             raise ValueError('burn must be of type integer.')
         else:
@@ -1432,6 +1515,14 @@ class BayesianUnobservedComponents:
     def summary(self,
                 burn: int = 0,
                 conf_int_level: float = 0.05) -> dict:
+
+        """
+
+        :param burn:
+        :param conf_int_level:
+        :return:
+        """
+
         if not isinstance(burn, int):
             raise ValueError('burn must be of type integer.')
         else:
