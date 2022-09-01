@@ -1,17 +1,18 @@
 import numpy as np
-from collections import namedtuple
+from typing import NamedTuple
 from numba import njit
 from ..utils import array_operations as ao
 
 
-kf = namedtuple('kf',
-                ['one_step_ahead_prediction_residual',
-                 'kalman_gain',
-                 'filtered_state',
-                 'state_covariance',
-                 'response_variance',
-                 'inverse_response_variance',
-                 'L'])
+class KF(NamedTuple):
+    one_step_ahead_prediction_residual: np.ndarray
+    kalman_gain: np.ndarray
+    filtered_state: np.ndarray
+    state_covariance: np.ndarray
+    response_variance: np.ndarray
+    inverse_response_variance: np.ndarray
+    L: np.ndarray
+
 
 # @njit
 # def var_mat_check(var_mat):
@@ -130,4 +131,4 @@ def kalman_filter(y: np.ndarray,
         else:
             P[t + 1] = T.dot(P[t]).dot(L[t].T)
 
-    return kf(v, K, a, P, F, F_inv, L)
+    return KF(v, K, a, P, F, F_inv, L)

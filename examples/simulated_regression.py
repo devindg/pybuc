@@ -66,7 +66,7 @@ if __name__ == '__main__':
                      sarima_forecast['mean_ci_lower'],
                      sarima_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('SARIMA: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE
@@ -98,7 +98,7 @@ if __name__ == '__main__':
                      mle_uc_forecast['mean_ci_lower'],
                      mle_uc_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('MLE UC: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     plt.plot(forecast_mean)
     plt.fill_between(np.arange(forecast_mean.size), forecast_l95, forecast_u95, alpha=0.2)
     plt.title('Bayesian UC: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE

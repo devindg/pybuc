@@ -4,7 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.structural import UnobservedComponents
-from pathlib import Path
 
 
 # Convenience function for computing root mean squared error
@@ -14,7 +13,8 @@ def rmse(actual, prediction):
 
 
 # Import airline passenger data
-air = pd.read_csv(Path('../examples/data/airline-passengers.csv'), header=0, index_col=0)
+url = "https://raw.githubusercontent.com/devindg/pybuc/master/examples/data/airline-passengers.csv"
+air = pd.read_csv(url, header=0, index_col=0)
 air = air.astype(float)
 air.index = pd.to_datetime(air.index)
 hold_out_size = 12
@@ -46,7 +46,7 @@ if __name__ == '__main__':
                      sarima_forecast['mean_ci_lower'],
                      sarima_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('SARIMA: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
                                   level=True, stochastic_level=True,
                                   trend=True, stochastic_trend=True,
-                                  freq_seasonal=[{'period': 12, 'harmonics': 4}],
+                                  freq_seasonal=[{'period': 12, 'harmonics': 6}],
                                   stochastic_freq_seasonal=[True])
 
     # Fit the model via maximum likelihood
@@ -81,7 +81,7 @@ if __name__ == '__main__':
                      mle_uc_forecast['mean_ci_lower'],
                      mle_uc_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('MLE UC: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     plt.plot(bayes_uc.future_time_index, forecast_mean)
     plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.2)
     plt.title('Bayesian UC: Forecast')
-    plt.legend(['Actual', 'Mean', '95% Confidence Interval'])
+    plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
 
     # Print RMSE
