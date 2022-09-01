@@ -1,6 +1,5 @@
 from pybuc import buc
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.structural import UnobservedComponents
@@ -25,17 +24,12 @@ eta = np.random.normal(0, np.sqrt(veta), size=n)
 x1 = np.random.normal(50, 10, size=n)
 x2 = np.random.normal(100, 40, size=n)
 x = np.c_[x1, x2]
-Z = 1.
-T = 1.
-R = 1.
 mu = np.empty(n + 1)
 mu[0] = 1500
 y = np.empty(n)
 for t in range(n):
-    mu[t + 1] = mu[t] + eta[t]
-
-for t in range(n):
     y[t] = mu[t] + x[t].dot(beta) + eps[t]
+    mu[t + 1] = mu[t] + eta[t]
 
 y = y.reshape(-1, 1)
 x = np.atleast_2d(x)
@@ -47,7 +41,7 @@ y_test = y[-hold_out_size:, :]
 x_test = x[-hold_out_size:, :]
 
 if __name__ == '__main__':
-    ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
+    ''' Fit the simulated data using SARIMA(0,1,1) without drift'''
     sarima = SARIMAX(y_train, exog=x_train, order=(0, 1, 1), trend=[0])
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())
@@ -55,7 +49,7 @@ if __name__ == '__main__':
     # Plot in-sample fit against actuals
     plt.plot(y_train)
     plt.plot(sarima_res.fittedvalues)
-    plt.title('SARIMA Airline: In-sample')
+    plt.title('SARIMA: In-sample')
     plt.show()
 
     # Get and plot forecast
@@ -72,7 +66,7 @@ if __name__ == '__main__':
     # Print RMSE
     print(f"SARIMA RMSE: {rmse(y_test.flatten(), sarima_forecast['mean'].to_numpy())}")
 
-    ''' Fit the airline data using MLE unobserved components '''
+    ''' Fit the simulated data using MLE unobserved components '''
     mle_uc = UnobservedComponents(y_train, exog=x_train, irregular=True,
                                   level=True, stochastic_level=True)
 
@@ -104,7 +98,7 @@ if __name__ == '__main__':
     # Print RMSE
     print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
 
-    ''' Fit the airline data using Bayesian unobserved components '''
+    ''' Fit the simulated data using Bayesian unobserved components '''
     buc.set_seed(seed)
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,

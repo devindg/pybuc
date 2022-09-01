@@ -27,6 +27,212 @@ pip install pybuc
 See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, and 
 Matplotlib. Python 3.8 and above is supported.
 
+# Usage
+
+## Example: univariate time series with level, slope, and multiplicative seasonality
+
+A popular data set that exhibits trend and seasonality is the airline passenger data used in
+Box, G.E.P.; Jenkins, G.M.; and Reinsel, G.C. Time Series Analysis, Forecasting and Control. Series G, 1976. See plot 
+below.
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers.png)
+
+This data set gave rise to what is known as the "airline model", which is a seasonal autoregressive integrated moving 
+average (SARIMA) model with first-order local and seasonal differencing and first-order local and seasonal moving 
+average representations. More compactly, SARIMA(0, 1, 1)(0, 1, 1) without drift.
+
+To demonstrate the performance of the "airline model" on the airline passenger data, the data will be split into a 
+training and test set. The former will include all observations up until the last twelve months of data, and the latter 
+will include the last twelve months of data. See code below for model assessment.
+
+```
+from pybuc import buc
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+
+# Convenience function for computing root mean squared error
+def rmse(actual, prediction):
+    act, pred = actual.flatten(), prediction.flatten()
+    return np.sqrt(np.mean((act - pred) ** 2))
+
+
+# Import airline passenger data
+url = "https://raw.githubusercontent.com/devindg/pybuc/master/examples/data/airline-passengers.csv"
+air = pd.read_csv(url, header=0, index_col=0)
+air = air.astype(float)
+air.index = pd.to_datetime(air.index)
+hold_out_size = 12
+
+# Create train and test sets
+y_train = air.iloc[:-hold_out_size]
+y_test = air[-hold_out_size:]
+
+''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
+sarima = SARIMAX(y_train, order=(0, 1, 1),
+                 seasonal_order=(0, 1, 1, 12),
+                 trend=[0])
+sarima_res = sarima.fit(disp=False)
+print(sarima_res.summary())
+
+# Plot in-sample fit against actuals
+plt.plot(y_train)
+plt.plot(sarima_res.fittedvalues)
+plt.title('SARIMA: In-sample')
+plt.xticks(rotation=45, ha="right")
+plt.show()
+
+# Get and plot forecast
+sarima_forecast = sarima_res.get_forecast(hold_out_size).summary_frame(alpha=0.05)
+plt.plot(y_test)
+plt.plot(sarima_forecast['mean'])
+plt.fill_between(sarima_forecast.index,
+                 sarima_forecast['mean_ci_lower'],
+                 sarima_forecast['mean_ci_upper'], alpha=0.2)
+plt.title('SARIMA: Forecast')
+plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
+plt.show()
+
+# Print RMSE
+print(f"SARIMA RMSE: {rmse(y_test.to_numpy(), sarima_forecast['mean'].to_numpy())}")
+```
+The SARIMA(0, 1, 1)(0, 1, 1) forecast plot and root mean squared error (RMSE) are shown below. 
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_sarima_forecast.png)
+
+```
+SARIMA RMSE: 21.09028021383853
+```
+
+SARIMA is perhaps the most popular class of time series models. Another less commonly used class of model is structural 
+time series (STS), also known as unobserved components (UC). Whereas SARIMA models abstract away from an explicit model 
+for trend and seasonality, STS/UC models do not. Thus, while it is not possible to visualize the underlying components 
+that characterize a time series using a SARIMA model, one can do so with a STS/UC model.
+
+Another advantage of STS/UC models is their by-design accommodation for multiple stochastic seasonalities. SARIMA models 
+can accommodate multiple seasonalities, but only one seasonality/periodicity can be treated as stochastic. For example, 
+daily data may have day-of-week and week-of-year seasonality. Under a SARIMA model, only one of these seasonalities can 
+be modeled as stochastic. The other seasonality will have to be modeled as deterministic, which amounts to creating and 
+using a set of predictors that capture said seasonality. STU/UC models, on the other hand, can accommodate both 
+seasonalities as stochastic by treating each as distinct, unobserved state variables.
+
+With the above in mind, what follows is a comparison between `statsmodels`' `UnobservedComponents` module and `pybuc`. 
+The distinction between these two methods is that the former is a maximum likelihood estimator (MLE) and the latter is a 
+Bayesian estimator. The following code demonstrates use of `statsmodels.UnobservedComponents` on the airline passenger 
+data. The specification includes stochastic level, stochastic trend (slope), and stochastic trigonometric seasonality 
+with periodicity 12 and 6 harmonics.
+
+```
+''' Fit the airline data using MLE unobserved components '''
+mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
+                              level=True, stochastic_level=True,
+                              trend=True, stochastic_trend=True,
+                              freq_seasonal=[{'period': 12, 'harmonics': 6}],
+                              stochastic_freq_seasonal=[True])
+
+# Fit the model via maximum likelihood
+mle_uc_res = mle_uc.fit(disp=False)
+print(mle_uc_res.summary())
+
+# Plot in-sample fit against actuals
+plt.plot(y_train)
+plt.plot(mle_uc_res.fittedvalues)
+plt.title('MLE UC: In-sample')
+plt.show()
+
+# Plot time series components
+mle_uc_res.plot_components(legend_loc='lower right', figsize=(15, 9), which='smoothed')
+plt.show()
+
+# Get and plot forecast
+mle_uc_forecast = mle_uc_res.get_forecast(hold_out_size).summary_frame(alpha=0.05)
+plt.plot(y_test)
+plt.plot(mle_uc_forecast['mean'])
+plt.fill_between(mle_uc_forecast.index,
+                 mle_uc_forecast['mean_ci_lower'],
+                 mle_uc_forecast['mean_ci_upper'], alpha=0.2)
+plt.title('MLE UC: Forecast')
+plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
+plt.show()
+
+# Print RMSE
+print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
+```
+
+The MLE Unobserved Components forecast plot, components plot, and RMSE are shown below.
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_mle_uc_forecast.png)
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_mle_uc_components.png)
+
+```
+MLE UC RMSE: 17.961873327622694
+```
+
+As noted above, a distinguishing feature of STS/UC models is their explicit modeling of trend and seasonality. This is 
+demonstrated with the components plot.
+
+Finally, the Bayesian analog of the MLE STS/UC model is demonstrated with the below code. Default parameter values are 
+used for the priors corresponding to the variance parameters in the model. If no explicit prior is given, by default 
+each variance's prior is assumed to be inverse-Gamma with shape and scale values equal to 0.001. This prior approximates 
+what is known as Jeffreys prior, which is a vague/non-informative prior.
+
+```
+''' Fit the airline data using Bayesian unobserved components '''
+buc.set_seed(123)
+bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
+                                            level=True, stochastic_level=True,
+                                            slope=True, stochastic_slope=True,
+                                            dummy_seasonal=(), stochastic_dummy_seasonal=(),
+                                            trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
+post = bayes_uc.sample(5000)
+mcmc_burn = 100
+
+# Print summary of estimated parameters
+for key, value in bayes_uc.summary(burn=mcmc_burn).items():
+    print(key, ' : ', value)
+
+# Plot in-sample fit against actuals
+yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
+plt.plot(y_train)
+plt.plot(y_train.index, yhat)
+plt.title('Bayesian-UC: In-sample')
+plt.show()
+
+# Plot time series components
+bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
+plt.show()
+
+# Get and plot forecast
+forecast = bayes_uc.forecast(hold_out_size, mcmc_burn)
+forecast_mean = np.mean(forecast, axis=0)
+forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
+forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
+
+plt.plot(y_test)
+plt.plot(bayes_uc.future_time_index, forecast_mean)
+plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.2)
+plt.title('Bayesian UC: Forecast')
+plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
+plt.show()
+
+# Print RMSE
+print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
+```
+
+The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_bayes_uc_forecast.png)
+
+![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_bayes_uc_components.png)
+
+```
+BAYES-UC RMSE: 17.1892575605848
+```
+
 # Model
 
 A structural time series model with level, trend, seasonal, and regression components takes the form: 
@@ -96,7 +302,7 @@ distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 
 ## Regression
 There are two ways to configure the model matrices to account for a regression component with static coefficients. 
-The most common way (Method 1) is to append $\mathbf x_t^\prime$ to $\mathbf Z_t$ and $\boldsymbol{\beta}_t$ to the 
+The canonical way (Method 1) is to append $\mathbf x_t^\prime$ to $\mathbf Z_t$ and $\boldsymbol{\beta}_t$ to the 
 state vector, $\boldsymbol{\alpha}_t$ (see state space representation below), with the constraints 
 $\boldsymbol{\beta}_0 = \boldsymbol{\beta}$ and $\boldsymbol{\beta}_t = \boldsymbol{\beta} _{t-1}$ for all $t$. 
 Another, less common way (Method 2) is to append $\mathbf x_t^\prime \boldsymbol{\beta}$ to $\mathbf Z_t$ and 1 to the 
