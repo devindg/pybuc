@@ -98,9 +98,9 @@ distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
 There are two ways to configure the model matrices to account for a regression component with static coefficients. 
 The most common way (Method 1) is to append $\mathbf x_t^\prime$ to $\mathbf Z_t$ and $\boldsymbol{\beta}_t$ to the 
 state vector, $\boldsymbol{\alpha}_t$ (see state space representation below), with the constraints 
-$\boldsymbol{\beta}_0 = \boldsymbol{\beta}$ and $\boldsymbol{\beta}_t = \boldsymbol{\beta}_{t-1}$ for all $t$. 
-Another, less common way (Method 2) is to append $\mathbf x_t^\prime \boldsymbol{\beta}$ to $\mathbf Z_t$ and 1 to the 
-state vector. 
+$\boldsymbol{\beta}_0 = \boldsymbol{\beta}$ and 
+$\boldsymbol{\beta}_t = \boldsymbol{\beta}_{t-1}$ for all $t$. Another, less common way (Method 2) is to append 
+$\mathbf x_t^\prime \boldsymbol{\beta}$ to $\mathbf Z_t$ and 1 to the state vector. 
 
 While both methods can be accommodated by the Kalman filter, Method 1 is a direct extension of the Kalman filter as it 
 maintains the observability of $\mathbf Z_t$ and treats the regression coefficients as unobserved states. Method 2 does 
