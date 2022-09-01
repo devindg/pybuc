@@ -45,6 +45,8 @@ To demonstrate the performance of the "airline model" on the airline passenger d
 training and test set. The former will include all observations up until the last twelve months of data, and the latter 
 will include the last twelve months of data. See code below for model assessment.
 
+### SARIMA
+
 ```
 from pybuc import buc
 import numpy as np
@@ -125,6 +127,8 @@ Bayesian estimator. The following code demonstrates use of `statsmodels.Unobserv
 data. The specification includes stochastic level, stochastic trend (slope), and stochastic trigonometric seasonality 
 with periodicity 12 and 6 harmonics.
 
+### MLE Unobserved Components
+
 ```
 ''' Fit the airline data using MLE unobserved components '''
 mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
@@ -180,6 +184,7 @@ used for the priors corresponding to the variance parameters in the model. If no
 each variance's prior is assumed to be inverse-Gamma with shape and scale values equal to 0.001. This prior approximates 
 what is known as Jeffreys prior, which is a vague/non-informative prior.
 
+### Bayesian Unobserved Components
 ```
 ''' Fit the airline data using Bayesian unobserved components '''
 buc.set_seed(123)
