@@ -24,8 +24,8 @@ for Python.
 ```
 pip install pybuc
 ```
-See `pyproject.toml` `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, and Matplotlib. 
-Python 3.8 and above is supported.
+See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, and 
+Matplotlib. Python 3.8 and above is supported.
 
 # Model
 
@@ -208,18 +208,19 @@ To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Ko
 any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by 
 repeating the following three steps:
 
-1. Draw $\boldsymbol{\alpha}(s)$ from $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), 
-   \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ using the Durbin and Koopman simulation state smoother, 
-   where $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, 
-   \boldsymbol{\alpha}_ n(s))^\prime$ and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_ 
-   \eta(s-1))$. Note that `pybuc` implements a correction (based on a potential misunderstanding) for drawing 
-   $\boldsymbol{\alpha}(s)$ per "A note on implementing the Durbin and Koopman simulation smoother" 
-  (Marek Jarocinski, 2015).
+1. Draw $\boldsymbol{\alpha}(s)$ from 
+   $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ 
+   using the Durbin and Koopman simulation state smoother, where 
+   $\boldsymbol{\alpha}(s) = (\boldsymbol{\alpha}_ 1(s), \boldsymbol{\alpha}_ 2(s), \cdots, \boldsymbol{\alpha}_ n(s))^\prime$ 
+   and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_\eta(s-1))$. Note that `pybuc` implements a 
+   correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing 
+   the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015).
 2. Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from 
    $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's 
    simulation disturbance smoother.
-3. Draw $\boldsymbol{\beta}(s)$ from $p(\boldsymbol{\beta} | \mathbf y^ *, \boldsymbol{\alpha}(s), 
-   \sigma^2_\epsilon(s))$, where $\mathbf y^ *$ is defined above.
+3. Draw $\boldsymbol{\beta}(s)$ from 
+   $p(\boldsymbol{\beta} | \mathbf y^ *, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^ *$ is defined 
+   above.
 
 By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random 
 variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their 
