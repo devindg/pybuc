@@ -45,7 +45,7 @@ To demonstrate the performance of the "airline model" on the airline passenger d
 training and test set. The former will include all observations up until the last twelve months of data, and the latter 
 will include the last twelve months of data. See code below for model assessment.
 
-```
+```angular2html
 from pybuc import buc
 import numpy as np
 import pandas as pd
