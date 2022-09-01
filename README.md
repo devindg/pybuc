@@ -35,7 +35,7 @@ A popular data set that exhibits trend and seasonality is the airline passenger 
 Box, G.E.P.; Jenkins, G.M.; and Reinsel, G.C. Time Series Analysis, Forecasting and Control. Series G, 1976. See plot 
 below.
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers.png)
+![plot](./examples/images/airline_passengers.png)
 
 This data set gave rise to what is known as the "airline model", which is a seasonal autoregressive integrated moving 
 average (SARIMA) model with first-order local and seasonal differencing and first-order local and seasonal moving 
@@ -45,7 +45,7 @@ To demonstrate the performance of the "airline model" on the airline passenger d
 training and test set. The former will include all observations up until the last twelve months of data, and the latter 
 will include the last twelve months of data. See code below for model assessment.
 
-```angular2html
+```
 from pybuc import buc
 import numpy as np
 import pandas as pd
@@ -101,7 +101,7 @@ print(f"SARIMA RMSE: {rmse(y_test.to_numpy(), sarima_forecast['mean'].to_numpy()
 ```
 The SARIMA(0, 1, 1)(0, 1, 1) forecast plot and root mean squared error (RMSE) are shown below. 
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_sarima_forecast.png)
+![plot](./examples/images/airline_passengers_sarima_forecast.png)
 
 ```
 SARIMA RMSE: 21.09028021383853
@@ -164,9 +164,9 @@ print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy()
 
 The MLE Unobserved Components forecast plot, components plot, and RMSE are shown below.
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_mle_uc_forecast.png)
+![plot](./examples/images/airline_passengers_mle_uc_forecast.png)
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_mle_uc_components.png)
+![plot](./examples/images/airline_passengers_mle_uc_components.png)
 
 ```
 MLE UC RMSE: 17.961873327622694
@@ -225,9 +225,9 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_bayes_uc_forecast.png)
+![plot](./examples/images/airline_passengers_bayes_uc_forecast.png)
 
-![plot](/home/devin/Projects/pybuc/examples/images/airline_passengers_bayes_uc_components.png)
+![plot](./examples/images/airline_passengers_bayes_uc_components.png)
 
 ```
 BAYES-UC RMSE: 17.1892575605848
