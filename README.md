@@ -3,7 +3,10 @@
 series package, `bsts`, written by Steven L. Scott. The source paper can be found 
 [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the *papers* 
 directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap 
-for the release of new features. The current version of `pybuc` includes the following options for modeling and 
+for the release of new features. The syntax for using `pybuc` closely follows `statsmodels`' `UnobservedComponents` 
+module.
+
+The current version of `pybuc` includes the following options for modeling and 
 forecasting a structural time series: 
 
 - Stochastic or non-stochastic level
@@ -29,13 +32,13 @@ Matplotlib. Python 3.8 and above is supported.
 
 # Motivation
 
-The Seasonal Autoregressive Integrated Moving Average (SARIMA) model is perhaps the most popular class of statistical 
-time series models. Another less commonly used class of model is structural time series (STS), also known as unobserved 
-components (UC). Whereas SARIMA models abstract away from an explicit model for trend and seasonality, STS/UC models do 
-not. Thus, while it is not possible to visualize the underlying components that characterize a time series using a 
-SARIMA model, one can do so with a STS/UC model.
+The Seasonal Autoregressive Integrated Moving Average (SARIMA) model is perhaps the most widely used class of 
+statistical time series models. Another less commonly used class of model is structural time series (STS), also known as 
+unobserved components (UC). Whereas SARIMA models abstract away from an explicit model for trend and seasonality, STS/UC 
+models do not. Thus, it is not possible to visualize the underlying components that characterize a time series using a 
+SARIMA model, but one can do so with a STS/UC model.
 
-Another advantage of STS/UC models is their by-design accommodation for multiple stochastic seasonalities. SARIMA models 
+STS/UC models also have the flexibility to accommodate multiple stochastic seasonalities. SARIMA models, in contrast, 
 can accommodate multiple seasonalities, but only one seasonality/periodicity can be treated as stochastic. For example, 
 daily data may have day-of-week and week-of-year seasonality. Under a SARIMA model, only one of these seasonalities can 
 be modeled as stochastic. The other seasonality will have to be modeled as deterministic, which amounts to creating and 
@@ -44,8 +47,8 @@ seasonalities as stochastic by treating each as distinct, unobserved state varia
 
 With the above in mind, what follows is a comparison between `statsmodels`' `SARIMAX'` module, `statsmodels`' 
 `UnobservedComponents` module, and `pybuc`. The distinction between `statsmodels.UnobservedComponents` and `pybuc` is 
-the former is maximum likelihood estimator (MLE) while the latter is a Bayesian estimator. The following code 
-demonstrates the application of these methods on a popular data set that exhibits trend and multiplicative seasonality.
+the former is a maximum likelihood estimator (MLE) while the latter is a Bayesian estimator. The following code 
+demonstrates the application of these methods on a data set that exhibits trend and multiplicative seasonality.
 The STS/UC specification for `statsmodels.UnobservedComponents` and `pybuc` includes stochastic level, stochastic trend 
 (slope), and stochastic trigonometric seasonality with periodicity 12 and 6 harmonics.
 
@@ -53,7 +56,7 @@ The STS/UC specification for `statsmodels.UnobservedComponents` and `pybuc` incl
 
 ## Example: univariate time series with level, slope, and multiplicative seasonality
 
-A popular data set that exhibits trend and seasonality is the airline passenger data used in
+A canonical data set that exhibits trend and seasonality is the airline passenger data used in
 Box, G.E.P.; Jenkins, G.M.; and Reinsel, G.C. Time Series Analysis, Forecasting and Control. Series G, 1976. See plot 
 below.
 
@@ -67,7 +70,7 @@ To demonstrate the performance of the "airline model" on the airline passenger d
 training and test set. The former will include all observations up until the last twelve months of data, and the latter 
 will include the last twelve months of data. See code below for model assessment.
 
-### SARIMA
+### Import libraries and prepare data
 
 ```
 from pybuc import buc
@@ -94,7 +97,11 @@ hold_out_size = 12
 # Create train and test sets
 y_train = air.iloc[:-hold_out_size]
 y_test = air[-hold_out_size:]
+```
 
+### SARIMA
+
+```
 ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
 sarima = SARIMAX(y_train, order=(0, 1, 1),
                  seasonal_order=(0, 1, 1, 12),
@@ -181,7 +188,7 @@ MLE UC RMSE: 17.961873327622694
 ```
 
 As noted above, a distinguishing feature of STS/UC models is their explicit modeling of trend and seasonality. This is 
-demonstrated with the components plot.
+illustrated with the components plot.
 
 Finally, the Bayesian analog of the MLE STS/UC model is demonstrated. Default parameter values are used for the priors 
 corresponding to the variance parameters in the model. If no explicit prior is given, by default each variance's prior 
