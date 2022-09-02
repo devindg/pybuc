@@ -1046,15 +1046,15 @@ class BayesianUnobservedComponents:
                 g = kappa / n
                 print('No precision prior was provided for the regression coefficient vector. '
                       'A g=1/n Zellner g-prior will be enforced.')
-                reg_coeff_precision_inv_prior = g * (0.5 * dot(X.T, X) + 0.5 * np.diag(np.diag(dot(X.T, X))))
-                reg_coeff_precision_prior = solve(reg_coeff_precision_inv_prior, np.eye(self.num_predictors))
+                reg_coeff_precision_prior = g * (0.5 * dot(X.T, X) + 0.5 * np.diag(np.diag(dot(X.T, X))))
+                reg_coeff_precision_inv_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
             else:
                 reg_coeff_precision_inv_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
 
-            reg_coeff_precision_inv_post = dot(X.T, X) + reg_coeff_precision_prior
-            reg_coeff_precision_post = solve(reg_coeff_precision_inv_post, np.eye(self.num_predictors))
-            gibbs_iter0_reg_coeff = dot(reg_coeff_precision_post,
-                                        (dot(X.T, self.y) + dot(reg_coeff_precision_prior, reg_coeff_mean_prior)))
+            reg_coeff_precision_post = dot(X.T, X) + reg_coeff_precision_inv_prior
+            reg_coeff_precision_inv_post = solve(reg_coeff_precision_post, np.eye(self.num_predictors))
+            gibbs_iter0_reg_coeff = dot(reg_coeff_precision_inv_post,
+                                        (dot(X.T, self.y) + dot(reg_coeff_precision_inv_prior, reg_coeff_mean_prior)))
 
         state_var_shape_post = np.vstack(state_var_shape_post)
         state_var_scale_prior = np.vstack(state_var_scale_prior)
@@ -1381,8 +1381,8 @@ class BayesianUnobservedComponents:
             y_nan_indicator = np.isnan(y) * 1.
             y_no_nan = ao.replace_nan(y)
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
-            reg_coeff_precision_prior = model.reg_coeff_precision_prior
-            reg_coeff_precision_post = model.reg_coeff_precision_post
+            reg_coeff_precision_inv_prior = model.reg_coeff_precision_inv_prior
+            reg_coeff_precision_inv_post = model.reg_coeff_precision_inv_post
             gibbs_iter0_reg_coeff = model.gibbs_iter0_reg_coeff
             regression_coefficients = np.empty((num_samp, self.num_predictors, 1), dtype=np.float64)
 
@@ -1457,10 +1457,11 @@ class BayesianUnobservedComponents:
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                 y_tilde = y_adj - smooth_time_prediction  # y with smooth time prediction subtracted out
-                reg_coeff_mean_post = dot(reg_coeff_precision_post,
-                                          (dot(X.T, y_tilde) + dot(reg_coeff_precision_prior, reg_coeff_mean_prior)))
+                reg_coeff_mean_post = dot(reg_coeff_precision_inv_post,
+                                          (dot(X.T, y_tilde) + dot(reg_coeff_precision_inv_prior,
+                                                                   reg_coeff_mean_prior)))
 
-                cov_post = response_error_variance[s][0, 0] * reg_coeff_precision_post
+                cov_post = response_error_variance[s][0, 0] * reg_coeff_precision_inv_post
                 regression_coefficients[s] = (np
                                               .random
                                               .multivariate_normal(mean=reg_coeff_mean_post.flatten(),

@@ -118,7 +118,7 @@ Another advantage of STS/UC models is their by-design accommodation for multiple
 can accommodate multiple seasonalities, but only one seasonality/periodicity can be treated as stochastic. For example, 
 daily data may have day-of-week and week-of-year seasonality. Under a SARIMA model, only one of these seasonalities can 
 be modeled as stochastic. The other seasonality will have to be modeled as deterministic, which amounts to creating and 
-using a set of predictors that capture said seasonality. STU/UC models, on the other hand, can accommodate both 
+using a set of predictors that capture said seasonality. STS/UC models, on the other hand, can accommodate both 
 seasonalities as stochastic by treating each as distinct, unobserved state variables.
 
 With the above in mind, what follows is a comparison between `statsmodels`' `UnobservedComponents` module and `pybuc`. 
@@ -179,10 +179,10 @@ MLE UC RMSE: 17.961873327622694
 As noted above, a distinguishing feature of STS/UC models is their explicit modeling of trend and seasonality. This is 
 demonstrated with the components plot.
 
-Finally, the Bayesian analog of the MLE STS/UC model is demonstrated with the below code. Default parameter values are 
-used for the priors corresponding to the variance parameters in the model. If no explicit prior is given, by default 
-each variance's prior is assumed to be inverse-Gamma with shape and scale values equal to 0.001. This prior approximates 
-what is known as Jeffreys prior, which is a vague/non-informative prior.
+Finally, the Bayesian analog of the MLE STS/UC model is demonstrated. Default parameter values are used for the priors 
+corresponding to the variance parameters in the model. If no explicit prior is given, by default each variance's prior 
+is assumed to be inverse-Gamma with shape and scale values equal to 0.001. This prior approximates what is known as 
+Jeffreys prior, which is a vague/non-informative prior.
 
 **Note that because computation is built on Numba, a JIT compiler, the first run of the code could take a while. 
 Subsequent runs (assuming the Python kernel isn't restarted) should execute considerably faster.**
