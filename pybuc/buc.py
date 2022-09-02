@@ -1335,7 +1335,6 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
         A = self.posterior_state_error_covariance_transformation_matrix
         X = self.predictors
-        k = self.num_predictors
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
@@ -1385,7 +1384,7 @@ class BayesianUnobservedComponents:
             reg_coeff_precision_prior = model.reg_coeff_precision_prior
             reg_coeff_precision_post = model.reg_coeff_precision_post
             gibbs_iter0_reg_coeff = model.gibbs_iter0_reg_coeff
-            regression_coefficients = np.empty((num_samp, k, 1), dtype=np.float64)
+            regression_coefficients = np.empty((num_samp, self.num_predictors, 1), dtype=np.float64)
 
         # Run Gibbs sampler
         for s in range(num_samp):
