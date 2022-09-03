@@ -21,12 +21,12 @@ hold_out_size = 12
 
 # Create train and test sets
 y_train = air.iloc[:-hold_out_size]
-y_test = air[-hold_out_size:]
+y_test = air.iloc[-hold_out_size:]
 
 if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
     sarima = SARIMAX(y_train, order=(0, 1, 1),
-                     seasonal_order=(0, 1, 1, 12),
+                     seasonal_order=(1, 0, 1, 12),
                      trend=[0])
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())

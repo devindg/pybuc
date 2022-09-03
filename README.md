@@ -110,7 +110,7 @@ hold_out_size = 12
 
 # Create train and test sets
 y_train = air.iloc[:-hold_out_size]
-y_test = air[-hold_out_size:]
+y_test = air.iloc[-hold_out_size:]
 ```
 
 ### SARIMA

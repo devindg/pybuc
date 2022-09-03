@@ -276,6 +276,8 @@ class BayesianUnobservedComponents:
         deviation, respectively.
         """
 
+        self._response = response
+        self._predictors = predictors
         self.model_setup = None
         self.response_name = None
         self.predictors_names = None
@@ -291,7 +293,7 @@ class BayesianUnobservedComponents:
         if not isinstance(response, (pd.Series, pd.DataFrame, np.ndarray)):
             raise ValueError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
         else:
-            response = response.copy()
+            resp = response.copy()
             if isinstance(response, (pd.Series, pd.DataFrame)):
                 if not isinstance(response.index, pd.DatetimeIndex):
                     raise ValueError("Pandas' DatetimeIndex is currently the only supported "
@@ -306,37 +308,44 @@ class BayesianUnobservedComponents:
                 else:
                     self.response_name = response.columns.values.tolist()
 
-                response = response.sort_index()
                 self.historical_time_index = response.index
-                response = response.to_numpy()
+                resp = resp.sort_index().to_numpy()
 
         # -- dimensions
-        if response.dtype != 'float64':
+        if resp.dtype != 'float64':
             raise ValueError('All values in the response array must be of type float.')
-        if response.ndim == 0:
+        if resp.ndim == 0:
             raise ValueError('The response array must have dimension 1 or 2.')
-        if response.ndim == 1:
-            response = response.reshape(-1, 1)
-        if response.ndim > 2:
+        if resp.ndim == 1:
+            resp = resp.reshape(-1, 1)
+        if resp.ndim > 2:
             raise ValueError('The response array must have dimension 1 or 2.')
-        if response.ndim == 2:
-            if all(i > 1 for i in response.shape):
+        if resp.ndim == 2:
+            if all(i > 1 for i in resp.shape):
                 raise ValueError('The response array must have shape (1, n) or (n, 1), '
                                  'where n is the number of observations. Both the row and column '
                                  'count exceed 1.')
             else:
-                response = response.reshape(-1, 1)
+                resp = resp.reshape(-1, 1)
 
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
         # -- check if correct data type
         if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
             raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
         else:
+            pred = predictors.copy()
             if predictors.size > 0:
-                predictors = predictors.copy()
                 # -- check if response and predictors are same date type.
-                if not isinstance(predictors, type(response)):
-                    raise ValueError('Object types for response and predictors arrays must match.')
+                # if not isinstance(predictors, type(response)):
+                #     raise ValueError('Object types for response and predictors arrays must match.')
+                if isinstance(response, np.ndarray) and not isinstance(predictors, np.ndarray):
+                    raise ValueError('The response array provided is a NumPy array, but the predictors '
+                                     'array is not. Object types must match.')
+
+                if (isinstance(response, (pd.Series, pd.DataFrame)) and
+                        not isinstance(predictors, (pd.Series, pd.DataFrame))):
+                    raise ValueError('The response array provided is a Pandas Series/DataFrame, but the predictors '
+                                     'array is not. Object types must match.')
 
                 # -- get predictor names if a Pandas object and sort index
                 if isinstance(predictors, (pd.Series, pd.DataFrame)):
@@ -352,32 +361,32 @@ class BayesianUnobservedComponents:
                     else:
                         self.predictors_names = predictors.columns.values.tolist()
 
-                    predictors = predictors.sort_index().to_numpy()
+                    pred = pred.sort_index().to_numpy()
 
                 # -- dimension and null/inf checks
-                if predictors.dtype != 'float64':
+                if pred.dtype != 'float64':
                     raise ValueError('All values in the predictors array must be of type float.')
-                if predictors.ndim == 0:
+                if pred.ndim == 0:
                     raise ValueError('The predictors array must have dimension 1 or 2. Dimension is 0.')
-                if predictors.ndim == 1:
-                    predictors = predictors.reshape(-1, 1)
-                if predictors.ndim > 2:
+                if pred.ndim == 1:
+                    pred = pred.reshape(-1, 1)
+                if pred.ndim > 2:
                     raise ValueError('The predictors array must have dimension 1 or 2. Dimension exceeds 2.')
-                if predictors.ndim == 2:
-                    if 1 in predictors.shape:
-                        predictors = predictors.reshape(-1, 1)
-                if np.isnan(predictors).any():
+                if pred.ndim == 2:
+                    if 1 in pred.shape:
+                        pred = pred.reshape(-1, 1)
+                if np.isnan(pred).any():
                     raise ValueError('The predictors array cannot have null values.')
-                if np.isinf(predictors).any():
+                if np.isinf(pred).any():
                     raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
 
                 # -- conformable number of observations
-                if predictors.shape[0] != response.shape[0]:
+                if pred.shape[0] != resp.shape[0]:
                     raise ValueError('The number of observations in the predictors array must match '
                                      'the number of observations in the response array.')
 
                 # -- warn about model stability if the number of predictors exceeds number of observations
-                if predictors.shape[1] > predictors.shape[0]:
+                if pred.shape[1] > pred.shape[0]:
                     warnings.warn('The number of predictors exceeds the number of observations. '
                                   'Results will be sensitive to choice of priors.')
 
@@ -520,8 +529,8 @@ class BayesianUnobservedComponents:
             raise ValueError('Slope cannot be specified without a level component.')
 
         # ASSIGN CLASS ATTRIBUTES IF ALL VALIDITY CHECKS ARE PASSED
-        self.response = response
-        self.predictors = predictors
+        self.response = resp
+        self.predictors = pred
         self.level = level
         self.stochastic_level = stochastic_level
         self.slope = slope
@@ -556,7 +565,7 @@ class BayesianUnobservedComponents:
                 self.stochastic_trig_seasonal = (True,) * len(trig_seasonal)
 
         if self.historical_time_index is None:
-            self.historical_time_index = np.arange(response.shape[0])
+            self.historical_time_index = np.arange(resp.shape[0])
 
         if self.has_predictors:
             if self.predictors_names is None:
@@ -1516,85 +1525,86 @@ class BayesianUnobservedComponents:
         else:
             self.future_time_index = np.arange(self.num_obs, self.num_obs + num_periods)
 
-        if self.has_predictors:
-            future_predictors = future_predictors.copy()
-            # Check and prepare future predictor data
-            # -- data types match across predictors and future_predictors
-            if not isinstance(future_predictors, type(self.predictors)):
-                raise ValueError('Object types for predictors and future_predictors must match.')
+        # -- check if object type is valid
+        if not isinstance(future_predictors, (pd.Series, pd.DataFrame, np.ndarray)):
+            raise ValueError("The future_predictors array must be a NumPy array, Pandas Series, "
+                             "or Pandas DataFrame.")
+        else:
+            fut_pred = future_predictors.copy()
+            if self.has_predictors:
+                # Check and prepare future predictor data
+                # -- data types match across predictors and future_predictors
+                if not isinstance(future_predictors, type(self._predictors)):
+                    raise ValueError('Object types for predictors and future_predictors must match.')
 
-            # -- check if object type is valid
-            if not isinstance(future_predictors, (pd.Series, pd.DataFrame, np.ndarray)):
-                raise ValueError("The future_predictors array must be a Numpy array, Pandas Series, "
-                                 "or Pandas DataFrame.")
-            else:
-                # -- if Pandas type, grab index and column names
-                if isinstance(future_predictors, (pd.Series, pd.DataFrame)):
-                    if not isinstance(future_predictors.index, type(self.future_time_index)):
-                        raise ValueError('The future_predictors index and predictors index must be of the same type.')
+                else:
+                    # -- if Pandas type, grab index and column names
+                    if isinstance(future_predictors, (pd.Series, pd.DataFrame)):
+                        if not isinstance(future_predictors.index, type(self.future_time_index)):
+                            raise ValueError('The future_predictors and predictors indexes must be of the same type.')
 
-                    if not (future_predictors.index == self.future_time_index).all():
-                        raise ValueError('The future_predictors index must match the future time index '
-                                         'implied by the last observed date for the response and the '
-                                         'number of desired forecast periods. Check the class attribute '
-                                         'future_time_index to verify that it is correct.')
+                        if not (future_predictors.index == self.future_time_index).all():
+                            raise ValueError('The future_predictors index must match the future time index '
+                                             'implied by the last observed date for the response and the '
+                                             'number of desired forecast periods. Check the class attribute '
+                                             'future_time_index to verify that it is correct.')
 
-                    if isinstance(future_predictors, pd.Series):
-                        future_predictors_names = [future_predictors.name]
-                    else:
-                        future_predictors_names = future_predictors.columns.values.tolist()
+                        if isinstance(future_predictors, pd.Series):
+                            future_predictors_names = [future_predictors.name]
+                        else:
+                            future_predictors_names = future_predictors.columns.values.tolist()
 
-                    if len(future_predictors_names) != self.num_predictors:
-                        raise ValueError(
-                            f'The number of predictors used for historical estimation {self.num_predictors} '
-                            f'does not match the number of predictors specified for forecasting '
-                            f'{len(future_predictors_names)}. The same set of predictors must be used.')
-                    else:
-                        if not all(self.predictors_names[i] == future_predictors_names[i]
-                                   for i in range(self.num_predictors)):
-                            raise ValueError('The order and names of the columns in predictors must match '
-                                             'the order and names in future_predictors.')
+                        if len(future_predictors_names) != self.num_predictors:
+                            raise ValueError(
+                                f'The number of predictors used for historical estimation {self.num_predictors} '
+                                f'does not match the number of predictors specified for forecasting '
+                                f'{len(future_predictors_names)}. The same set of predictors must be used.')
+                        else:
+                            if not all(self.predictors_names[i] == future_predictors_names[i]
+                                       for i in range(self.num_predictors)):
+                                raise ValueError('The order and names of the columns in predictors must match '
+                                                 'the order and names in future_predictors.')
 
-                    future_predictors = future_predictors.sort_index().to_numpy()
+                        fut_pred = fut_pred.sort_index().to_numpy()
 
-            # -- dimensions
-            if future_predictors.ndim == 0:
-                raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension is 0.')
-            if future_predictors.ndim == 1:
-                future_predictors = future_predictors.reshape(-1, 1)
-            if future_predictors.ndim > 2:
-                raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension exceeds 2.')
-            if future_predictors.ndim == 2:
-                if 1 in future_predictors.shape:
-                    future_predictors = future_predictors.reshape(-1, 1)
-            if np.isnan(future_predictors).any():
-                raise ValueError('The future_predictors array cannot have null values.')
-            if np.isinf(future_predictors).any():
-                raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
+                # -- dimensions
+                if fut_pred.ndim == 0:
+                    raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension is 0.')
+                if fut_pred.ndim == 1:
+                    fut_pred = fut_pred.reshape(-1, 1)
+                if fut_pred.ndim > 2:
+                    raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension exceeds 2.')
+                if fut_pred.ndim == 2:
+                    if 1 in fut_pred.shape:
+                        fut_pred = fut_pred.reshape(-1, 1)
+                if np.isnan(fut_pred).any():
+                    raise ValueError('The future_predictors array cannot have null values.')
+                if np.isinf(fut_pred).any():
+                    raise ValueError('The future_predictors array cannot have Inf and/or -Inf values.')
 
-            # Final sanity checks
-            if self.num_predictors != future_predictors.shape[1]:
-                raise ValueError(f'The number of predictors used for historical estimation {self.num_predictors} '
-                                 f'does not match the number of predictors specified for forecasting '
-                                 f'{future_predictors.shape[1]}. The same set of predictors must be used.')
+                # Final sanity checks
+                if self.num_predictors != fut_pred.shape[1]:
+                    raise ValueError(f'The number of predictors used for historical estimation {self.num_predictors} '
+                                     f'does not match the number of predictors specified for forecasting '
+                                     f'{fut_pred.shape[1]}. The same set of predictors must be used.')
 
-            if num_periods > future_predictors.shape[0]:
-                raise ValueError(f'The number of requested forecast periods {num_periods} exceeds the '
-                                 f'number of observations provided in future_predictors {future_predictors.shape[0]}. '
-                                 f'The former must be no larger than the latter.')
-            else:
-                if num_periods < future_predictors.shape[0]:
-                    warnings.warn(f'The number of requested forecast periods {num_periods} is less than the '
-                                  f'number of observations provided in future_predictors {future_predictors.shape[0]}. '
-                                  f'Only the first {num_periods} observations will be used '
-                                  f'in future_predictors.')
+                if num_periods > fut_pred.shape[0]:
+                    raise ValueError(f'The number of requested forecast periods {num_periods} exceeds the '
+                                     f'number of observations provided in future_predictors {fut_pred.shape[0]}. '
+                                     f'The former must be no larger than the latter.')
+                else:
+                    if num_periods < fut_pred.shape[0]:
+                        warnings.warn(f'The number of requested forecast periods {num_periods} is less than the '
+                                      f'number of observations provided in future_predictors {fut_pred.shape[0]}. '
+                                      f'Only the first {num_periods} observations will be used '
+                                      f'in future_predictors.')
 
         y_forecast = _forecast(self.posterior,
                                num_periods,
                                Z,
                                T,
                                R,
-                               future_predictors,
+                               fut_pred,
                                burn)
 
         return y_forecast
