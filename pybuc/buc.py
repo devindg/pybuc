@@ -906,7 +906,6 @@ class BayesianUnobservedComponents:
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
-                gibbs_iter0_init_state.append(self._gibbs_iter0_init_level())
                 gibbs_iter0_state_error_var.append(0.01 * self.sd_response ** 2)
 
             # The level state equation represents a random walk.
@@ -920,6 +919,7 @@ class BayesianUnobservedComponents:
             # the diagonal. Large in this setting is defined as 1e6.
             init_state_plus_values.append(0.)
             init_state_variances.append(1e6)
+            gibbs_iter0_init_state.append(self._gibbs_iter0_init_level())
             components['Level'] = dict(start_obs_mat_col_index=j,
                                        end_obs_mat_col_index=j + 1,
                                        state_error_cov_diag_index=j,
@@ -936,7 +936,6 @@ class BayesianUnobservedComponents:
 
                 state_var_shape_post.append(slope_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(slope_var_scale_prior)
-                gibbs_iter0_init_state.append(self._gibbs_iter0_init_slope())
                 gibbs_iter0_state_error_var.append(0.01 * self.sd_response ** 2)
 
             components['Trend'] = dict(state_error_cov_diag_index=j,
@@ -953,6 +952,7 @@ class BayesianUnobservedComponents:
             # the diagonal. Large in this setting is defined as 1e6.
             init_state_plus_values.append(0.)
             init_state_variances.append(1e6)
+            gibbs_iter0_init_state.append(self._gibbs_iter0_init_slope())
             j += 1
 
         if len(self.dummy_seasonal) > 0:
