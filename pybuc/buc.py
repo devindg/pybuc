@@ -328,6 +328,14 @@ class BayesianUnobservedComponents:
             else:
                 resp = resp.reshape(-1, 1)
 
+        # Null check
+        if np.all(np.isnan(resp)):
+            raise ValueError('All values in the response array are null. At least one value must be non-null.')
+
+        if np.sum(np.isnan(resp) * 1) / resp.shape[0] >= 0.1:
+            warnings.warn('At least 10% of values in the response array are null. Predictions from the model may be '
+                          'significantly compromised.')
+
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
         # -- check if correct data type
         if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
@@ -375,9 +383,9 @@ class BayesianUnobservedComponents:
                 if pred.ndim == 2:
                     if 1 in pred.shape:
                         pred = pred.reshape(-1, 1)
-                if np.isnan(pred).any():
+                if np.any(np.isnan(pred)):
                     raise ValueError('The predictors array cannot have null values.')
-                if np.isinf(pred).any():
+                if np.any(np.isinf(pred)):
                     raise ValueError('The predictors array cannot have Inf and/or -Inf values.')
 
                 # -- conformable number of observations
@@ -428,6 +436,13 @@ class BayesianUnobservedComponents:
                                  'boolean tuple of same length as the tuple that specifies the number of '
                                  'dummy seasonal components.')
 
+            if resp.shape[0] <= max(dummy_seasonal):
+                warnings.warn('The maximum periodicity in dummy_seasonal exceeds or equals the number of '
+                              'observations in the response array. Predictions from the model are highly '
+                              'likely to be unreliable. It is recommended to have an observation count that '
+                              'is at least double the highest periodicity specified (e.g., if a periodicity '
+                              'of 10 is specified, it is recommended to have a minimum of 20 observations.')
+
         else:
             if len(stochastic_dummy_seasonal) > 0:
                 warnings.warn('No dummy seasonal components were specified, but a non-empty '
@@ -468,10 +483,10 @@ class BayesianUnobservedComponents:
                                  'the highest possible number of harmonics for the given period, which is period / 2 '
                                  'if period is even, or (period - 1) / 2 if period is odd.')
 
-            periodicities = []
+            trig_periodicities = []
             for v in trig_seasonal:
                 period, num_harmonics = v
-                periodicities.append(period)
+                trig_periodicities.append(period)
                 if ao.is_odd(period):
                     if num_harmonics > int(period - 1) / 2:
                         raise ValueError('The number of harmonics for a trigonometric seasonal component cannot '
@@ -481,7 +496,7 @@ class BayesianUnobservedComponents:
                         raise ValueError('The number of harmonics for a trigonometric seasonal component cannot '
                                          'exceed period / 2 when period is even.')
 
-            if len(trig_seasonal) != len(set(periodicities)):
+            if len(trig_seasonal) != len(set(trig_periodicities)):
                 raise ValueError('Each specified period in trig_seasonal must be distinct.')
 
             if len(stochastic_trig_seasonal) > 0:
@@ -505,6 +520,13 @@ class BayesianUnobservedComponents:
                                  'the number of trigonometric seasonal components. Either pass a blank '
                                  'tuple () for the stochastic profile, or a boolean tuple of same length '
                                  'as the tuple that specifies the number of trigonometric seasonal components.')
+
+            if resp.shape[0] <= max(trig_periodicities):
+                warnings.warn('The maximum periodicity in trig_seasonal exceeds or equals the number of '
+                              'observations in the response array. Predictions from the model are highly '
+                              'likely to be unreliable. It is recommended to have an observation count that '
+                              'is at least double the highest periodicity specified (e.g., if a periodicity '
+                              'of 10 is specified, it is recommended to have a minimum of 20 observations.')
 
         else:
             if len(stochastic_trig_seasonal) > 0:
@@ -1187,6 +1209,8 @@ class BayesianUnobservedComponents:
             raise ValueError('response_var_shape_prior must be of type float.')
         else:
             if not np.isnan(response_var_shape_prior):
+                if np.isinf(response_var_shape_prior):
+                    raise ValueError('response_var_shape_prior cannot be Inf/-Inf.')
                 if not response_var_shape_prior > 0:
                     raise ValueError('response_var_shape_prior must be a strictly positive float.')
 
@@ -1194,6 +1218,8 @@ class BayesianUnobservedComponents:
             raise ValueError('response_var_scale_prior must be of type float.')
         else:
             if not np.isnan(response_var_scale_prior):
+                if np.isinf(response_var_scale_prior):
+                    raise ValueError('response_var_scale_prior cannot be Inf/-Inf.')
                 if not response_var_scale_prior > 0:
                     raise ValueError('response_var_scale_prior must be a strictly positive float.')
 
@@ -1202,6 +1228,8 @@ class BayesianUnobservedComponents:
             raise ValueError('level_var_shape_prior must be of type float.')
         else:
             if not np.isnan(level_var_shape_prior):
+                if np.isinf(level_var_shape_prior):
+                    raise ValueError('level_var_shape_prior cannot be Inf/-Inf.')
                 if not level_var_shape_prior > 0:
                     raise ValueError('level_var_shape_prior must be a strictly positive float.')
 
@@ -1209,6 +1237,8 @@ class BayesianUnobservedComponents:
             raise ValueError('level_var_scale_prior must be of type float.')
         else:
             if not np.isnan(level_var_scale_prior):
+                if np.isinf(level_var_scale_prior):
+                    raise ValueError('level_var_scale_prior cannot be Inf/-Inf.')
                 if not level_var_scale_prior > 0:
                     raise ValueError('level_var_scale_prior must be a strictly positive float.')
 
@@ -1217,6 +1247,8 @@ class BayesianUnobservedComponents:
             raise ValueError('slope_var_shape_prior must be of type float.')
         else:
             if not np.isnan(slope_var_shape_prior):
+                if np.isinf(slope_var_shape_prior):
+                    raise ValueError('slope_var_shape_prior cannot be Inf/-Inf.')
                 if not slope_var_shape_prior > 0:
                     raise ValueError('slope_var_shape_prior must be a strictly positive float.')
 
@@ -1224,6 +1256,8 @@ class BayesianUnobservedComponents:
             raise ValueError('slope_var_scale_prior must be of type float.')
         else:
             if not np.isnan(slope_var_scale_prior):
+                if np.isinf(slope_var_scale_prior):
+                    raise ValueError('slope_var_scale_prior cannot be Inf/-Inf.')
                 if not slope_var_scale_prior > 0:
                     raise ValueError('slope_var_scale_prior must be a strictly positive float.')
 
@@ -1239,6 +1273,8 @@ class BayesianUnobservedComponents:
                                      'there must be a corresponding shape prior.')
                 if not all(isinstance(i, float) for i in dum_season_var_shape_prior):
                     raise ValueError('All values in dum_season_var_shape_prior must be of type float.')
+                if any(np.isinf(i) for i in dum_season_var_shape_prior):
+                    raise ValueError('No values in dum_season_var_shape_prior can be Inf/-Inf.')
                 if not all(i > 0 for i in dum_season_var_shape_prior):
                     raise ValueError('All values in dum_season_var_shape_prior must be strictly positive floats.')
 
@@ -1253,6 +1289,8 @@ class BayesianUnobservedComponents:
                                      'there must be a corresponding scale prior.')
                 if not all(isinstance(i, float) for i in dum_season_var_scale_prior):
                     raise ValueError('All values in dum_season_var_scale_prior must be of type float.')
+                if any(np.isinf(i) for i in dum_season_var_scale_prior):
+                    raise ValueError('No values in dum_season_var_scale_prior can be Inf/-Inf.')
                 if not all(i > 0 for i in dum_season_var_scale_prior):
                     raise ValueError('All values in dum_season_var_scale_prior must be strictly positive floats.')
 
@@ -1268,6 +1306,8 @@ class BayesianUnobservedComponents:
                                      'there must be a corresponding shape prior.')
                 if not all(isinstance(i, float) for i in trig_season_var_shape_prior):
                     raise ValueError('All values in trig_season_var_shape_prior must be of type float.')
+                if any(np.isinf(i) for i in trig_season_var_shape_prior):
+                    raise ValueError('No values in trig_season_var_shape_prior can be Inf/-Inf.')
                 if not all(i > 0 for i in trig_season_var_shape_prior):
                     raise ValueError('All values in trig_season_var_shape_prior must be strictly positive floats.')
 
@@ -1282,6 +1322,8 @@ class BayesianUnobservedComponents:
                                      'there must be a corresponding scale prior.')
                 if not all(isinstance(i, float) for i in trig_season_var_scale_prior):
                     raise ValueError('All values in trig_season_var_scale_prior must be of type float.')
+                if any(np.isinf(i) for i in trig_season_var_scale_prior):
+                    raise ValueError('No values in trig_season_var_scale_prior can be Inf/-Inf.')
                 if not all(i > 0 for i in trig_season_var_scale_prior):
                     raise ValueError('All values in trig_season_var_scale_prior must be strictly positive floats.')
 
@@ -1304,9 +1346,9 @@ class BayesianUnobservedComponents:
                 if reg_coeff_mean_prior.shape[0] != self.num_predictors:
                     raise ValueError('The number of elements in reg_coeff_mean_prior must match the number '
                                      'of predictors.')
-                if np.isnan(reg_coeff_mean_prior).any():
+                if np.any(np.isnan(reg_coeff_mean_prior)):
                     raise ValueError('reg_coeff_mean_prior cannot have null values.')
-                if np.isinf(reg_coeff_mean_prior).any():
+                if np.any(np.isinf(reg_coeff_mean_prior)):
                     raise ValueError('reg_coeff_mean_prior cannot have Inf and/or -Inf values.')
 
         if not isinstance(reg_coeff_precision_prior, np.ndarray):
@@ -1317,9 +1359,9 @@ class BayesianUnobservedComponents:
                     raise ValueError('All values in reg_coeff_precision_prior must be of type float.')
                 if reg_coeff_precision_prior.ndim != 2:
                     raise ValueError('reg_coeff_precision_prior must have dimension 2.')
-                if np.isnan(reg_coeff_precision_prior).any():
+                if np.any(np.isnan(reg_coeff_precision_prior)):
                     raise ValueError('reg_coeff_precision_prior cannot have null values.')
-                if np.isinf(reg_coeff_precision_prior).any():
+                if np.any(np.isinf(reg_coeff_precision_prior)):
                     raise ValueError('reg_coeff_precision_prior cannot have Inf and/or -Inf values.')
                 if reg_coeff_precision_prior.shape[0] != reg_coeff_precision_prior.shape[1]:
                     raise ValueError('reg_coeff_precision_prior must be square, i.e., the number '
