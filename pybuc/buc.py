@@ -439,12 +439,10 @@ class BayesianUnobservedComponents:
                                  'boolean tuple of same length as the tuple that specifies the number of '
                                  'dummy seasonal components.')
 
-            if resp.shape[0] <= max(dummy_seasonal):
-                warnings.warn('The maximum periodicity in dummy_seasonal exceeds or equals the number of '
-                              'observations in the response array. Predictions from the model are highly '
-                              'likely to be unreliable. It is recommended to have an observation count that '
-                              'is at least double the highest periodicity specified (e.g., if a periodicity '
-                              'of 10 is specified, it is recommended to have a minimum of 20 observations.')
+            if resp.shape[0] < 4 * max(dummy_seasonal):
+                warnings.warn(f'It is recommended to have an observation count that is at least quadruple the highest '
+                              f'periodicity specified. The max periodicity specified in dummy_seasonal is '
+                              f'{max(dummy_seasonal)}.')
 
         else:
             if len(stochastic_dummy_seasonal) > 0:
@@ -524,12 +522,10 @@ class BayesianUnobservedComponents:
                                  'tuple () for the stochastic profile, or a boolean tuple of same length '
                                  'as the tuple that specifies the number of trigonometric seasonal components.')
 
-            if resp.shape[0] <= max(trig_periodicities):
-                warnings.warn('The maximum periodicity in trig_seasonal exceeds or equals the number of '
-                              'observations in the response array. Predictions from the model are highly '
-                              'likely to be unreliable. It is recommended to have an observation count that '
-                              'is at least double the highest periodicity specified (e.g., if a periodicity '
-                              'of 10 is specified, it is recommended to have a minimum of 20 observations.')
+            if resp.shape[0] < 4 * max(trig_periodicities):
+                warnings.warn(f'It is recommended to have an observation count that is at least quadruple the highest '
+                              f'periodicity specified. The max periodicity specified in trig_seasonal is '
+                              f'{max(trig_periodicities)}.')
 
         else:
             if len(stochastic_trig_seasonal) > 0:
