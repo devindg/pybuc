@@ -206,8 +206,9 @@ illustrated with the components plot.
 
 Finally, the Bayesian analog of the MLE STS/UC model is demonstrated. Default parameter values are used for the priors 
 corresponding to the variance parameters in the model. If no explicit prior is given, by default each variance's prior 
-is assumed to be inverse-Gamma with shape and scale values equal to 0.001. This prior approximates what is known as 
-Jeffreys prior, which is a vague/non-informative prior.
+is assumed to be inverse-Gamma with shape and scale values equal to 1 and 0.01, respectively. Note that a common 
+inverse-Gamma prior for variance parameters has shape and scale values equal to 0.001. This approximates what is known 
+as Jeffreys prior, a vague/non-informative prior.
 
 **Note that because computation is built on Numba, a JIT compiler, the first run of the code could take a while. 
 Subsequent runs (assuming the Python kernel isn't restarted) should execute considerably faster.**
