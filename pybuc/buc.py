@@ -332,6 +332,9 @@ class BayesianUnobservedComponents:
         if np.all(np.isnan(resp)):
             raise ValueError('All values in the response array are null. At least one value must be non-null.')
 
+        if resp.shape[0] < 2:
+            raise ValueError('At least two observations are required to fit a model.')
+
         if np.sum(np.isnan(resp) * 1) / resp.shape[0] >= 0.1:
             warnings.warn('At least 10% of values in the response array are null. Predictions from the model may be '
                           'significantly compromised.')
@@ -592,6 +595,11 @@ class BayesianUnobservedComponents:
         if self.has_predictors:
             if self.predictors_names is None:
                 self.predictors_names = [f"x{i + 1}" for i in range(self.num_predictors)]
+
+        if resp.shape[0] <= self.num_state_eqs:
+            warnings.warn('The number of state equations implied by the model specification '
+                          'is at least as large as the number of observations in the response '
+                          'array. Predictions from the model may be significantly compromised.')
 
     @property
     def num_dummy_seasonal_state_eqs(self) -> int:
