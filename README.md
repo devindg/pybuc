@@ -11,6 +11,7 @@ forecasting a structural time series:
 
 - Stochastic or non-stochastic level
 - Stochastic or non-stochastic slope (assuming a level state is specified)
+- Damped slope (also known as a semi-local linear trend)
 - Multiple stochastic or non-stochastic "dummy" seasonality
 - Multiple stochastic or non-stochastic trigonometric seasonality
 - Regression with static coefficients
@@ -28,7 +29,7 @@ for Python.
 pip install pybuc
 ```
 See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, and 
-Matplotlib. Python 3.8 and above is supported.
+Matplotlib. Python 3.9 and above is supported.
 
 # Motivation
 
@@ -216,12 +217,13 @@ Subsequent runs (assuming the Python kernel isn't restarted) should execute cons
 ### Bayesian Unobserved Components
 ```
 ''' Fit the airline data using Bayesian unobserved components '''
-buc.set_seed(123)
 bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
-                                            level=True, stochastic_level=True,
-                                            slope=True, stochastic_slope=True,
-                                            dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                            trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
+                                                level=True, stochastic_level=True,
+                                                slope=True, stochastic_slope=True, autoregressive_slope=False,
+                                                dummy_seasonal=(), stochastic_dummy_seasonal=(),
+                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
+                                                seed=123)
+
 post = bayes_uc.sample(5000)
 mcmc_burn = 100
 
@@ -264,7 +266,7 @@ The Bayesian Unobserved Components forecast plot, components plot, and RMSE are 
 ![plot](./examples/images/airline_passengers_bayes_uc_components.png)
 
 ```
-BAYES-UC RMSE: 17.409998603054675
+BAYES-UC RMSE: 17.412932828154464
 ```
 
 # Model

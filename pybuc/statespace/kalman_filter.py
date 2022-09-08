@@ -5,7 +5,7 @@ from ..utils import array_operations as ao
 
 
 class KF(NamedTuple):
-    one_step_ahead_prediction_residual: np.ndarray
+    one_step_ahead_prediction_resid: np.ndarray
     kalman_gain: np.ndarray
     filtered_state: np.ndarray
     state_covariance: np.ndarray
@@ -71,6 +71,7 @@ class KF(NamedTuple):
 def kalman_filter(y: np.ndarray,
                   observation_matrix: np.ndarray,
                   state_transition_matrix: np.ndarray,
+                  state_intercept_matrix: np.ndarray,
                   state_error_transformation_matrix: np.ndarray,
                   response_error_variance_matrix: np.ndarray,
                   state_error_variance_matrix: np.ndarray,
@@ -78,6 +79,7 @@ def kalman_filter(y: np.ndarray,
                   init_state_covariance: np.ndarray = np.array([[]])):
     # Get state and observation transformation matrices
     T = state_transition_matrix
+    C = state_intercept_matrix
     Z = observation_matrix
     R = state_error_transformation_matrix
 
@@ -124,7 +126,7 @@ def kalman_filter(y: np.ndarray,
         F_inv[t] = ao.mat_inv(F[t])
         K[t] = T.dot(P[t]).dot(Z[t].T).dot(F_inv[t])
         L[t] = T - K[t].dot(Z[t])
-        a[t + 1] = T.dot(a[t]) + K[t].dot(v[t])
+        a[t + 1] = C + T.dot(a[t]) + K[t].dot(v[t])
 
         if q > 0:
             P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_variance_matrix).dot(R.T)

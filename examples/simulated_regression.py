@@ -99,10 +99,10 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the simulated data using Bayesian unobserved components '''
-    buc.set_seed(seed)
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
-                                                predictors=x_train)
+                                                predictors=x_train,
+                                                seed=123)
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 

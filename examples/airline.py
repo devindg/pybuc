@@ -26,7 +26,7 @@ y_test = air.iloc[-hold_out_size:]
 if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
     sarima = SARIMAX(y_train, order=(0, 1, 1),
-                     seasonal_order=(1, 0, 1, 12),
+                     seasonal_order=(0, 1, 1, 12),
                      trend=[0])
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())
@@ -88,12 +88,13 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using Bayesian unobserved components '''
-    buc.set_seed(123)
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
-                                                slope=True, stochastic_slope=True,
+                                                slope=True, stochastic_slope=True, autoregressive_slope=False,
                                                 dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True, ))
+                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
+                                                seed=123)
+
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
