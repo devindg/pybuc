@@ -314,9 +314,9 @@ the default prior for $\phi$ is $N(0, 0.25)$. Thus, -1 and 1 are within two stan
 therefore possible for the Gibbs sampler to sample values outside the unit circle. If the posterior mean of $\phi$ is 
 outside the unit circle (or very close to the bounds), then an autoregressive trend is not a good assumption. If only 
 a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't be problematic for forecasting. 
-If an autoregressive trend is not specified, $\phi$ is set to 1.
+$\phi$ is set to 1 if a damped trend is not specified.
 
-Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, and $\phi = 1$, then the level component in 
+Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$, then the level component in 
 the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
 ## Seasonality
