@@ -1603,18 +1603,17 @@ class BayesianUnobservedComponents:
                 else:
                     autoreg_trend_coeff = autoregressive_trend_coefficient[s - 1]
 
-                autoreg_trend_coeff = autoreg_trend_coeff[0, 0]
-
-                if abs(autoreg_trend_coeff) < 1:
+                ar_coeff = autoreg_trend_coeff[0, 0]
+                if abs(ar_coeff) < 1:
                     autoreg_trend_var = (state_err_cov[ar_trend_stoch_idx, ar_trend_stoch_idx]
-                                         / (1. - autoreg_trend_coeff ** 2))
+                                         / (1. - ar_coeff ** 2))
                     init_state_plus_values[1] = dist.vec_norm(0., np.sqrt(autoreg_trend_var))
                     init_state_covariance[1, 1] = autoreg_trend_var
                 else:
                     init_state_plus_values[1] = 0.
                     init_state_covariance[1, 1] = 1e6
 
-                T[1, 1] = autoreg_trend_coeff
+                T[1, 1] = ar_coeff
 
             # Filtered state
             y_kf = kf(y,
