@@ -1388,25 +1388,6 @@ class BayesianUnobservedComponents:
             if not ao.is_symmetric(autoreg_trend_coeff_precision_prior):
                 raise ValueError('autoreg_trend_coeff_precision_prior must be a symmetric matrix.')
 
-            lb = (autoreg_trend_coeff_mean_prior[0, 0]
-                  - 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
-            ub = (autoreg_trend_coeff_mean_prior[0, 0]
-                  + 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
-            if lb < 1 < ub:
-                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
-                              "coefficient implies that a value of 1 is within two standard "
-                              "deviations of the mean. That is, an explosive process is believed "
-                              "to be within the realm of reasonable possibilities. Note that an "
-                              "explosive process can be stationary, but it implies that the future "
-                              "is needed to predict the past.")
-            if lb < -1 < ub:
-                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
-                              "coefficient implies that a value of -1 is within two standard "
-                              "deviations of the mean. That is, an explosive process is believed "
-                              "to be within the realm of reasonable possibilities. Note that an "
-                              "explosive process can be stationary, but it implies that the future "
-                              "is needed to predict the past.")
-
         # Dummy seasonal prior check
         if dum_season_var_shape_prior is not None:
             if not isinstance(dum_season_var_shape_prior, tuple):
@@ -1537,6 +1518,28 @@ class BayesianUnobservedComponents:
         autoreg_trend_coeff_mean_prior = model.autoreg_trend_coeff_mean_prior
         autoreg_trend_coeff_precision_prior = model.autoreg_trend_coeff_precision_prior
         gibbs_iter0_autoreg_trend_coeff = model.gibbs_iter0_autoreg_trend_coeff
+
+        # Sanity check on autoregressive trend priors, if applicable
+        if self.trend and self.autoregressive_trend:
+            lb = (autoreg_trend_coeff_mean_prior[0, 0]
+                  - 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
+            ub = (autoreg_trend_coeff_mean_prior[0, 0]
+                  + 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
+
+            if lb < 1 < ub:
+                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
+                              "coefficient implies that a value of 1 is within two standard "
+                              "deviations of the mean. That is, an explosive process is believed "
+                              "to be within the realm of reasonable possibilities. Note that an "
+                              "explosive process can be stationary, but it implies that the future "
+                              "is needed to predict the past.")
+            if lb < -1 < ub:
+                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
+                              "coefficient implies that a value of -1 is within two standard "
+                              "deviations of the mean. That is, an explosive process is believed "
+                              "to be within the realm of reasonable possibilities. Note that an "
+                              "explosive process can be stationary, but it implies that the future "
+                              "is needed to predict the past.")
 
         # Initialize output arrays
         if q > 0:
