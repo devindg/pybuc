@@ -25,7 +25,7 @@ class Posterior(NamedTuple):
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
-    autoregressive_slope_coefficients: np.ndarray
+    autoregressive_trend_coefficient: np.ndarray
     regression_coefficients: np.ndarray
 
 
@@ -40,10 +40,10 @@ class ModelSetup(NamedTuple):
     gibbs_iter0_state_error_covariance: np.ndarray
     init_state_plus_values: np.ndarray
     init_state_covariance: np.ndarray
-    autoreg_slope_coeff_mean_prior: np.ndarray
-    autoreg_slope_coeff_precision_prior: np.ndarray
-    autoreg_slope_coeff_cov_prior: np.ndarray
-    gibbs_iter0_autoreg_slope_coeff: np.ndarray
+    autoreg_trend_coeff_mean_prior: np.ndarray
+    autoreg_trend_coeff_precision_prior: np.ndarray
+    autoreg_trend_coeff_cov_prior: np.ndarray
+    gibbs_iter0_autoreg_trend_coeff: np.ndarray
     reg_coeff_mean_prior: np.ndarray
     reg_coeff_precision_prior: np.ndarray
     reg_coeff_cov_prior: np.ndarray
@@ -172,7 +172,7 @@ def _forecast(posterior: Posterior,
               state_error_transformation_matrix: np.ndarray,
               future_predictors: np.ndarray = np.array([[]]),
               burn: int = 0,
-              autoregressive_slope: bool = False) -> np.ndarray:
+              autoregressive_trend: bool = False) -> np.ndarray:
     """
 
     :param posterior:
@@ -203,8 +203,8 @@ def _forecast(posterior: Posterior,
     if X_fut.size > 0:
         reg_coeff = posterior.regression_coefficients[burn:]
 
-    if autoregressive_slope:
-        autoreg_slope_coeff = posterior.autoregressive_slope_coefficients[burn:]
+    if autoregressive_trend:
+        autoreg_trend_coeff = posterior.autoregressive_trend_coefficient[burn:]
 
     y_forecast = np.empty((num_samp, num_periods, 1), dtype=np.float64)
     num_periods_zeros = np.zeros((num_periods, 1))
@@ -219,9 +219,8 @@ def _forecast(posterior: Posterior,
             state_error = dist.vec_norm(num_periods_u_zeros,
                                         num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_covariance[s])))
 
-        if autoregressive_slope:
-            C[1] = autoreg_slope_coeff[s][0, 0]
-            T[1, 1] = autoreg_slope_coeff[s][1, 0]
+        if autoregressive_trend:
+            T[1, 1] = autoreg_trend_coeff[s][0, 0]
 
         if X_fut.size > 0:
             Z[:, :, -1] = X_fut.dot(reg_coeff[s])
@@ -244,9 +243,9 @@ class BayesianUnobservedComponents:
                  predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]]),
                  level: bool = False,
                  stochastic_level: bool = True,
-                 slope: bool = False,
-                 stochastic_slope: bool = True,
-                 autoregressive_slope: bool = False,
+                 trend: bool = False,
+                 stochastic_trend: bool = True,
+                 autoregressive_trend: bool = False,
                  dummy_seasonal: tuple = (),
                  stochastic_dummy_seasonal: tuple = (),
                  trig_seasonal: tuple = (),
@@ -266,13 +265,13 @@ class BayesianUnobservedComponents:
 
         :param stochastic_level: bool. If true, the level component evolves stochastically. Default is true.
 
-        :param slope: bool. If true, a slope component is added to the model. Note, that a slope
+        :param trend: bool. If true, a trend component is added to the model. Note, that a trend
         is applicable only when a level component is specified. Default is false.
 
-        :param stochastic_slope: bool. If true, the slope component evolves stochastically. Default is true.
+        :param stochastic_trend: bool. If true, the trend component evolves stochastically. Default is true.
 
-        :param autoregressive_slope: bool. If true, the slope obeys an autoregressive process of order 1.
-        Note that stochastic_slope must be true if autoregressive_slope is true. Default is false.
+        :param autoregressive_trend: bool. If true, the trend obeys an autoregressive process of order 1.
+        Note that stochastic_trend must be true if autoregressive_trend is true. Default is false.
 
         :param dummy_seasonal: tuple of integers. Each integer in the tuple represents a distinct
         form of dummy seasonality/periodicity in the data. Default is an empty tuple, i.e., no
@@ -306,8 +305,6 @@ class BayesianUnobservedComponents:
         self.future_time_index = None
         self.num_first_obs_ignore = None
         self.posterior = None
-
-        # TODO: Add functionality for autoregressive slope.
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -561,20 +558,17 @@ class BayesianUnobservedComponents:
         if not isinstance(level, bool) or not isinstance(stochastic_level, bool):
             raise ValueError('level and stochastic_level must be of boolean type.')
 
-        if not isinstance(slope, bool) or not isinstance(stochastic_slope, bool):
-            raise ValueError('slope and stochastic_slope must be of boolean type.')
+        if not isinstance(trend, bool) or not isinstance(stochastic_trend, bool):
+            raise ValueError('trend and stochastic_trend must be of boolean type.')
 
-        if autoregressive_slope and not stochastic_slope:
-            raise ValueError('stochastic_slope must be true if autoregressive_slope is true.')
-
-        if not isinstance(autoregressive_slope, bool):
-            raise ValueError('autoregressive_slope must be of boolean type.')
+        if trend and not stochastic_trend and autoregressive_trend:
+            raise ValueError('stochastic_trend must be true if trend and autoregressive_trend are true.')
 
         if len(dummy_seasonal) == 0 and len(trig_seasonal) == 0 and not level:
             raise ValueError('At least a level or seasonal component must be specified.')
 
-        if slope and not level:
-            raise ValueError('Slope cannot be specified without a level component.')
+        if trend and not level:
+            raise ValueError('trend cannot be specified without a level component.')
 
         if seed is not None:
             if not isinstance(seed, int):
@@ -589,9 +583,9 @@ class BayesianUnobservedComponents:
         self.predictors = pred
         self.level = level
         self.stochastic_level = stochastic_level
-        self.slope = slope
-        self.stochastic_slope = stochastic_slope
-        self.autoregressive_slope = autoregressive_slope
+        self.trend = trend
+        self.stochastic_trend = stochastic_trend
+        self.autoregressive_trend = autoregressive_trend
         self.standardize = standardize
         self.dummy_seasonal = dummy_seasonal
         self.stochastic_dummy_seasonal = stochastic_dummy_seasonal
@@ -697,14 +691,14 @@ class BayesianUnobservedComponents:
 
     @property
     def num_state_eqs(self) -> int:
-        return ((self.level + self.slope) * 1
+        return ((self.level + self.trend) * 1
                 + self.num_seasonal_state_eqs
                 + self.has_predictors * 1)
 
     @property
     def num_stochastic_states(self) -> int:
         return ((self.level * self.stochastic_level
-                 + self.slope * self.stochastic_slope) * 1
+                 + self.trend * self.stochastic_trend) * 1
                 + self.num_stochastic_seasonal_state_eqs)
 
     @property
@@ -754,7 +748,7 @@ class BayesianUnobservedComponents:
         if self.level:
             Z[:, :, j] = 1.
             j += 1
-        if self.slope:
+        if self.trend:
             j += 1
         if len(self.dummy_seasonal) > 0:
             i = j
@@ -780,7 +774,7 @@ class BayesianUnobservedComponents:
             T[i, j] = 1.
             i += 1
             j += 1
-        if self.slope:
+        if self.trend:
             T[i - 1, j] = 1.
             T[i, j] = 1.
             i += 1
@@ -826,8 +820,8 @@ class BayesianUnobservedComponents:
                     R[i, j] = 1.
                     j += 1
                 i += 1
-            if self.slope:
-                if self.stochastic_slope:
+            if self.trend:
+                if self.stochastic_trend:
                     R[i, j] = 1.
                     j += 1
                 i += 1
@@ -865,8 +859,8 @@ class BayesianUnobservedComponents:
                     if self.stochastic_level:
                         A[i, i] = 1.
                         i += 1
-                if self.slope:
-                    if self.stochastic_slope:
+                if self.trend:
+                    if self.stochastic_trend:
                         A[i, i] = 1.
                         i += 1
                 if len(self.dummy_seasonal) > 0:
@@ -905,16 +899,16 @@ class BayesianUnobservedComponents:
         else:
             return
 
-    def _gibbs_iter0_init_slope(self):
-        if self.slope:
+    def _gibbs_iter0_init_trend(self):
+        if self.trend:
             first_y = self._first_value(self.y)
             last_y = self._last_value(self.y)
             num_steps = (self.y.size - last_y[1][0][0] - 1) - first_y[1][0][0]
             if num_steps == 0:
-                slope = 0.
+                trend = 0.
             else:
-                slope = (last_y[0] - first_y[0]) / num_steps
-            return slope
+                trend = (last_y[0] - first_y[0]) / num_steps
+            return trend
         else:
             return
 
@@ -935,8 +929,8 @@ class BayesianUnobservedComponents:
     def _model_setup(self,
                      response_var_shape_prior, response_var_scale_prior,
                      level_var_shape_prior, level_var_scale_prior,
-                     slope_var_shape_prior, slope_var_scale_prior,
-                     autoreg_slope_coeff_mean_prior, autoreg_slope_coeff_precision_prior,
+                     trend_var_shape_prior, trend_var_scale_prior,
+                     autoreg_trend_coeff_mean_prior, autoreg_trend_coeff_precision_prior,
                      dum_season_var_shape_prior, dum_season_var_scale_prior,
                      trig_season_var_shape_prior, trig_season_var_scale_prior,
                      reg_coeff_mean_prior, reg_coeff_precision_prior) -> ModelSetup:
@@ -966,8 +960,8 @@ class BayesianUnobservedComponents:
         gibbs_iter0_state_error_var = []
         gibbs_iter0_init_state = []
         seasonal_period = (0,)
-        autoreg_slope_coeff_cov_prior = None
-        gibbs_iter0_autoreg_slope_coeff = None
+        autoreg_trend_coeff_cov_prior = None
+        gibbs_iter0_autoreg_trend_coeff = None
 
         j, s = 0, 0  # j indexes the state equation, and s indexes stochastic equations
         if self.level:
@@ -1004,16 +998,16 @@ class BayesianUnobservedComponents:
                                        stochastic_index=stochastic_index)
             j += 1
 
-        if self.slope:
-            if self.stochastic_slope:
-                if slope_var_shape_prior is None:
-                    slope_var_shape_prior = 1.
+        if self.trend:
+            if self.stochastic_trend:
+                if trend_var_shape_prior is None:
+                    trend_var_shape_prior = 1.
 
-                if slope_var_scale_prior is None:
-                    slope_var_scale_prior = 0.01
+                if trend_var_scale_prior is None:
+                    trend_var_scale_prior = 0.01
 
-                state_var_shape_post.append(slope_var_shape_prior + 0.5 * n)
-                state_var_scale_prior.append(slope_var_scale_prior)
+                state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
+                state_var_scale_prior.append(trend_var_scale_prior)
                 gibbs_iter0_state_error_var.append(0.01 * self.sd_response ** 2)
 
                 stochastic_index = s
@@ -1021,26 +1015,26 @@ class BayesianUnobservedComponents:
             else:
                 stochastic_index = None
 
-            if self.autoregressive_slope:
-                if autoreg_slope_coeff_mean_prior is None:
-                    autoreg_slope_coeff_mean_prior = np.zeros((2, 1))
+            if self.autoregressive_trend:
+                if autoreg_trend_coeff_mean_prior is None:
+                    autoreg_trend_coeff_mean_prior = np.zeros((1, 1))
 
-                if autoreg_slope_coeff_precision_prior is None:
-                    autoreg_slope_coeff_precision_prior = np.diag((1e-6, 4.))
+                if autoreg_trend_coeff_precision_prior is None:
+                    autoreg_trend_coeff_precision_prior = np.diag((4.,))
 
-                autoreg_slope_coeff_cov_prior = solve(autoreg_slope_coeff_precision_prior, np.eye(2))
-                gibbs_iter0_autoreg_slope_coeff = np.vstack((0., 0.5))
+                autoreg_trend_coeff_cov_prior = solve(autoreg_trend_coeff_precision_prior, np.eye(1))
+                gibbs_iter0_autoreg_trend_coeff = np.array([[0.5]])
                 init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
-                                            (1 - gibbs_iter0_autoreg_slope_coeff[1, 0] ** 2))
+                                            (1 - gibbs_iter0_autoreg_trend_coeff[0, 0] ** 2))
                 init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
             else:
                 init_state_variances.append(1e6)
                 init_state_plus_values.append(0.)
 
-            gibbs_iter0_init_state.append(self._gibbs_iter0_init_slope())
+            gibbs_iter0_init_state.append(self._gibbs_iter0_init_trend())
             components['Trend'] = dict(start_obs_mat_col_index=None,
                                        end_obs_mat_col_index=None,
-                                       stochastic=self.stochastic_slope,
+                                       stochastic=self.stochastic_trend,
                                        stochastic_index=stochastic_index)
             j += 1
 
@@ -1148,13 +1142,9 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if reg_coeff_mean_prior is None:
-                print('No mean prior was provided for the regression coefficient vector. '
-                      'A 0-mean prior will be enforced.')
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
 
             if reg_coeff_precision_prior is None:
-                print('No precision prior was provided for the regression coefficient vector. '
-                      'A diagonal precision matrix with 1e-6 along the diagonal will be enforced.')
                 reg_coeff_precision_prior = np.eye(self.num_predictors) * 1e-6
                 reg_coeff_cov_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
             else:
@@ -1196,10 +1186,10 @@ class BayesianUnobservedComponents:
                                       gibbs_iter0_state_error_covariance,
                                       init_state_plus_values,
                                       init_state_covariance,
-                                      autoreg_slope_coeff_mean_prior,
-                                      autoreg_slope_coeff_precision_prior,
-                                      autoreg_slope_coeff_cov_prior,
-                                      gibbs_iter0_autoreg_slope_coeff,
+                                      autoreg_trend_coeff_mean_prior,
+                                      autoreg_trend_coeff_precision_prior,
+                                      autoreg_trend_coeff_cov_prior,
+                                      gibbs_iter0_autoreg_trend_coeff,
                                       reg_coeff_mean_prior,
                                       reg_coeff_precision_prior,
                                       reg_coeff_cov_prior,
@@ -1215,10 +1205,10 @@ class BayesianUnobservedComponents:
                response_var_scale_prior: float = None,
                level_var_shape_prior: float = None,
                level_var_scale_prior: float = None,
-               slope_var_shape_prior: float = None,
-               slope_var_scale_prior: float = None,
-               autoreg_slope_coeff_mean_prior: np.ndarray = None,
-               autoreg_slope_coeff_precision_prior: np.ndarray = None,
+               trend_var_shape_prior: float = None,
+               trend_var_scale_prior: float = None,
+               autoreg_trend_coeff_mean_prior: np.ndarray = None,
+               autoreg_trend_coeff_precision_prior: np.ndarray = None,
                dum_season_var_shape_prior: tuple = None,
                dum_season_var_scale_prior: tuple = None,
                trig_season_var_shape_prior: tuple = None,
@@ -1242,18 +1232,18 @@ class BayesianUnobservedComponents:
         :param level_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
         level state equation error variance. Default is 0.01.
 
-        :param slope_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        slope state equation error variance. Default is 1.
+        :param trend_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
+        trend state equation error variance. Default is 1.
 
-        :param slope_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        slope state equation error variance. Default is 0.01.
+        :param trend_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
+        trend state equation error variance. Default is 0.01.
 
-        :param autoreg_slope_coeff_mean_prior: Numpy array of dimension (2, 1). Specifies the prior
-        mean for the coefficients governing an AR(1) process for the slope. Default is [0., 0.].
+        :param autoreg_trend_coeff_mean_prior: Numpy array of dimension (1, 1). Specifies the prior
+        mean for the coefficient governing the trend's AR(1) process without drift. Default is [[0.]].
 
-        :param autoreg_slope_coeff_precision_prior: Numpy array of dimension (2, 2). Specifies the prior
-        precision matrix for the coefficients governing an AR(1) process for the slope.
-        Default is diag(1e-6, 4).
+        :param autoreg_trend_coeff_precision_prior: Numpy array of dimension (1, 1). Specifies the prior
+        precision matrix for the coefficient governing the trend's an AR(1) process without drift.
+        Default is [[4.]].
 
         :param dum_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
         for each periodicity in dummy_seasonal. Default is 1 for each periodicity.
@@ -1278,9 +1268,8 @@ class BayesianUnobservedComponents:
         vector will be assumed.
 
         :param reg_coeff_precision_prior: Numpy array of dimension (k, k), where k is the number of predictors.
-        Data type must be float64. If predictors are specified without a precision prior, Zellner's g-prior
-        will be assumed. That is, the precision matrix will take the form
-        g * (0.5 * dot(X.T, X) + 0.5 * np.diag(dot(X.T, X))), where g = 1 / n and X is the predictor matrix.
+        Data type must be float64. If predictors are specified without a precision prior, a (k, k) diagonal
+        matrix with 1e6 along the diagonal will be used.
 
         :return: NamedTuple with the following:
         
@@ -1344,74 +1333,74 @@ class BayesianUnobservedComponents:
             if not level_var_scale_prior > 0:
                 raise ValueError('level_var_scale_prior must be a strictly positive float.')
 
-        # Slope variance check
-        if slope_var_shape_prior is not None:
-            if not isinstance(slope_var_shape_prior, float):
-                raise ValueError('slope_var_shape_prior must be of type float.')
-            if np.isnan(slope_var_shape_prior):
-                raise ValueError('slope_var_shape_prior cannot be NaN.')
-            if np.isinf(slope_var_shape_prior):
-                raise ValueError('slope_var_shape_prior cannot be Inf/-Inf.')
-            if not slope_var_shape_prior > 0:
-                raise ValueError('slope_var_shape_prior must be a strictly positive float.')
+        # trend variance check
+        if trend_var_shape_prior is not None:
+            if not isinstance(trend_var_shape_prior, float):
+                raise ValueError('trend_var_shape_prior must be of type float.')
+            if np.isnan(trend_var_shape_prior):
+                raise ValueError('trend_var_shape_prior cannot be NaN.')
+            if np.isinf(trend_var_shape_prior):
+                raise ValueError('trend_var_shape_prior cannot be Inf/-Inf.')
+            if not trend_var_shape_prior > 0:
+                raise ValueError('trend_var_shape_prior must be a strictly positive float.')
 
-        if slope_var_scale_prior is not None:
-            if not isinstance(slope_var_scale_prior, float):
-                raise ValueError('slope_var_scale_prior must be of type float.')
-            if np.isnan(slope_var_scale_prior):
-                raise ValueError('slope_var_scale_prior cannot be NaN.')
-            if np.isinf(slope_var_scale_prior):
-                raise ValueError('slope_var_scale_prior cannot be Inf/-Inf.')
-            if not slope_var_scale_prior > 0:
-                raise ValueError('slope_var_scale_prior must be a strictly positive float.')
+        if trend_var_scale_prior is not None:
+            if not isinstance(trend_var_scale_prior, float):
+                raise ValueError('trend_var_scale_prior must be of type float.')
+            if np.isnan(trend_var_scale_prior):
+                raise ValueError('trend_var_scale_prior cannot be NaN.')
+            if np.isinf(trend_var_scale_prior):
+                raise ValueError('trend_var_scale_prior cannot be Inf/-Inf.')
+            if not trend_var_scale_prior > 0:
+                raise ValueError('trend_var_scale_prior must be a strictly positive float.')
 
-        # Autoregressive slope coefficients check
-        if autoreg_slope_coeff_mean_prior is not None:
-            if not isinstance(autoreg_slope_coeff_mean_prior, np.ndarray):
-                raise ValueError('autoreg_slope_coeff_mean_prior must be a Numpy array.')
-            if autoreg_slope_coeff_mean_prior.dtype != 'float64':
-                raise ValueError('All values in autoreg_slope_coeff_mean_prior must be of type float.')
-            if not autoreg_slope_coeff_mean_prior.shape == (2, 1):
-                raise ValueError('autoreg_slope_coeff_mean_prior must have shape (2, 1).')
-            if np.any(np.isnan(autoreg_slope_coeff_mean_prior)):
-                raise ValueError('autoreg_slope_coeff_mean_prior cannot have NaN values.')
-            if np.any(np.isinf(autoreg_slope_coeff_mean_prior)):
-                raise ValueError('autoreg_slope_coeff_mean_prior cannot have Inf/-Inf values.')
-            if not abs(autoreg_slope_coeff_mean_prior[1]) < 1:
-                raise warnings.warn('The autoregressive slope coefficient is greater than 1 in absolute value, '
+        # Autoregressive trend coefficients check
+        if autoreg_trend_coeff_mean_prior is not None:
+            if not isinstance(autoreg_trend_coeff_mean_prior, np.ndarray):
+                raise ValueError('autoreg_trend_coeff_mean_prior must be a Numpy array.')
+            if autoreg_trend_coeff_mean_prior.dtype != 'float64':
+                raise ValueError('All values in autoreg_trend_coeff_mean_prior must be of type float.')
+            if not autoreg_trend_coeff_mean_prior.shape == (1, 1):
+                raise ValueError('autoreg_trend_coeff_mean_prior must have shape (1, 1).')
+            if np.any(np.isnan(autoreg_trend_coeff_mean_prior)):
+                raise ValueError('autoreg_trend_coeff_mean_prior cannot have NaN values.')
+            if np.any(np.isinf(autoreg_trend_coeff_mean_prior)):
+                raise ValueError('autoreg_trend_coeff_mean_prior cannot have Inf/-Inf values.')
+            if not abs(autoreg_trend_coeff_mean_prior[0, 0]) < 1:
+                raise warnings.warn('The autoregressive trend coefficient is greater than 1 in absolute value, '
                                     'which implies an explosive process. Note that an explosive process '
                                     'can be stationary, but it implies that the future is needed to '
                                     'predict the past. This is an unrealistic assumption.')
 
-        if autoreg_slope_coeff_precision_prior is not None:
-            if not isinstance(autoreg_slope_coeff_precision_prior, np.ndarray):
-                raise ValueError('autoreg_slope_coeff_precision_prior must be a Numpy array.')
-            if autoreg_slope_coeff_precision_prior.dtype != 'float64':
-                raise ValueError('All values in autoreg_slope_coeff_precision_prior must be of type float.')
-            if not autoreg_slope_coeff_precision_prior.shape == (2, 2):
-                raise ValueError('autoreg_slope_coeff_precision_prior must have shape (2, 2).')
-            if np.any(np.isnan(autoreg_slope_coeff_precision_prior)):
-                raise ValueError('autoreg_slope_coeff_precision_prior cannot have NaN values.')
-            if np.any(np.isinf(autoreg_slope_coeff_precision_prior)):
-                raise ValueError('autoreg_slope_coeff_precision_prior cannot have Inf/-Inf values.')
-            if not ao.is_positive_definite(autoreg_slope_coeff_precision_prior):
-                raise ValueError('autoreg_slope_coeff_precision_prior must be a positive definite matrix.')
-            if not ao.is_symmetric(autoreg_slope_coeff_precision_prior):
-                raise ValueError('autoreg_slope_coeff_precision_prior must be a symmetric matrix.')
+        if autoreg_trend_coeff_precision_prior is not None:
+            if not isinstance(autoreg_trend_coeff_precision_prior, np.ndarray):
+                raise ValueError('autoreg_trend_coeff_precision_prior must be a Numpy array.')
+            if autoreg_trend_coeff_precision_prior.dtype != 'float64':
+                raise ValueError('All values in autoreg_trend_coeff_precision_prior must be of type float.')
+            if not autoreg_trend_coeff_precision_prior.shape == (1, 1):
+                raise ValueError('autoreg_trend_coeff_precision_prior must have shape (1, 1).')
+            if np.any(np.isnan(autoreg_trend_coeff_precision_prior)):
+                raise ValueError('autoreg_trend_coeff_precision_prior cannot have NaN values.')
+            if np.any(np.isinf(autoreg_trend_coeff_precision_prior)):
+                raise ValueError('autoreg_trend_coeff_precision_prior cannot have Inf/-Inf values.')
+            if not ao.is_positive_definite(autoreg_trend_coeff_precision_prior):
+                raise ValueError('autoreg_trend_coeff_precision_prior must be a positive definite matrix.')
+            if not ao.is_symmetric(autoreg_trend_coeff_precision_prior):
+                raise ValueError('autoreg_trend_coeff_precision_prior must be a symmetric matrix.')
 
-            lb = (autoreg_slope_coeff_mean_prior[1, 0]
-                  - 2 * np.sqrt(autoreg_slope_coeff_precision_prior[1, 1] ** (-1)))
-            ub = (autoreg_slope_coeff_mean_prior[1, 0]
-                  + 2 * np.sqrt(autoreg_slope_coeff_precision_prior[1, 1] ** (-1)))
+            lb = (autoreg_trend_coeff_mean_prior[0, 0]
+                  - 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
+            ub = (autoreg_trend_coeff_mean_prior[0, 0]
+                  + 2 * np.sqrt(autoreg_trend_coeff_precision_prior[0, 0] ** (-1)))
             if lb < 1 < ub:
-                warnings.warn("The mean and variance prior chosen for the slope's autoregressive "
+                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
                               "coefficient implies that a value of 1 is within two standard "
                               "deviations of the mean. That is, an explosive process is believed "
                               "to be within the realm of reasonable possibilities. Note that an "
                               "explosive process can be stationary, but it implies that the future "
                               "is needed to predict the past.")
             if lb < -1 < ub:
-                warnings.warn("The mean and variance prior chosen for the slope's autoregressive "
+                warnings.warn("The mean and variance prior chosen for the trend's autoregressive "
                               "coefficient implies that a value of -1 is within two standard "
                               "deviations of the mean. That is, an explosive process is believed "
                               "to be within the realm of reasonable possibilities. Note that an "
@@ -1529,8 +1518,8 @@ class BayesianUnobservedComponents:
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
                                   level_var_shape_prior, level_var_scale_prior,
-                                  slope_var_shape_prior, slope_var_scale_prior,
-                                  autoreg_slope_coeff_mean_prior, autoreg_slope_coeff_precision_prior,
+                                  trend_var_shape_prior, trend_var_scale_prior,
+                                  autoreg_trend_coeff_mean_prior, autoreg_trend_coeff_precision_prior,
                                   dum_season_var_shape_prior, dum_season_var_scale_prior,
                                   trig_season_var_shape_prior, trig_season_var_scale_prior,
                                   reg_coeff_mean_prior, reg_coeff_precision_prior)
@@ -1545,9 +1534,9 @@ class BayesianUnobservedComponents:
         gibbs_iter0_state_error_covariance = model.gibbs_iter0_state_error_covariance
         init_state_plus_values = model.init_state_plus_values
         init_state_covariance = model.init_state_covariance
-        autoreg_slope_coeff_mean_prior = model.autoreg_slope_coeff_mean_prior
-        autoreg_slope_coeff_precision_prior = model.autoreg_slope_coeff_precision_prior
-        gibbs_iter0_autoreg_slope_coeff = model.gibbs_iter0_autoreg_slope_coeff
+        autoreg_trend_coeff_mean_prior = model.autoreg_trend_coeff_mean_prior
+        autoreg_trend_coeff_precision_prior = model.autoreg_trend_coeff_precision_prior
+        gibbs_iter0_autoreg_trend_coeff = model.gibbs_iter0_autoreg_trend_coeff
 
         # Initialize output arrays
         if q > 0:
@@ -1564,12 +1553,12 @@ class BayesianUnobservedComponents:
         state_covariance = np.empty((num_samp, n + 1, m, m), dtype=np.float64)
         response_variance = np.empty((num_samp, n, 1, 1), dtype=np.float64)
 
-        # Initialize autoregressive slope coefficient output, if applicable
-        if self.autoregressive_slope:
-            autoregressive_slope_coefficients = np.empty((num_samp, 2, 1), dtype=np.float64)
-            ar_slope_stoch_idx = components['Trend']['stochastic_index']
+        # Initialize autoregressive trend coefficient output, if applicable
+        if self.trend and self.autoregressive_trend:
+            autoregressive_trend_coefficient = np.empty((num_samp, 1, 1), dtype=np.float64)
+            ar_trend_stoch_idx = components['Trend']['stochastic_index']
         else:
-            autoregressive_slope_coefficients = np.array([[[]]])
+            autoregressive_trend_coefficient = np.array([[[]]])
 
         # Helper matrices
         q_eye = np.eye(q)
@@ -1605,26 +1594,24 @@ class BayesianUnobservedComponents:
 
                 Z[:, :, -1] = X.dot(reg_coeff)
 
-            if self.autoregressive_slope:
+            if self.trend and self.autoregressive_trend:
                 if s < 1:
-                    autoreg_slope_coeff = gibbs_iter0_autoreg_slope_coeff
+                    autoreg_trend_coeff = gibbs_iter0_autoreg_trend_coeff
                 else:
-                    autoreg_slope_coeff = autoregressive_slope_coefficients[s - 1]
+                    autoreg_trend_coeff = autoregressive_trend_coefficient[s - 1]
 
-                autoreg_slope_int = autoreg_slope_coeff[0, 0]
-                autoreg_slope_slope = autoreg_slope_coeff[1, 0]
+                autoreg_trend_coeff = autoreg_trend_coeff[0, 0]
 
-                if abs(autoreg_slope_slope) < 1:
-                    autoreg_slope_var = (state_err_cov[ar_slope_stoch_idx, ar_slope_stoch_idx]
-                                         / (1. - autoreg_slope_slope ** 2))
-                    init_state_plus_values[1] = dist.vec_norm(0., np.sqrt(autoreg_slope_var))
-                    init_state_covariance[1, 1] = autoreg_slope_var
+                if abs(autoreg_trend_coeff) < 1:
+                    autoreg_trend_var = (state_err_cov[ar_trend_stoch_idx, ar_trend_stoch_idx]
+                                         / (1. - autoreg_trend_coeff ** 2))
+                    init_state_plus_values[1] = dist.vec_norm(0., np.sqrt(autoreg_trend_var))
+                    init_state_covariance[1, 1] = autoreg_trend_var
                 else:
                     init_state_plus_values[1] = 0.
                     init_state_covariance[1, 1] = 1e6
 
-                C[1] = autoreg_slope_int
-                T[1, 1] = autoreg_slope_slope
+                T[1, 1] = autoreg_trend_coeff
 
             # Filtered state
             y_kf = kf(y,
@@ -1668,25 +1655,21 @@ class BayesianUnobservedComponents:
                 state_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
                 state_error_covariance[s] = q_eye * state_var_post
 
-            # Get new draw for the slope's AR(1) coefficients, if applicable
-            if self.autoregressive_slope:
-                smoothed_slope = smoothed_state[s][:, 1][1:]
-                smoothed_lag_slope = np.roll(smoothed_state[s][:, 1], 1)[1:]
-                W = np.c_[n_ones, smoothed_lag_slope]
-                autoreg_slope_coeff_cov_post = solve(dot(W.T, W)
-                                                     + autoreg_slope_coeff_precision_prior, np.eye(2))
-                autoreg_slope_coeff_mean_post = dot(autoreg_slope_coeff_cov_post,
-                                                    (dot(W.T, smoothed_slope) + dot(
-                                                        autoreg_slope_coeff_precision_prior,
-                                                        autoreg_slope_coeff_mean_prior)))
+            # Get new draw for the trend's AR(1) coefficients, if applicable
+            if self.trend and self.autoregressive_trend:
+                smoothed_trend = smoothed_state[s][:, 1][1:]
+                smoothed_lag_trend = np.roll(smoothed_state[s][:, 1], 1)[1:]
+                W = smoothed_lag_trend
+                autoreg_trend_coeff_cov_post = solve(dot(W.T, W)
+                                                     + autoreg_trend_coeff_precision_prior, np.eye(1))
+                autoreg_trend_coeff_mean_post = dot(autoreg_trend_coeff_cov_post,
+                                                    (dot(W.T, smoothed_trend) + dot(
+                                                        autoreg_trend_coeff_precision_prior,
+                                                        autoreg_trend_coeff_mean_prior)))
 
-                autoreg_slope_cov_post = state_var_post[ar_slope_stoch_idx, 0] * autoreg_slope_coeff_cov_post
-                autoregressive_slope_coefficients[s] = (np
-                                                        .random
-                                                        .multivariate_normal(mean=autoreg_slope_coeff_mean_post
-                                                                             .flatten(),
-                                                                             cov=autoreg_slope_cov_post)
-                                                        .reshape(-1, 1))
+                autoreg_trend_cov_post = state_var_post[ar_trend_stoch_idx, 0] * autoreg_trend_coeff_cov_post
+                autoregressive_trend_coefficient[s] = dist.vec_norm(autoreg_trend_coeff_mean_post,
+                                                                    np.sqrt(autoreg_trend_cov_post))
 
             # Get new draw for observation variance
             smooth_one_step_ahead_prediction_resid = smoothed_errors[s, :, 0]
@@ -1713,7 +1696,7 @@ class BayesianUnobservedComponents:
         self.posterior = Posterior(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
                                    filtered_state, filtered_prediction, response_variance, state_covariance,
                                    response_error_variance, state_error_covariance,
-                                   autoregressive_slope_coefficients, regression_coefficients)
+                                   autoregressive_trend_coefficient, regression_coefficients)
 
         return self.posterior
 
@@ -1838,7 +1821,7 @@ class BayesianUnobservedComponents:
                                R,
                                fut_pred,
                                burn,
-                               self.autoregressive_slope)
+                               self.trend * self.autoregressive_trend)
 
         return y_forecast
 
@@ -2016,18 +1999,12 @@ class BayesianUnobservedComponents:
                     res[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], ub)
 
                 if c == 'Trend':
-                    if self.autoregressive_slope:
-                        ar_coeff_int = self.posterior.autoregressive_slope_coefficients[burn:, 0, 0]
-                        ar_coeff_slope = self.posterior.autoregressive_slope_coefficients[burn:, 1, 0]
-
-                        res[f"Posterior.Mean[{c}.AR.Int]"] = np.mean(ar_coeff_int)
-                        res[f"Posterior.StdDev[{c}.AR.Int]"] = np.std(ar_coeff_int)
-                        res[f"Posterior.CredInt.LB[{c}.AR.Int]"] = np.quantile(ar_coeff_int, lb)
-                        res[f"Posterior.CredInt.LB[{c}.AR.Int]"] = np.quantile(ar_coeff_int, ub)
-                        res[f"Posterior.Mean[{c}.AR.Slope]"] = np.mean(ar_coeff_slope)
-                        res[f"Posterior.StdDev[{c}.AR.Slope]"] = np.std(ar_coeff_slope)
-                        res[f"Posterior.CredInt.LB[{c}.AR.Slope]"] = np.quantile(ar_coeff_slope, lb)
-                        res[f"Posterior.CredInt.LB[{c}.AR.Slope]"] = np.quantile(ar_coeff_slope, ub)
+                    if self.trend and self.autoregressive_trend:
+                        ar_coeff = self.posterior.autoregressive_trend_coefficient[burn:, 0, 0]
+                        res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                        res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
             if c == 'Regression':
                 reg_coeff = self.posterior.regression_coefficients[burn:, :, 0]

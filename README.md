@@ -10,16 +10,21 @@ The current version of `pybuc` includes the following options for modeling and
 forecasting a structural time series: 
 
 - Stochastic or non-stochastic level
-- Stochastic or non-stochastic slope (assuming a level state is specified)
-- Damped slope (also known as a semi-local linear trend)
+- Stochastic or non-stochastic trend
+- Damped trend <sup/>*</sup>
 - Multiple stochastic or non-stochastic "dummy" seasonality
 - Multiple stochastic or non-stochastic trigonometric seasonality
-- Regression with static coefficients
+- Regression with static coefficients<sup/>**</sup>
 
-Note that the way `pybuc` estimates regression coefficients is methodologically different than `bsts`. The former uses 
-a standard Gaussian prior, whereas the latter uses a Bernoulli-Gaussian mixture commonly known as the spike-and-slab 
-prior. The main benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable 
-selection, when the number of predictors in the regression component exceeds the number of observed data points.
+<sup/>*</sup> `pybuc` dampens trend differently than `bsts`. The former assumes an AR(1) process **without** 
+drift for the trend state equation. The latter assumes an AR(1) **with** drift. In practice this means that the trend, 
+on average, will be zero with `pybuc`, whereas the `bsts` allows for the mean trend to be non-zero. The reason for 
+choosing an autoregressive process without drift is to be conservative with long horizon forecasts.
+
+<sup/>**</sup> `pybuc` estimates regression coefficients differently than `bsts`. The former uses a standard Gaussian 
+prior. The latter uses a Bernoulli-Gaussian mixture commonly known as the spike-and-slab prior. The main 
+benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when 
+the number of predictors in the regression component exceeds the number of observed data points.
 
 Fast computation is achieved using [Numba](https://numba.pydata.org/), a high performance just-in-time (JIT) compiler 
 for Python.
@@ -65,11 +70,11 @@ With the above in mind, what follows is a comparison between `statsmodels`' `SAR
 the former is a maximum likelihood estimator (MLE) while the latter is a Bayesian estimator. The following code 
 demonstrates the application of these methods on a data set that exhibits trend and multiplicative seasonality.
 The STS/UC specification for `statsmodels.UnobservedComponents` and `pybuc` includes stochastic level, stochastic trend 
-(slope), and stochastic trigonometric seasonality with periodicity 12 and 6 harmonics.
+(trend), and stochastic trigonometric seasonality with periodicity 12 and 6 harmonics.
 
 # Usage
 
-## Example: univariate time series with level, slope, and multiplicative seasonality
+## Example: univariate time series with level, trend, and multiplicative seasonality
 
 A canonical data set that exhibits trend and seasonality is the airline passenger data used in
 Box, G.E.P.; Jenkins, G.M.; and Reinsel, G.C. Time Series Analysis, Forecasting and Control. Series G, 1976. See plot 
@@ -219,7 +224,7 @@ Subsequent runs (assuming the Python kernel isn't restarted) should execute cons
 ''' Fit the airline data using Bayesian unobserved components '''
 bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
-                                                slope=True, stochastic_slope=True, autoregressive_slope=False,
+                                                trend=True, stochastic_trend=True, autoregressive_trend=False,
                                                 dummy_seasonal=(), stochastic_dummy_seasonal=(),
                                                 trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
                                                 seed=123)
@@ -284,21 +289,33 @@ unobserved irregular component. The equation describing the outcome $y_t$ is com
 equation, and the transition equations governing the evolution of the unobserved states are known as the state 
 equations.
 
-## Level and slope
+## Level and trend
 
 The unobserved level evolves according to the following general transition equations:
 
 $$
 \begin{align}
     \mu_{t+1} &= \mu_t + \delta_t + \eta_{\mu, t} \\ 
-    \delta_{t+1} &= \delta_t + \eta_{\delta, t} 
+    \delta_{t+1} &= \phi \delta_t + \eta_{\delta, t} 
 \end{align}
 $$ 
 
 where $\eta_{\mu, t} \sim N(0, \sigma_{\eta_\mu}^2)$ and $\eta_{\delta, t} \sim N(0, \sigma_{\eta_\delta}^2)$ for all 
-$t$. The state equation for $\delta_t$ represents the local slope at time $t$. If 
-$\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, then the level component in the observation equation, $\mu_t$, 
-collapses to a deterministic intercept and linear time trend.
+$t$. The state equation for $\delta_t$ represents the local trend at time $t$. 
+
+The parameter $\phi$ represents an autoregressive coefficient. In general, $\phi$ is expected to be in the interval 
+$(-1, 1)$, which implies a stationary process for trend. In practice, however, it is possible for $\phi$ to be 
+outside the unit circle, which implies an explosive process. While it is mathematically possible for an explosive 
+process to be stationary, the implication of such a result implies that the future predicts the past, which is not a 
+realistic assumption. If an autoregressive trend is specified, no hard constraints (by default) are placed on the 
+bounds of $\phi$. Instead, the default prior for $\phi$ is $N(0, 0.25)$. Thus, -1 and 1 are within two standard 
+deviations of the mean. It is therefore possible for the Gibbs sampler to sample values outside the unit circle. If the 
+posterior mean of $\phi$ is outside the unit circle (or very close to the bounds), then an autoregressive trend is 
+not a good assumption. If only a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't 
+be problematic for forecasting. If an autoregressive trend is not specified, $\phi$ is set to 1.
+
+Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, and $\phi = 1$, then the level component in 
+the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
 ## Seasonality
 
@@ -367,7 +384,7 @@ $\mathbf y^ * \equiv \left(\begin{array}{cc} y_1^ * & y_2^ * & \cdots & y_n^ * \
 `pybuc` uses Method 2 for estimating static coefficients.
 
 ## State space representation (example)
-The unobserved components model can be rewritten in state space form. For example, suppose level, slope, seasonal, 
+The unobserved components model can be rewritten in state space form. For example, suppose level, trend, seasonal, 
 regression, and irregular components are specified, and the seasonal component takes a trigonometric form with 
 periodicity $S=4$ and $h=2$ harmonics. Let $\mathbf Z_t \in \mathbb{R}^{1 \times m}$, 
 $\mathbf T \in \mathbb{R}^{m \times m}$, $\mathbf R \in \mathbb{R}^{m \times q}$, and 
