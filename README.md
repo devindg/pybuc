@@ -18,7 +18,7 @@ forecasting a structural time series:
 
 <sup/>*</sup> `pybuc` dampens trend differently than `bsts`. The former assumes an AR(1) process **without** 
 drift for the trend state equation. The latter assumes an AR(1) **with** drift. In practice this means that the trend, 
-on average, will be zero with `pybuc`, whereas the `bsts` allows for the mean trend to be non-zero. The reason for 
+on average, will be zero with `pybuc`, whereas `bsts` allows for the mean trend to be non-zero. The reason for 
 choosing an autoregressive process without drift is to be conservative with long horizon forecasts.
 
 <sup/>**</sup> `pybuc` estimates regression coefficients differently than `bsts`. The former uses a standard Gaussian 
@@ -307,12 +307,14 @@ The parameter $\phi$ represents an autoregressive coefficient. In general, $\phi
 $(-1, 1)$, which implies a stationary process for trend. In practice, however, it is possible for $\phi$ to be 
 outside the unit circle, which implies an explosive process. While it is mathematically possible for an explosive 
 process to be stationary, the implication of such a result implies that the future predicts the past, which is not a 
-realistic assumption. If an autoregressive trend is specified, no hard constraints (by default) are placed on the 
-bounds of $\phi$. Instead, the default prior for $\phi$ is $N(0, 0.25)$. Thus, -1 and 1 are within two standard 
-deviations of the mean. It is therefore possible for the Gibbs sampler to sample values outside the unit circle. If the 
-posterior mean of $\phi$ is outside the unit circle (or very close to the bounds), then an autoregressive trend is 
-not a good assumption. If only a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't 
-be problematic for forecasting. If an autoregressive trend is not specified, $\phi$ is set to 1.
+realistic assumption. 
+
+If an autoregressive trend is specified, no hard constraints (by default) are placed on the bounds of $\phi$. Instead, 
+the default prior for $\phi$ is $N(0, 0.25)$. Thus, -1 and 1 are within two standard deviations of the mean. It is 
+therefore possible for the Gibbs sampler to sample values outside the unit circle. If the posterior mean of $\phi$ is 
+outside the unit circle (or very close to the bounds), then an autoregressive trend is not a good assumption. If only 
+a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't be problematic for forecasting. 
+If an autoregressive trend is not specified, $\phi$ is set to 1.
 
 Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$, and $\phi = 1$, then the level component in 
 the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
