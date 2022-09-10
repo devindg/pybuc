@@ -1023,7 +1023,7 @@ class BayesianUnobservedComponents:
                     autoreg_trend_coeff_precision_prior = np.diag((4.,))
 
                 autoreg_trend_coeff_cov_prior = solve(autoreg_trend_coeff_precision_prior, np.eye(1))
-                gibbs_iter0_autoreg_trend_coeff = np.array([[0.5]])
+                gibbs_iter0_autoreg_trend_coeff = np.array([[0.]])
                 init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
                                             (1 - gibbs_iter0_autoreg_trend_coeff[0, 0] ** 2))
                 init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
@@ -1145,7 +1145,7 @@ class BayesianUnobservedComponents:
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
 
             if reg_coeff_precision_prior is None:
-                reg_coeff_precision_prior = np.eye(self.num_predictors) * 1e-6
+                reg_coeff_precision_prior = 1. / n * (0.5 * dot(X.T, X) + 0.5 * np.diag(np.diag(dot(X.T, X))))
                 reg_coeff_cov_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
             else:
                 reg_coeff_cov_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
@@ -1268,8 +1268,11 @@ class BayesianUnobservedComponents:
         vector will be assumed.
 
         :param reg_coeff_precision_prior: Numpy array of dimension (k, k), where k is the number of predictors.
-        Data type must be float64. If predictors are specified without a precision prior, a (k, k) diagonal
-        matrix with 1e6 along the diagonal will be used.
+        Data type must be float64. If predictors are specified without a precision prior, Zellner's g-prior will
+        be enforced. Specifically, g * (w * dot(X.T, X) + (1 - w) * diag(dot(X.T, X))), where g = 1 / n,
+        n is the number of observations, X is the design matrix, and diag(dot(X.T, X)) is a diagonal matrix
+        with the diagonal matching the diagonal of dot(X.T, X). The addition of the diagonal matrix to dot(X.T, X)
+        is to guard against singularity (i.e., a design matrix that is not full rank).
 
         :return: NamedTuple with the following:
         
