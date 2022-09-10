@@ -1287,6 +1287,7 @@ class BayesianUnobservedComponents:
                     response_error_variance: Posterior variance of the response equation's error term
                     state_error_covariance: Posterior variance-covariance matrix for the state error vector
                     regression_coefficients: Posterior regression coefficients
+                    autoregressive_trend_coefficient: Posterior autoregressive coefficient for trend
         """
 
         if not isinstance(num_samp, int):
@@ -1316,176 +1317,182 @@ class BayesianUnobservedComponents:
                 raise ValueError('response_var_scale_prior must be a strictly positive float.')
 
         # Level prior check
-        if level_var_shape_prior is not None:
-            if not isinstance(level_var_shape_prior, float):
-                raise ValueError('level_var_shape_prior must be of type float.')
-            if np.isnan(level_var_shape_prior):
-                raise ValueError('level_var_shape_prior cannot be NaN.')
-            if np.isinf(level_var_shape_prior):
-                raise ValueError('level_var_shape_prior cannot be Inf/-Inf.')
-            if not level_var_shape_prior > 0:
-                raise ValueError('level_var_shape_prior must be a strictly positive float.')
+        if self.level and self.stochastic_level:
+            if level_var_shape_prior is not None:
+                if not isinstance(level_var_shape_prior, float):
+                    raise ValueError('level_var_shape_prior must be of type float.')
+                if np.isnan(level_var_shape_prior):
+                    raise ValueError('level_var_shape_prior cannot be NaN.')
+                if np.isinf(level_var_shape_prior):
+                    raise ValueError('level_var_shape_prior cannot be Inf/-Inf.')
+                if not level_var_shape_prior > 0:
+                    raise ValueError('level_var_shape_prior must be a strictly positive float.')
 
-        if level_var_scale_prior is not None:
-            if not isinstance(level_var_scale_prior, float):
-                raise ValueError('level_var_scale_prior must be of type float.')
-            if np.isnan(level_var_scale_prior):
-                raise ValueError('level_var_scale_prior cannot be NaN.')
-            if np.isinf(level_var_scale_prior):
-                raise ValueError('level_var_scale_prior cannot be Inf/-Inf.')
-            if not level_var_scale_prior > 0:
-                raise ValueError('level_var_scale_prior must be a strictly positive float.')
+            if level_var_scale_prior is not None:
+                if not isinstance(level_var_scale_prior, float):
+                    raise ValueError('level_var_scale_prior must be of type float.')
+                if np.isnan(level_var_scale_prior):
+                    raise ValueError('level_var_scale_prior cannot be NaN.')
+                if np.isinf(level_var_scale_prior):
+                    raise ValueError('level_var_scale_prior cannot be Inf/-Inf.')
+                if not level_var_scale_prior > 0:
+                    raise ValueError('level_var_scale_prior must be a strictly positive float.')
 
-        # trend variance check
-        if trend_var_shape_prior is not None:
-            if not isinstance(trend_var_shape_prior, float):
-                raise ValueError('trend_var_shape_prior must be of type float.')
-            if np.isnan(trend_var_shape_prior):
-                raise ValueError('trend_var_shape_prior cannot be NaN.')
-            if np.isinf(trend_var_shape_prior):
-                raise ValueError('trend_var_shape_prior cannot be Inf/-Inf.')
-            if not trend_var_shape_prior > 0:
-                raise ValueError('trend_var_shape_prior must be a strictly positive float.')
+        # Trend prior check
+        if self.trend and self.stochastic_trend:
+            if trend_var_shape_prior is not None:
+                if not isinstance(trend_var_shape_prior, float):
+                    raise ValueError('trend_var_shape_prior must be of type float.')
+                if np.isnan(trend_var_shape_prior):
+                    raise ValueError('trend_var_shape_prior cannot be NaN.')
+                if np.isinf(trend_var_shape_prior):
+                    raise ValueError('trend_var_shape_prior cannot be Inf/-Inf.')
+                if not trend_var_shape_prior > 0:
+                    raise ValueError('trend_var_shape_prior must be a strictly positive float.')
 
-        if trend_var_scale_prior is not None:
-            if not isinstance(trend_var_scale_prior, float):
-                raise ValueError('trend_var_scale_prior must be of type float.')
-            if np.isnan(trend_var_scale_prior):
-                raise ValueError('trend_var_scale_prior cannot be NaN.')
-            if np.isinf(trend_var_scale_prior):
-                raise ValueError('trend_var_scale_prior cannot be Inf/-Inf.')
-            if not trend_var_scale_prior > 0:
-                raise ValueError('trend_var_scale_prior must be a strictly positive float.')
+            if trend_var_scale_prior is not None:
+                if not isinstance(trend_var_scale_prior, float):
+                    raise ValueError('trend_var_scale_prior must be of type float.')
+                if np.isnan(trend_var_scale_prior):
+                    raise ValueError('trend_var_scale_prior cannot be NaN.')
+                if np.isinf(trend_var_scale_prior):
+                    raise ValueError('trend_var_scale_prior cannot be Inf/-Inf.')
+                if not trend_var_scale_prior > 0:
+                    raise ValueError('trend_var_scale_prior must be a strictly positive float.')
 
-        # Autoregressive trend coefficients check
-        if autoreg_trend_coeff_mean_prior is not None:
-            if not isinstance(autoreg_trend_coeff_mean_prior, np.ndarray):
-                raise ValueError('autoreg_trend_coeff_mean_prior must be a Numpy array.')
-            if autoreg_trend_coeff_mean_prior.dtype != 'float64':
-                raise ValueError('All values in autoreg_trend_coeff_mean_prior must be of type float.')
-            if not autoreg_trend_coeff_mean_prior.shape == (1, 1):
-                raise ValueError('autoreg_trend_coeff_mean_prior must have shape (1, 1).')
-            if np.any(np.isnan(autoreg_trend_coeff_mean_prior)):
-                raise ValueError('autoreg_trend_coeff_mean_prior cannot have NaN values.')
-            if np.any(np.isinf(autoreg_trend_coeff_mean_prior)):
-                raise ValueError('autoreg_trend_coeff_mean_prior cannot have Inf/-Inf values.')
-            if not abs(autoreg_trend_coeff_mean_prior[0, 0]) < 1:
-                raise warnings.warn('The autoregressive trend coefficient is greater than 1 in absolute value, '
-                                    'which implies an explosive process. Note that an explosive process '
-                                    'can be stationary, but it implies that the future is needed to '
-                                    'predict the past. This is an unrealistic assumption.')
+            # Autoregressive trend prior check
+            if self.autoregressive_trend:
+                if autoreg_trend_coeff_mean_prior is not None:
+                    if not isinstance(autoreg_trend_coeff_mean_prior, np.ndarray):
+                        raise ValueError('autoreg_trend_coeff_mean_prior must be a Numpy array.')
+                    if autoreg_trend_coeff_mean_prior.dtype != 'float64':
+                        raise ValueError('All values in autoreg_trend_coeff_mean_prior must be of type float.')
+                    if not autoreg_trend_coeff_mean_prior.shape == (1, 1):
+                        raise ValueError('autoreg_trend_coeff_mean_prior must have shape (1, 1).')
+                    if np.any(np.isnan(autoreg_trend_coeff_mean_prior)):
+                        raise ValueError('autoreg_trend_coeff_mean_prior cannot have NaN values.')
+                    if np.any(np.isinf(autoreg_trend_coeff_mean_prior)):
+                        raise ValueError('autoreg_trend_coeff_mean_prior cannot have Inf/-Inf values.')
+                    if not abs(autoreg_trend_coeff_mean_prior[0, 0]) < 1:
+                        raise warnings.warn('The autoregressive trend coefficient is greater than 1 in absolute value, '
+                                            'which implies an explosive process. Note that an explosive process '
+                                            'can be stationary, but it implies that the future is needed to '
+                                            'predict the past. This is an unrealistic assumption.')
 
-        if autoreg_trend_coeff_precision_prior is not None:
-            if not isinstance(autoreg_trend_coeff_precision_prior, np.ndarray):
-                raise ValueError('autoreg_trend_coeff_precision_prior must be a Numpy array.')
-            if autoreg_trend_coeff_precision_prior.dtype != 'float64':
-                raise ValueError('All values in autoreg_trend_coeff_precision_prior must be of type float.')
-            if not autoreg_trend_coeff_precision_prior.shape == (1, 1):
-                raise ValueError('autoreg_trend_coeff_precision_prior must have shape (1, 1).')
-            if np.any(np.isnan(autoreg_trend_coeff_precision_prior)):
-                raise ValueError('autoreg_trend_coeff_precision_prior cannot have NaN values.')
-            if np.any(np.isinf(autoreg_trend_coeff_precision_prior)):
-                raise ValueError('autoreg_trend_coeff_precision_prior cannot have Inf/-Inf values.')
-            if not ao.is_positive_definite(autoreg_trend_coeff_precision_prior):
-                raise ValueError('autoreg_trend_coeff_precision_prior must be a positive definite matrix.')
-            if not ao.is_symmetric(autoreg_trend_coeff_precision_prior):
-                raise ValueError('autoreg_trend_coeff_precision_prior must be a symmetric matrix.')
+                if autoreg_trend_coeff_precision_prior is not None:
+                    if not isinstance(autoreg_trend_coeff_precision_prior, np.ndarray):
+                        raise ValueError('autoreg_trend_coeff_precision_prior must be a Numpy array.')
+                    if autoreg_trend_coeff_precision_prior.dtype != 'float64':
+                        raise ValueError('All values in autoreg_trend_coeff_precision_prior must be of type float.')
+                    if not autoreg_trend_coeff_precision_prior.shape == (1, 1):
+                        raise ValueError('autoreg_trend_coeff_precision_prior must have shape (1, 1).')
+                    if np.any(np.isnan(autoreg_trend_coeff_precision_prior)):
+                        raise ValueError('autoreg_trend_coeff_precision_prior cannot have NaN values.')
+                    if np.any(np.isinf(autoreg_trend_coeff_precision_prior)):
+                        raise ValueError('autoreg_trend_coeff_precision_prior cannot have Inf/-Inf values.')
+                    if not ao.is_positive_definite(autoreg_trend_coeff_precision_prior):
+                        raise ValueError('autoreg_trend_coeff_precision_prior must be a positive definite matrix.')
+                    if not ao.is_symmetric(autoreg_trend_coeff_precision_prior):
+                        raise ValueError('autoreg_trend_coeff_precision_prior must be a symmetric matrix.')
 
         # Dummy seasonal prior check
-        if dum_season_var_shape_prior is not None:
-            if not isinstance(dum_season_var_shape_prior, tuple):
-                raise ValueError('dum_seasonal_var_shape_prior must be a tuple '
-                                 'to accommodate potentially multiple seasonality.')
-            if len(dum_season_var_shape_prior) != len(self.dummy_seasonal):
-                raise ValueError('dum_season_var_shape_prior must have the same length as dummy_seasonal. '
-                                 'That is, for each periodicity in dummy_seasonal, there must be a corresponding '
-                                 'shape prior.')
-            if not all(isinstance(i, float) for i in dum_season_var_shape_prior):
-                raise ValueError('All values in dum_season_var_shape_prior must be of type float.')
-            if any(np.isnan(i) for i in dum_season_var_shape_prior):
-                raise ValueError('No values in dum_season_var_shape_prior can be NaN.')
-            if any(np.isinf(i) for i in dum_season_var_shape_prior):
-                raise ValueError('No values in dum_season_var_shape_prior can be Inf/-Inf.')
-            if not all(i > 0 for i in dum_season_var_shape_prior):
-                raise ValueError('All values in dum_season_var_shape_prior must be strictly positive floats.')
+        if len(self.dummy_seasonal) > 0 and self.num_stochastic_dummy_seasonal_state_eqs > 0:
+            if dum_season_var_shape_prior is not None:
+                if not isinstance(dum_season_var_shape_prior, tuple):
+                    raise ValueError('dum_seasonal_var_shape_prior must be a tuple '
+                                     'to accommodate potentially multiple seasonality.')
+                if len(dum_season_var_shape_prior) != len(self.dummy_seasonal):
+                    raise ValueError('dum_season_var_shape_prior must have the same length as dummy_seasonal. '
+                                     'That is, for each periodicity in dummy_seasonal, there must be a corresponding '
+                                     'shape prior.')
+                if not all(isinstance(i, float) for i in dum_season_var_shape_prior):
+                    raise ValueError('All values in dum_season_var_shape_prior must be of type float.')
+                if any(np.isnan(i) for i in dum_season_var_shape_prior):
+                    raise ValueError('No values in dum_season_var_shape_prior can be NaN.')
+                if any(np.isinf(i) for i in dum_season_var_shape_prior):
+                    raise ValueError('No values in dum_season_var_shape_prior can be Inf/-Inf.')
+                if not all(i > 0 for i in dum_season_var_shape_prior):
+                    raise ValueError('All values in dum_season_var_shape_prior must be strictly positive floats.')
 
-        if dum_season_var_scale_prior is not None:
-            if not isinstance(dum_season_var_scale_prior, tuple):
-                raise ValueError('dum_seasonal_var_scale_prior must be a tuple '
-                                 'to accommodate potentially multiple seasonality.')
-            if len(dum_season_var_scale_prior) != len(self.dummy_seasonal):
-                raise ValueError('dum_season_var_scale_prior must have the same length as dummy_seasonal. '
-                                 'That is, for each periodicity in dummy_seasonal, there must be a corresponding '
-                                 'scale prior.')
-            if not all(isinstance(i, float) for i in dum_season_var_scale_prior):
-                raise ValueError('All values in dum_season_var_scale_prior must be of type float.')
-            if any(np.isnan(i) for i in dum_season_var_scale_prior):
-                raise ValueError('No values in dum_season_var_scale_prior can be NaN.')
-            if any(np.isinf(i) for i in dum_season_var_scale_prior):
-                raise ValueError('No values in dum_season_var_scale_prior can be Inf/-Inf.')
-            if not all(i > 0 for i in dum_season_var_scale_prior):
-                raise ValueError('All values in dum_season_var_scale_prior must be strictly positive floats.')
+            if dum_season_var_scale_prior is not None:
+                if not isinstance(dum_season_var_scale_prior, tuple):
+                    raise ValueError('dum_seasonal_var_scale_prior must be a tuple '
+                                     'to accommodate potentially multiple seasonality.')
+                if len(dum_season_var_scale_prior) != len(self.dummy_seasonal):
+                    raise ValueError('dum_season_var_scale_prior must have the same length as dummy_seasonal. '
+                                     'That is, for each periodicity in dummy_seasonal, there must be a corresponding '
+                                     'scale prior.')
+                if not all(isinstance(i, float) for i in dum_season_var_scale_prior):
+                    raise ValueError('All values in dum_season_var_scale_prior must be of type float.')
+                if any(np.isnan(i) for i in dum_season_var_scale_prior):
+                    raise ValueError('No values in dum_season_var_scale_prior can be NaN.')
+                if any(np.isinf(i) for i in dum_season_var_scale_prior):
+                    raise ValueError('No values in dum_season_var_scale_prior can be Inf/-Inf.')
+                if not all(i > 0 for i in dum_season_var_scale_prior):
+                    raise ValueError('All values in dum_season_var_scale_prior must be strictly positive floats.')
 
         # Trigonometric seasonal prior check
-        if trig_season_var_shape_prior is not None:
-            if not isinstance(trig_season_var_shape_prior, tuple):
-                raise ValueError('trig_seasonal_var_shape_prior must be a tuple '
-                                 'to accommodate potentially multiple seasonality.')
-            if len(trig_season_var_shape_prior) != len(self.trig_seasonal):
-                raise ValueError('trig_season_var_shape_prior must have the same length as trig_seasonal. '
-                                 'That is, for each periodicity in trig_seasonal, there must be a corresponding '
-                                 'shape prior.')
-            if not all(isinstance(i, float) for i in trig_season_var_shape_prior):
-                raise ValueError('All values in trig_season_var_shape_prior must be of type float.')
-            if any(np.isnan(i) for i in trig_season_var_shape_prior):
-                raise ValueError('No values in trig_season_var_shape_prior can be NaN.')
-            if any(np.isinf(i) for i in trig_season_var_shape_prior):
-                raise ValueError('No values in trig_season_var_shape_prior can be Inf/-Inf.')
-            if not all(i > 0 for i in trig_season_var_shape_prior):
-                raise ValueError('All values in trig_season_var_shape_prior must be strictly positive floats.')
+        if len(self.trig_seasonal) > 0 and self.num_stochastic_trig_seasonal_state_eqs > 0:
+            if trig_season_var_shape_prior is not None:
+                if not isinstance(trig_season_var_shape_prior, tuple):
+                    raise ValueError('trig_seasonal_var_shape_prior must be a tuple '
+                                     'to accommodate potentially multiple seasonality.')
+                if len(trig_season_var_shape_prior) != len(self.trig_seasonal):
+                    raise ValueError('trig_season_var_shape_prior must have the same length as trig_seasonal. '
+                                     'That is, for each periodicity in trig_seasonal, there must be a corresponding '
+                                     'shape prior.')
+                if not all(isinstance(i, float) for i in trig_season_var_shape_prior):
+                    raise ValueError('All values in trig_season_var_shape_prior must be of type float.')
+                if any(np.isnan(i) for i in trig_season_var_shape_prior):
+                    raise ValueError('No values in trig_season_var_shape_prior can be NaN.')
+                if any(np.isinf(i) for i in trig_season_var_shape_prior):
+                    raise ValueError('No values in trig_season_var_shape_prior can be Inf/-Inf.')
+                if not all(i > 0 for i in trig_season_var_shape_prior):
+                    raise ValueError('All values in trig_season_var_shape_prior must be strictly positive floats.')
 
-        if trig_season_var_scale_prior is not None:
-            if not isinstance(trig_season_var_scale_prior, tuple):
-                raise ValueError('trig_seasonal_var_scale_prior must be a tuple '
-                                 'to accommodate potentially multiple seasonality.')
-            if len(trig_season_var_scale_prior) != len(self.trig_seasonal):
-                raise ValueError('A non-empty tuple for trig_season_var_scale_prior must have the same '
-                                 'length as trig_seasonal. That is, for each periodicity in trig_seasonal, '
-                                 'there must be a corresponding scale prior.')
-            if not all(isinstance(i, float) for i in trig_season_var_scale_prior):
-                raise ValueError('All values in trig_season_var_scale_prior must be of type float.')
-            if any(np.isinf(i) for i in trig_season_var_scale_prior):
-                raise ValueError('No values in trig_season_var_scale_prior can be NaN.')
-            if any(np.isinf(i) for i in trig_season_var_scale_prior):
-                raise ValueError('No values in trig_season_var_scale_prior can be Inf/-Inf.')
-            if not all(i > 0 for i in trig_season_var_scale_prior):
-                raise ValueError('All values in trig_season_var_scale_prior must be strictly positive floats.')
+            if trig_season_var_scale_prior is not None:
+                if not isinstance(trig_season_var_scale_prior, tuple):
+                    raise ValueError('trig_seasonal_var_scale_prior must be a tuple '
+                                     'to accommodate potentially multiple seasonality.')
+                if len(trig_season_var_scale_prior) != len(self.trig_seasonal):
+                    raise ValueError('A non-empty tuple for trig_season_var_scale_prior must have the same '
+                                     'length as trig_seasonal. That is, for each periodicity in trig_seasonal, '
+                                     'there must be a corresponding scale prior.')
+                if not all(isinstance(i, float) for i in trig_season_var_scale_prior):
+                    raise ValueError('All values in trig_season_var_scale_prior must be of type float.')
+                if any(np.isinf(i) for i in trig_season_var_scale_prior):
+                    raise ValueError('No values in trig_season_var_scale_prior can be NaN.')
+                if any(np.isinf(i) for i in trig_season_var_scale_prior):
+                    raise ValueError('No values in trig_season_var_scale_prior can be Inf/-Inf.')
+                if not all(i > 0 for i in trig_season_var_scale_prior):
+                    raise ValueError('All values in trig_season_var_scale_prior must be strictly positive floats.')
 
         # Predictors prior check
-        if reg_coeff_mean_prior is not None:
-            if not isinstance(reg_coeff_mean_prior, np.ndarray):
-                raise ValueError('reg_coeff_mean_prior must be of type Numpy ndarray.')
-            if reg_coeff_mean_prior.dtype != 'float64':
-                raise ValueError('All values in reg_coeff_mean_prior must be of type float.')
-            if not reg_coeff_mean_prior.shape == (self.num_predictors, 1):
-                raise ValueError(f'reg_coeff_mean_prior must have shape ({self.num_predictors}, 1).')
-            if np.any(np.isnan(reg_coeff_mean_prior)):
-                raise ValueError('reg_coeff_mean_prior cannot have NaN values.')
-            if np.any(np.isinf(reg_coeff_mean_prior)):
-                raise ValueError('reg_coeff_mean_prior cannot have Inf and/or -Inf values.')
+        if self.has_predictors:
+            if reg_coeff_mean_prior is not None:
+                if not isinstance(reg_coeff_mean_prior, np.ndarray):
+                    raise ValueError('reg_coeff_mean_prior must be of type Numpy ndarray.')
+                if reg_coeff_mean_prior.dtype != 'float64':
+                    raise ValueError('All values in reg_coeff_mean_prior must be of type float.')
+                if not reg_coeff_mean_prior.shape == (self.num_predictors, 1):
+                    raise ValueError(f'reg_coeff_mean_prior must have shape ({self.num_predictors}, 1).')
+                if np.any(np.isnan(reg_coeff_mean_prior)):
+                    raise ValueError('reg_coeff_mean_prior cannot have NaN values.')
+                if np.any(np.isinf(reg_coeff_mean_prior)):
+                    raise ValueError('reg_coeff_mean_prior cannot have Inf and/or -Inf values.')
 
-        if reg_coeff_precision_prior is not None:
-            if not isinstance(reg_coeff_precision_prior, np.ndarray):
-                raise ValueError('reg_coeff_precision_prior must be of type Numpy ndarray.')
-            if reg_coeff_precision_prior.dtype != 'float64':
-                raise ValueError('All values in reg_coeff_precision_prior must be of type float.')
-            if not reg_coeff_precision_prior.shape == (self.num_predictors, self.num_predictors):
-                raise ValueError(f'reg_coeff_precision_prior must have shape ({self.num_predictors}, '
-                                 f'{self.num_predictors}).')
-            if not ao.is_positive_definite(reg_coeff_precision_prior):
-                raise ValueError('reg_coeff_precision_prior must be a positive definite matrix.')
-            if not ao.is_symmetric(reg_coeff_precision_prior):
-                raise ValueError('reg_coeff_precision_prior must be a symmetric matrix.')
+            if reg_coeff_precision_prior is not None:
+                if not isinstance(reg_coeff_precision_prior, np.ndarray):
+                    raise ValueError('reg_coeff_precision_prior must be of type Numpy ndarray.')
+                if reg_coeff_precision_prior.dtype != 'float64':
+                    raise ValueError('All values in reg_coeff_precision_prior must be of type float.')
+                if not reg_coeff_precision_prior.shape == (self.num_predictors, self.num_predictors):
+                    raise ValueError(f'reg_coeff_precision_prior must have shape ({self.num_predictors}, '
+                                     f'{self.num_predictors}).')
+                if not ao.is_positive_definite(reg_coeff_precision_prior):
+                    raise ValueError('reg_coeff_precision_prior must be a positive definite matrix.')
+                if not ao.is_symmetric(reg_coeff_precision_prior):
+                    raise ValueError('reg_coeff_precision_prior must be a symmetric matrix.')
 
         # Define variables
         y = self.y
