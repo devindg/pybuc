@@ -1241,22 +1241,22 @@ class BayesianUnobservedComponents:
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
         :param response_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        response error variance. Default is 1.
+        response error variance. Default is 1e-4.
 
         :param response_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        response error variance. Default is 0.01.
+        response error variance. Default is 1e-4.
 
         :param level_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        level state equation error variance. Default is 1.
+        level state equation error variance. Default is 1e-4.
 
         :param level_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. Default is 0.01.
+        level state equation error variance. Default is 1e-4.
 
         :param trend_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        trend state equation error variance. Default is 1.
+        trend state equation error variance. Default is 1e-4.
 
         :param trend_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is 0.01.
+        trend state equation error variance. Default is 1e-4.
 
         :param autoreg_trend_coeff_mean_prior: Numpy array of dimension (1, 1). Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[0.]].
@@ -1266,22 +1266,20 @@ class BayesianUnobservedComponents:
         Default is [[4.]].
 
         :param dum_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
-        for each periodicity in dummy_seasonal. Default is 1 for each periodicity.
+        for each periodicity in dummy_seasonal. Default is 1e-4 for each periodicity.
 
         :param dum_season_var_scale_prior: tuple of floats > 0. Specifies the inverse-Gamma scale priors
-        for each periodicity in dummy_seasonal. Default is 0.01 for each periodicity.
+        for each periodicity in dummy_seasonal. Default is 1e-4 for each periodicity.
 
         :param trig_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
-        for each (periodicity, num_harmonics) pair in trig_seasonal. In total, there are
-        2 * SUM[num_harmonics[p]] shape priors for p=1, 2, ..., P periodicities. For example, if
-        trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, True), then there are
-        2 * 3 + 2 * 2 = 10 shape priors required. Default is 1 for each (periodicity, num_harmonics) pair.
+        for each periodicity in trig_seasonal. For example, if trig_seasonal = ((12, 3), (10, 2)) and
+        stochastic_trig_seasonal = (True, True), only two shape priors need to be specified: one for periodicity 12
+        and one for periodicity 10. Default is 1e-4 for each periodicity.
 
         :param trig_season_var_scale_prior: tuple of floats > 0. Specifies the inverse-Gamma scale priors
-        for each (periodicity, num_harmonics) pair in trig_seasonal. In total, there are
-        2 * SUM[num_harmonics[p]] scale priors for p=1, 2, ..., P periodicities. For example, if
-        trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, True), then there are
-        2 * 3 + 2 * 2 = 10 scale priors required. Default is 0.01 for each (periodicity, num_harmonics) pair.
+        for each periodicity in trig_seasonal. For example, if trig_seasonal = ((12, 3), (10, 2)) and
+        stochastic_trig_seasonal = (True, True), only two scale priors need to be specified: one for periodicity 12
+        and one for periodicity 10. Default is 1e-4 for each periodicity.
 
         :param reg_coeff_mean_prior: Numpy array of dimension (k, 1), where k is the number of predictors.
         Data type must be float64. If predictors are specified without a mean prior, a k-dimensional zero
