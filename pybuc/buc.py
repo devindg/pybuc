@@ -49,6 +49,7 @@ class ModelSetup(NamedTuple):
     reg_coeff_cov_prior: np.ndarray
     reg_coeff_cov_post: np.ndarray
     reg_coeff_precision_post: np.ndarray
+    zellner_prior_obs: float
     gibbs_iter0_reg_coeff: np.ndarray
 
 
@@ -413,6 +414,17 @@ class BayesianUnobservedComponents:
                 if pred.shape[0] != resp.shape[0]:
                     raise ValueError('The number of observations in the predictors array must match '
                                      'the number of observations in the response array.')
+
+                # -- check if design matrix has a constant
+                pred_column_mean = np.mean(pred, axis=0)
+                pred_offset = pred - pred_column_mean[np.newaxis, :]
+                diag_pred_offset_squared = np.diag(dot(pred_offset.T, pred_offset))
+                if np.any(diag_pred_offset_squared == 0.):
+                    raise ValueError('The predictors array cannot have a column with a constant value. Note that '
+                                     'the inclusion of a constant/intercept in the predictors array will confound '
+                                     'with the level if specified. If a constant level without trend or seasonality '
+                                     'is desired, pass as arguments level=True, stochastic_level=False, trend=False, '
+                                     'dum_seasonal=(), and trig_seasonal=(). This will replicate standard regression.')
 
                 # -- warn about model stability if the number of predictors exceeds number of observations
                 if pred.shape[1] > pred.shape[0]:
@@ -933,7 +945,8 @@ class BayesianUnobservedComponents:
                      autoreg_trend_coeff_mean_prior, autoreg_trend_coeff_precision_prior,
                      dum_season_var_shape_prior, dum_season_var_scale_prior,
                      trig_season_var_shape_prior, trig_season_var_scale_prior,
-                     reg_coeff_mean_prior, reg_coeff_precision_prior) -> ModelSetup:
+                     reg_coeff_mean_prior, reg_coeff_precision_prior,
+                     zellner_prior_obs) -> ModelSetup:
 
         n = self.num_obs
         q = self.num_stochastic_states
@@ -946,9 +959,9 @@ class BayesianUnobservedComponents:
 
         # Get priors for specified components
         if response_var_shape_prior is None:
-            response_var_shape_prior = 1.
+            response_var_shape_prior = 1e-4
         if response_var_scale_prior is None:
-            response_var_scale_prior = 0.01
+            response_var_scale_prior = 1e-4
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
         gibbs_iter0_response_error_variance = np.array([[0.01 * self.sd_response ** 2]])
@@ -967,10 +980,10 @@ class BayesianUnobservedComponents:
         if self.level:
             if self.stochastic_level:
                 if level_var_shape_prior is None:
-                    level_var_shape_prior = 1.
+                    level_var_shape_prior = 1e-4
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = 0.01
+                    level_var_scale_prior = 1e-4
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1001,10 +1014,10 @@ class BayesianUnobservedComponents:
         if self.trend:
             if self.stochastic_trend:
                 if trend_var_shape_prior is None:
-                    trend_var_shape_prior = 1.
+                    trend_var_shape_prior = 1e-4
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = 0.01
+                    trend_var_scale_prior = 1e-4
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1041,10 +1054,10 @@ class BayesianUnobservedComponents:
         if len(self.dummy_seasonal) > 0:
             if True in self.stochastic_dummy_seasonal:
                 if dum_season_var_shape_prior is None:
-                    dum_season_var_shape_prior = (1.,) * len(self.dummy_seasonal)
+                    dum_season_var_shape_prior = (1e-4,) * len(self.dummy_seasonal)
 
                 if dum_season_var_scale_prior is None:
-                    dum_season_var_scale_prior = (0.01,) * len(self.dummy_seasonal)
+                    dum_season_var_scale_prior = (1e-4,) * len(self.dummy_seasonal)
 
             i = j
             for c, v in enumerate(self.dummy_seasonal):
@@ -1073,7 +1086,7 @@ class BayesianUnobservedComponents:
                     init_state_variances.append(1e6)
 
                 components[f'Dummy-Seasonal.{v}'] = dict(start_obs_mat_col_index=i,
-                                                         end_obs_mat_col_index=i + (v - 1) + 1,
+                                                         end_obs_mat_col_index=i + (v - 1),
                                                          stochastic=self.stochastic_dummy_seasonal[c],
                                                          stochastic_index=stochastic_index)
                 i += v - 1
@@ -1086,10 +1099,10 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0:
             if True in self.stochastic_trig_seasonal:
                 if trig_season_var_shape_prior is None:
-                    trig_season_var_shape_prior = (1.,) * len(self.trig_seasonal)
+                    trig_season_var_shape_prior = (1e-4,) * len(self.trig_seasonal)
 
                 if trig_season_var_scale_prior is None:
-                    trig_season_var_scale_prior = (0.01,) * len(self.trig_seasonal)
+                    trig_season_var_scale_prior = (1e-4,) * len(self.trig_seasonal)
 
             i = j
             for c, v in enumerate(self.trig_seasonal):
@@ -1121,7 +1134,7 @@ class BayesianUnobservedComponents:
                     init_state_variances.append(1e6)
 
                 components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_obs_mat_col_index=i,
-                                                                     end_obs_mat_col_index=i + num_terms + 1,
+                                                                     end_obs_mat_col_index=i + num_terms,
                                                                      stochastic=self.stochastic_trig_seasonal[c],
                                                                      stochastic_index=stochastic_index)
                 i += 2 * h
@@ -1141,11 +1154,15 @@ class BayesianUnobservedComponents:
             init_state_variances.append(0.)
             gibbs_iter0_init_state.append(1.)
 
+            if zellner_prior_obs is None:
+                zellner_prior_obs = 1e-4
+
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
 
             if reg_coeff_precision_prior is None:
-                reg_coeff_precision_prior = 1. / n * (0.5 * dot(X.T, X) + 0.5 * np.diag(np.diag(dot(X.T, X))))
+                reg_coeff_precision_prior = zellner_prior_obs / n * (0.5 * dot(X.T, X)
+                                                                     + 0.5 * np.diag(np.diag(dot(X.T, X))))
                 reg_coeff_cov_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
             else:
                 reg_coeff_cov_prior = solve(reg_coeff_precision_prior, np.eye(self.num_predictors))
@@ -1153,7 +1170,8 @@ class BayesianUnobservedComponents:
             reg_coeff_precision_post = dot(X.T, X) + reg_coeff_precision_prior
             reg_coeff_cov_post = solve(reg_coeff_precision_post, np.eye(self.num_predictors))
             gibbs_iter0_reg_coeff = dot(reg_coeff_cov_post,
-                                        (dot(X.T, self.y) + dot(reg_coeff_precision_prior, reg_coeff_mean_prior)))
+                                        (dot(X.T, self.y) + dot(reg_coeff_precision_prior,
+                                                                reg_coeff_mean_prior)))
         else:
             reg_coeff_mean_prior = np.array([[]])
             reg_coeff_precision_prior = np.array([[]])
@@ -1195,6 +1213,7 @@ class BayesianUnobservedComponents:
                                       reg_coeff_cov_prior,
                                       reg_coeff_cov_post,
                                       reg_coeff_precision_post,
+                                      zellner_prior_obs,
                                       gibbs_iter0_reg_coeff)
 
         return self.model_setup
@@ -1214,7 +1233,8 @@ class BayesianUnobservedComponents:
                trig_season_var_shape_prior: tuple = None,
                trig_season_var_scale_prior: tuple = None,
                reg_coeff_mean_prior: np.ndarray = None,
-               reg_coeff_precision_prior: np.ndarray = None) -> Posterior:
+               reg_coeff_precision_prior: np.ndarray = None,
+               zellner_prior_obs: float = None) -> Posterior:
 
         """
 
@@ -1269,10 +1289,17 @@ class BayesianUnobservedComponents:
 
         :param reg_coeff_precision_prior: Numpy array of dimension (k, k), where k is the number of predictors.
         Data type must be float64. If predictors are specified without a precision prior, Zellner's g-prior will
-        be enforced. Specifically, g * (w * dot(X.T, X) + (1 - w) * diag(dot(X.T, X))), where g = 1 / n,
-        n is the number of observations, X is the design matrix, and diag(dot(X.T, X)) is a diagonal matrix
-        with the diagonal matching the diagonal of dot(X.T, X). The addition of the diagonal matrix to dot(X.T, X)
-        is to guard against singularity (i.e., a design matrix that is not full rank).
+        be enforced. Specifically, 1 / g * (w * dot(X.T, X) + (1 - w) * diag(dot(X.T, X))), where g = n / prior_obs,
+        prior_obs is the number of prior observations given to the regression coefficient mean prior (i.e.,
+        it controls how much weight is given to the mean prior), n is the number of observations, X is the design
+        matrix, and diag(dot(X.T, X)) is a diagonal matrix with the diagonal elements matching those of
+        dot(X.T, X). The addition of the diagonal matrix to dot(X.T, X) is to guard against singularity
+        (i.e., a design matrix that is not full rank). The weighting controlled by w is set to 0.5.
+        
+        :param zellner_prior_obs: float > 0. Relevant only if no regression precision matrix is provided.
+        It controls how precise one believes their priors are for the regression coefficients, assuming no regression
+        precision matrix is provided. Default value is 1e-4, which gives little weight to the regression coefficient
+        mean prior. This should approximate maximum likelihood estimation.
 
         :return: NamedTuple with the following:
         
@@ -1494,6 +1521,12 @@ class BayesianUnobservedComponents:
                 if not ao.is_symmetric(reg_coeff_precision_prior):
                     raise ValueError('reg_coeff_precision_prior must be a symmetric matrix.')
 
+            if zellner_prior_obs is not None:
+                if not isinstance(zellner_prior_obs, float):
+                    raise ValueError('zellner_prior_obs must be of type float')
+                if not 0 < zellner_prior_obs:
+                    raise ValueError('zellner_prior_obs must be a strictly positive float.')
+
         # Define variables
         y = self.y
         n = self.num_obs
@@ -1513,7 +1546,8 @@ class BayesianUnobservedComponents:
                                   autoreg_trend_coeff_mean_prior, autoreg_trend_coeff_precision_prior,
                                   dum_season_var_shape_prior, dum_season_var_scale_prior,
                                   trig_season_var_shape_prior, trig_season_var_scale_prior,
-                                  reg_coeff_mean_prior, reg_coeff_precision_prior)
+                                  reg_coeff_mean_prior, reg_coeff_precision_prior,
+                                  zellner_prior_obs)
 
         components = model.components
         response_var_scale_prior = model.response_var_scale_prior
