@@ -959,9 +959,9 @@ class BayesianUnobservedComponents:
 
         # Get priors for specified components
         if response_var_shape_prior is None:
-            response_var_shape_prior = 1e-4
+            response_var_shape_prior = 1e-6
         if response_var_scale_prior is None:
-            response_var_scale_prior = 1e-4
+            response_var_scale_prior = 1e-6
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
         gibbs_iter0_response_error_variance = np.array([[0.01 * self.sd_response ** 2]])
@@ -980,10 +980,10 @@ class BayesianUnobservedComponents:
         if self.level:
             if self.stochastic_level:
                 if level_var_shape_prior is None:
-                    level_var_shape_prior = 1e-4
+                    level_var_shape_prior = 1e-6
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = 1e-4
+                    level_var_scale_prior = 1e-6
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1014,10 +1014,10 @@ class BayesianUnobservedComponents:
         if self.trend:
             if self.stochastic_trend:
                 if trend_var_shape_prior is None:
-                    trend_var_shape_prior = 1e-4
+                    trend_var_shape_prior = 1e-6
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = 1e-4
+                    trend_var_scale_prior = 1e-6
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1054,10 +1054,10 @@ class BayesianUnobservedComponents:
         if len(self.dummy_seasonal) > 0:
             if True in self.stochastic_dummy_seasonal:
                 if dum_season_var_shape_prior is None:
-                    dum_season_var_shape_prior = (1e-4,) * len(self.dummy_seasonal)
+                    dum_season_var_shape_prior = (1e-6,) * len(self.dummy_seasonal)
 
                 if dum_season_var_scale_prior is None:
-                    dum_season_var_scale_prior = (1e-4,) * len(self.dummy_seasonal)
+                    dum_season_var_scale_prior = (1e-6,) * len(self.dummy_seasonal)
 
             i = j
             for c, v in enumerate(self.dummy_seasonal):
@@ -1099,10 +1099,10 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0:
             if True in self.stochastic_trig_seasonal:
                 if trig_season_var_shape_prior is None:
-                    trig_season_var_shape_prior = (1e-4,) * len(self.trig_seasonal)
+                    trig_season_var_shape_prior = (1e-6,) * len(self.trig_seasonal)
 
                 if trig_season_var_scale_prior is None:
-                    trig_season_var_scale_prior = (1e-4,) * len(self.trig_seasonal)
+                    trig_season_var_scale_prior = (1e-6,) * len(self.trig_seasonal)
 
             i = j
             for c, v in enumerate(self.trig_seasonal):
@@ -1155,7 +1155,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = 1e-4
+                zellner_prior_obs = 1e-6
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
@@ -1241,22 +1241,22 @@ class BayesianUnobservedComponents:
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
         :param response_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        response error variance. Default is 1e-4.
+        response error variance. Default is 1e-6.
 
         :param response_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        response error variance. Default is 1e-4.
+        response error variance. Default is 1e-6.
 
         :param level_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        level state equation error variance. Default is 1e-4.
+        level state equation error variance. Default is 1e-6.
 
         :param level_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. Default is 1e-4.
+        level state equation error variance. Default is 1e-6.
 
         :param trend_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
-        trend state equation error variance. Default is 1e-4.
+        trend state equation error variance. Default is 1e-6.
 
         :param trend_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is 1e-4.
+        trend state equation error variance. Default is 1e-6.
 
         :param autoreg_trend_coeff_mean_prior: Numpy array of dimension (1, 1). Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[0.]].
@@ -1266,20 +1266,20 @@ class BayesianUnobservedComponents:
         Default is [[4.]].
 
         :param dum_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
-        for each periodicity in dummy_seasonal. Default is 1e-4 for each periodicity.
+        for each periodicity in dummy_seasonal. Default is 1e-6 for each periodicity.
 
         :param dum_season_var_scale_prior: tuple of floats > 0. Specifies the inverse-Gamma scale priors
-        for each periodicity in dummy_seasonal. Default is 1e-4 for each periodicity.
+        for each periodicity in dummy_seasonal. Default is 1e-6 for each periodicity.
 
         :param trig_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
         for each periodicity in trig_seasonal. For example, if trig_seasonal = ((12, 3), (10, 2)) and
         stochastic_trig_seasonal = (True, True), only two shape priors need to be specified: one for periodicity 12
-        and one for periodicity 10. Default is 1e-4 for each periodicity.
+        and one for periodicity 10. Default is 1e-6 for each periodicity.
 
         :param trig_season_var_scale_prior: tuple of floats > 0. Specifies the inverse-Gamma scale priors
         for each periodicity in trig_seasonal. For example, if trig_seasonal = ((12, 3), (10, 2)) and
         stochastic_trig_seasonal = (True, True), only two scale priors need to be specified: one for periodicity 12
-        and one for periodicity 10. Default is 1e-4 for each periodicity.
+        and one for periodicity 10. Default is 1e-6 for each periodicity.
 
         :param reg_coeff_mean_prior: Numpy array of dimension (k, 1), where k is the number of predictors.
         Data type must be float64. If predictors are specified without a mean prior, a k-dimensional zero
@@ -1296,7 +1296,7 @@ class BayesianUnobservedComponents:
         
         :param zellner_prior_obs: float > 0. Relevant only if no regression precision matrix is provided.
         It controls how precise one believes their priors are for the regression coefficients, assuming no regression
-        precision matrix is provided. Default value is 1e-4, which gives little weight to the regression coefficient
+        precision matrix is provided. Default value is 1e-6, which gives little weight to the regression coefficient
         mean prior. This should approximate maximum likelihood estimation.
 
         :return: NamedTuple with the following:
