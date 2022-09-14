@@ -11,7 +11,6 @@ def rmse(actual, prediction):
     act, pred = actual.flatten(), prediction.flatten()
     return np.sqrt(np.mean((act - pred) ** 2))
 
-
 # Import airline passenger data
 url = "https://raw.githubusercontent.com/devindg/pybuc/master/examples/data/airline-passengers.csv"
 air = pd.read_csv(url, header=0, index_col=0)
@@ -92,7 +91,7 @@ if __name__ == '__main__':
                                                 level=True, stochastic_level=True,
                                                 trend=True, stochastic_trend=True, autoregressive_trend=False,
                                                 dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
+                                                trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
                                                 seed=123)
 
     post = bayes_uc.sample(5000)
