@@ -12,6 +12,8 @@ forecasting a structural time series:
 - Stochastic or non-stochastic level
 - Stochastic or non-stochastic trend
 - Damped trend <sup/>*</sup>
+- Multiple stochastic or non-stochastic periodic-lag seasonality
+- Multiple damped periodic-lag seasonality
 - Multiple stochastic or non-stochastic "dummy" seasonality
 - Multiple stochastic or non-stochastic trigonometric seasonality
 - Regression with static coefficients<sup/>**</sup>
@@ -222,11 +224,10 @@ Subsequent runs (assuming the Python kernel isn't restarted) should execute cons
 ```
 ''' Fit the airline data using Bayesian unobserved components '''
 bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
-                                                level=True, stochastic_level=True,
-                                                trend=True, stochastic_trend=True, autoregressive_trend=False,
-                                                dummy_seasonal=(), stochastic_dummy_seasonal=(),
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
-                                                seed=123)
+                                            level=True, stochastic_level=True,
+                                            trend=True, stochastic_trend=True, damped_trend=False,
+                                            trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
+                                            seed=123)
 
 post = bayes_uc.sample(5000)
 mcmc_burn = 100
@@ -270,7 +271,7 @@ The Bayesian Unobserved Components forecast plot, components plot, and RMSE are 
 ![plot](./examples/images/airline_passengers_bayes_uc_components.png)
 
 ```
-BAYES-UC RMSE: 17.412932828154464
+BAYES-UC RMSE: 17.002265220323128
 ```
 
 # Model
@@ -320,20 +321,34 @@ the observation equation, $\mu_t$, collapses to a deterministic intercept and li
 
 ## Seasonality
 
+### Periodic-lag form
+The seasonal component, $\gamma_t$, can be modeled in three ways. One way is based on periodic lags. Formally, the 
+seasonal effect on $y$ is modeled as
+
+$$
+\gamma_t = \rho \gamma_{t-S} + \eta_{\gamma, t},
+$$
+
+where $S$ is the number of periods in a seasonal cycle, $\rho$ is an autoregressive parameter expected to lie in the 
+unit circle (-1, 1), and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. If damping is not specified 
+for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process.
+
+This specification for seasonality is arguably the most parsimonious representation as it requires the fewest/weakest 
+assumptions.
+
 ### Dummy form
-The seasonal component, $\gamma_t$, can be modeled in two ways. One way is known as the "dummy" variable approach. 
-Formally, the seasonal effect on the outcome $y$ is modeled as 
+Another way is known as the "dummy" variable approach. Formally, the seasonal effect on the outcome $y$ is modeled as 
 
 $$
 \sum_{j=0}^{S-1} \gamma_{t-j} = \eta_{\gamma, t} \iff \gamma_t = -\sum_{j=1}^{S-1} \gamma_{t-j} + \eta_{\gamma, t},
 $$ 
 
-where $j$ indexes the number of periods in a seasonal cycle, $S$ is the number of periods in a seasonal cycle, and 
-$\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. Intuitively, if a time series exhibits periodicity, 
-then the sum of the periodic effects over a cycle should, on average, be zero.
+where $j$ indexes the number of periods in a seasonal cycle, and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ 
+for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle 
+should, on average, be zero.
 
 ### Trigonometric form
-Another way to model seasonality is through a trigonometric representation, which exploits the periodicity of sine and 
+The final way to model seasonality is through a trigonometric representation, which exploits the periodicity of sine and 
 cosine functions. Specifically, seasonality is modeled as
 
 $$

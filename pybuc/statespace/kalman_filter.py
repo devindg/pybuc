@@ -5,6 +5,7 @@ from ..utils import array_operations as ao
 
 
 class KF(NamedTuple):
+    one_step_ahead_prediction: np.ndarray
     one_step_ahead_prediction_resid: np.ndarray
     kalman_gain: np.ndarray
     filtered_state: np.ndarray
@@ -89,6 +90,7 @@ def kalman_filter(y: np.ndarray,
     n = y.shape[0]
 
     # Initialize Kalman filter matrices
+    y_pred = np.empty((n, 1), dtype=np.float64)
     v = np.empty((n, 1, 1), dtype=np.float64)  # Observation residuals
     K = np.empty((n, m, 1), dtype=np.float64)  # Kalman gain
     L = np.empty((n, m, m), dtype=np.float64)  # Kalman gain transformation
@@ -117,7 +119,8 @@ def kalman_filter(y: np.ndarray,
 
     # Run Kalman Filter
     for t in range(n):
-        v[t] = (1. - y_nan_indicator[t]) * (y_no_nan[t] - Z[t].dot(a[t]))
+        y_pred[t] = Z[t].dot(a[t])
+        v[t] = (1. - y_nan_indicator[t]) * (y_no_nan[t] - y_pred[t])
         F[t] = Z[t].dot(P[t]).dot(Z[t].T) + response_error_variance_matrix
         # Get appropriate matrix inversion procedure for F.
         # Matrix inversion is computationally expensive,
@@ -133,4 +136,4 @@ def kalman_filter(y: np.ndarray,
         else:
             P[t + 1] = T.dot(P[t]).dot(L[t].T)
 
-    return KF(v, K, a, P, F, F_inv, L)
+    return KF(y_pred, v, K, a, P, F, F_inv, L)
