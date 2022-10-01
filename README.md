@@ -1,5 +1,5 @@
 # pybuc
-`pybuc` ((Py)thon (B)ayesian (U)nobserved (C)omponents) is a version of R's Bayesian structural time 
+`pybuc` (Python Bayesian Unobserved Components) is a version of R's Bayesian structural time 
 series package, `bsts`, written by Steven L. Scott. The source paper can be found 
 [here](https://people.ischool.berkeley.edu/~hal/Papers/2013/pred-present-with-bsts.pdf) or in the *papers* 
 directory of this repository. While there are plans to expand the feature set of `pybuc`, currently there is no roadmap 
