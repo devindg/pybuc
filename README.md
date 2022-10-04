@@ -394,10 +394,7 @@ $$
 where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level 
 and seasonal component are specified, this means an initial estimate of the time series component 
 $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be 
-estimated conditional on 
-$$ 
-\mathbf y^ * \equiv \left(\begin{array}{cc} y_1^ * & y_2^ * & \cdots & y_n^ * \end{array}\right)^\prime
-$$
+estimated conditional on $\mathbf y^ * \equiv \left( y_1^ *, y_2^ *, \cdots, y_n^ * \right)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
