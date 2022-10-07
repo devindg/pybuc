@@ -1619,7 +1619,7 @@ class BayesianUnobservedComponents:
 
         :param damped_trend_coeff_prec_prior: Numpy array of dimension (1, 1). Specifies the prior
         precision matrix for the coefficient governing the trend's an AR(1) process without drift.
-        Default is [[4.]].
+        Default is [[1.]].
 
         :param lag_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
         for each periodicity in lag_seasonal. Default is 1e-6 for each periodicity.
@@ -1632,7 +1632,7 @@ class BayesianUnobservedComponents:
 
         :param damped_lag_season_coeff_prec_prior: Numpy array of dimension (1, 1). Specifies the prior
         precision matrix for the coefficient governing a lag_seasonal AR(1) process without drift.
-        Default is [[4.]].
+        Default is [[1.]].
 
         :param dum_season_var_shape_prior: tuple of floats > 0. Specifies the inverse-Gamma shape priors
         for each periodicity in dummy_seasonal. Default is 1e-6 for each periodicity.
