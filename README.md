@@ -310,7 +310,7 @@ process to be stationary, the implication of such a result implies that the futu
 realistic assumption. 
 
 If an autoregressive trend is specified, no hard constraints (by default) are placed on the bounds of $\phi$. Instead, 
-the default prior for $\phi$ is $N(0, 0.25)$. Thus, -1 and 1 are within two standard deviations of the mean. It is 
+the default prior for $\phi$ is $N(0, 1)$. Thus, -1 and 1 are within two standard deviations of the mean. It is 
 therefore possible for the Gibbs sampler to sample values outside the unit circle. If the posterior mean of $\phi$ is 
 outside the unit circle (or very close to the bounds), then an autoregressive trend is not a good assumption. If only 
 a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't be problematic for forecasting. 
@@ -331,7 +331,8 @@ $$
 
 where $S$ is the number of periods in a seasonal cycle, $\rho$ is an autoregressive parameter expected to lie in the 
 unit circle (-1, 1), and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. If damping is not specified 
-for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process.
+for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process. The default prior for $\phi$ 
+is N(0, 1)$.
 
 This specification for seasonality is arguably the most parsimonious representation as it requires the fewest/weakest 
 assumptions.
@@ -394,10 +395,7 @@ $$
 where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level 
 and seasonal component are specified, this means an initial estimate of the time series component 
 $\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be 
-estimated conditional on 
-$$ 
-\mathbf y^ * \equiv \left(\begin{array}{cc} y_1^ * & y_2^ * & \cdots & y_n^ * \end{array}\right)^\prime
-$$
+estimated conditional on $\mathbf y^ * \equiv \left(y_1^ *, y_2^ *, \cdots, y_n^ *)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
