@@ -332,7 +332,7 @@ $$
 where $S$ is the number of periods in a seasonal cycle, $\rho$ is an autoregressive parameter expected to lie in the 
 unit circle (-1, 1), and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. If damping is not specified 
 for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process. The default prior for $\phi$ 
-is N(0, 1)$.
+is $N(0, 1)$.
 
 This specification for seasonality is arguably the most parsimonious representation as it requires the fewest/weakest 
 assumptions.
