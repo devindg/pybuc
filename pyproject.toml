@@ -11,8 +11,8 @@ keywords = ["structural time series", "unobserved components", "bayesian", "bsts
 python = ">=3.9,<3.11"
 numba = "^0.56.2"
 pandas = "^1.4.4"
-matplotlib = "^3.5.3"
 numpy = "^1.23.2"
+matplotlib = "3.5.2"
 
 [tool.poetry.dev-dependencies]
 statsmodels = "^0.13.2"

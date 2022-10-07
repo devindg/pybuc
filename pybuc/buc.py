@@ -1313,7 +1313,7 @@ class BayesianUnobservedComponents:
                     damped_trend_coeff_mean_prior = np.array([[0.]])
 
                 if damped_trend_coeff_prec_prior is None:
-                    damped_trend_coeff_prec_prior = np.array([[4.]])
+                    damped_trend_coeff_prec_prior = np.array([[1.]])
 
                 damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
                 gibbs_iter0_damped_trend_coeff = np.array([[0.]])
@@ -1341,7 +1341,7 @@ class BayesianUnobservedComponents:
                 if damped_lag_season_coeff_mean_prior is None:
                     damped_lag_season_coeff_mean_prior = np.zeros((self.num_damped_lag_season, 1))
                 if damped_lag_season_coeff_prec_prior is None:
-                    damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1)) * 4.
+                    damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
 
                 damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
                 gibbs_iter0_damped_season_coeff = np.zeros((self.num_damped_lag_season, 1))
@@ -1772,7 +1772,7 @@ class BayesianUnobservedComponents:
                         warnings.warn('The mean damped trend coefficient is greater than 1 in absolute value, '
                                       'which implies an explosive process. Note that an explosive process '
                                       'can be stationary, but it implies that the future is needed to '
-                                      'predict the past. This is an unrealistic assumption.')
+                                      'predict the past.')
 
                 if damped_trend_coeff_prec_prior is not None:
                     if not isinstance(damped_trend_coeff_prec_prior, np.ndarray):
@@ -1848,7 +1848,7 @@ class BayesianUnobservedComponents:
                             warnings.warn(f'The mean damped coefficient for seasonal lag {j} is greater than 1 in '
                                           f'absolute value, which implies an explosive process. Note that an '
                                           f'explosive process can be stationary, but it implies that the future '
-                                          f'is needed to predict the past. This is an unrealistic assumption.')
+                                          f'is needed to predict the past.')
 
                 if damped_lag_season_coeff_prec_prior is not None:
                     if not isinstance(damped_lag_season_coeff_prec_prior, np.ndarray):
@@ -2022,51 +2022,6 @@ class BayesianUnobservedComponents:
         # Identify NaN values in y, if any
         y_nan_indicator = np.isnan(y) * 1.
         y_no_nan = ao.replace_nan(y)
-
-        # Sanity check on damped trend priors, if applicable
-        if self.trend and self.damped_trend:
-            lb = (damped_trend_coeff_mean_prior[0, 0]
-                  - 2 * np.sqrt(damped_trend_coeff_prec_prior[0, 0] ** (-1)))
-            ub = (damped_trend_coeff_mean_prior[0, 0]
-                  + 2 * np.sqrt(damped_trend_coeff_prec_prior[0, 0] ** (-1)))
-
-            if lb < 1 < ub:
-                warnings.warn("The mean and precision prior chosen for the trend's damping "
-                              "coefficient implies that a value of 1 is within two standard "
-                              "deviations of the mean. That is, an explosive process is believed "
-                              "to be within the realm of reasonable possibilities. Note that an "
-                              "explosive process can be stationary, but it implies that the future "
-                              "is needed to predict the past.")
-            if lb < -1 < ub:
-                warnings.warn("The mean and precision prior chosen for the trend's damping "
-                              "coefficient implies that a value of -1 is within two standard "
-                              "deviations of the mean. That is, an explosive process is believed "
-                              "to be within the realm of reasonable possibilities. Note that an "
-                              "explosive process can be stationary, but it implies that the future "
-                              "is needed to predict the past.")
-
-        # Sanity check on damped seasonal priors, if applicable
-        if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-            for j in range(self.num_damped_lag_season):
-                lb = (damped_lag_season_coeff_mean_prior[j, 0]
-                      - 2 * np.sqrt(damped_lag_season_coeff_prec_prior[j, 0] ** (-1)))
-                ub = (damped_lag_season_coeff_mean_prior[j, 0]
-                      + 2 * np.sqrt(damped_lag_season_coeff_prec_prior[j, 0] ** (-1)))
-
-                if lb < 1 < ub:
-                    warnings.warn(f"The mean and precision prior chosen for seasonal lag {j}'s damping "
-                                  f"coefficient implies that a value of 1 is within two standard "
-                                  f"deviations of the mean. That is, an explosive process is believed "
-                                  f"to be within the realm of reasonable possibilities. Note that an "
-                                  f"explosive process can be stationary, but it implies that the future "
-                                  f"is needed to predict the past.")
-                if lb < -1 < ub:
-                    warnings.warn(f"The mean and precision prior chosen for seasonal lag {j}'s damping "
-                                  f"coefficient implies that a value of -1 is within two standard "
-                                  f"deviations of the mean. That is, an explosive process is believed "
-                                  f"to be within the realm of reasonable possibilities. Note that an "
-                                  f"explosive process can be stationary, but it implies that the future "
-                                  f"is needed to predict the past.")
 
         # Initialize output arrays
         if q > 0:
