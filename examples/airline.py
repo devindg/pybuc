@@ -90,7 +90,7 @@ if __name__ == '__main__':
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 trend=True, stochastic_trend=True, damped_trend=False,
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
+                                                trig_seasonal=((12, 0),),
                                                 seed=123)
     post = bayes_uc.sample(5000)
     mcmc_burn = 100

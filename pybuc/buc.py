@@ -862,8 +862,11 @@ class BayesianUnobservedComponents:
         else:
             num_eqs = 0
             for v in self.trig_seasonal:
-                _, freq = v
-                num_eqs += 2 * freq
+                period, num_harmonics = v
+                if period / num_harmonics == 2:
+                    num_eqs += 2 * num_harmonics - 1
+                else:
+                    num_eqs += 2 * num_harmonics
 
         return num_eqs
 
@@ -871,8 +874,11 @@ class BayesianUnobservedComponents:
     def num_stoch_trig_season_state_eqs(self) -> int:
         num_stoch = 0
         for c, v in enumerate(self.trig_seasonal):
-            _, freq = v
-            num_stoch += 2 * freq * self.stochastic_trig_seasonal[c]
+            period, num_harmonics = v
+            if period / num_harmonics == 2:
+                num_stoch += (2 * num_harmonics - 1) * self.stochastic_trig_seasonal[c]
+            else:
+                num_stoch += 2 * num_harmonics * self.stochastic_trig_seasonal[c]
 
         return num_stoch
 
@@ -1013,11 +1019,22 @@ class BayesianUnobservedComponents:
 
         if len(self.trig_seasonal) > 0:
             for v in self.trig_seasonal:
-                period, freq = v
-                for k in range(1, freq + 1):
-                    T[i:i + 2, j:j + 2] = self.trig_transition_matrix(2. * np.pi * k / period)
-                    i += 2
-                    j += 2
+                period, num_harmonics = v
+                if period / num_harmonics == 2:
+                    for k in range(1, num_harmonics + 1):
+                        if k < num_harmonics:
+                            T[i:i + 2, j:j + 2] = self.trig_transition_matrix(2. * np.pi * k / period)
+                            i += 2
+                            j += 2
+                        else:
+                            T[i:i + 1, j:j + 1] = self.trig_transition_matrix(2. * np.pi * k / period)[0, 0]
+                            i += 1
+                            j += 1
+                else:
+                    for k in range(1, num_harmonics + 1):
+                        T[i:i + 2, j:j + 2] = self.trig_transition_matrix(2. * np.pi * k / period)
+                        i += 2
+                        j += 2
 
         if self.has_predictors:
             T[i, j] = 1.
@@ -1073,62 +1090,74 @@ class BayesianUnobservedComponents:
 
             if len(self.trig_seasonal) > 0:
                 for c, v in enumerate(self.trig_seasonal):
-                    _, freq = v
-                    num_terms = 2 * freq
+                    period, num_harmonics = v
+                    if period / num_harmonics == 2:
+                        num_eqs = 2 * num_harmonics - 1
+                    else:
+                        num_eqs = 2 * num_harmonics
+
                     if self.stochastic_trig_seasonal[c]:
-                        for k in range(num_terms):
+                        for k in range(num_eqs):
                             R[i + k, j + k] = 1.
 
-                        j += num_terms
-                    i += num_terms
+                        j += num_eqs
+                    i += num_eqs
 
         return R
 
     @property
-    def posterior_state_error_covariance_transformation_matrix(self) -> np.ndarray:
+    def state_sse_transformation_matrix(self) -> np.ndarray:
         q = self.num_stoch_states
-        A = np.zeros((q, q))
+        q_trig = self.num_stoch_trig_season_state_eqs
 
         if q == 0:
-            pass
+            H = None
         else:
-            if self.num_stoch_trig_season_state_eqs == 0:
-                np.fill_diagonal(A, 1.)
+            if q_trig == 0:
+                H = np.eye(q)
             else:
+                q_restrict = q - q_trig + sum(self.stochastic_trig_seasonal)
+                H = np.zeros((q_restrict, q))
+
                 i = 0
                 if self.level:
                     if self.stochastic_level:
-                        A[i, i] = 1.
+                        H[i, i] = 1.
                         i += 1
 
                 if self.trend:
                     if self.stochastic_trend:
-                        A[i, i] = 1.
+                        H[i, i] = 1.
                         i += 1
 
                 if len(self.lag_seasonal) > 0:
                     for c, v in enumerate(self.lag_seasonal):
                         if self.stochastic_lag_seasonal[c]:
-                            A[i, i] = 1.
+                            H[i, i] = 1.
                             i += 1
 
                 if len(self.dummy_seasonal) > 0:
                     for c, v in enumerate(self.dummy_seasonal):
                         if self.stochastic_dummy_seasonal[c]:
-                            A[i, i] = 1.
+                            H[i, i] = 1.
                             i += 1
 
                 if len(self.trig_seasonal) > 0:
+                    j = i
                     for c, v in enumerate(self.trig_seasonal):
-                        _, freq = v
-                        num_terms = 2 * freq
+                        period, num_harmonics = v
+
+                        if period / num_harmonics == 2:
+                            num_eqs = 2 * num_harmonics - 1
+                        else:
+                            num_eqs = 2 * num_harmonics
+
                         if self.stochastic_trig_seasonal[c]:
-                            for k in range(num_terms):
-                                A[i + k, i:i + num_terms] = 1. / (2 * freq)
+                            H[i, j:j + num_eqs] = 1.
+                            i += 1
+                            j += num_eqs
 
-                            i += 2 * freq
-
-        return A
+        return H
 
     @staticmethod
     def _first_value(x: np.ndarray):
@@ -1248,7 +1277,8 @@ class BayesianUnobservedComponents:
             response_var_scale_prior = 1e-6
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
-        gibbs_iter0_response_error_variance = np.array([[0.01 * sd_response ** 2]])
+        gibbs_iter0_response_error_variance = np.array([[response_var_scale_prior
+                                                         / (response_var_shape_prior + 1.)]])
 
         # Record the state specification of the state space model
 
@@ -1264,7 +1294,8 @@ class BayesianUnobservedComponents:
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
-                gibbs_iter0_state_error_var.append(0.01 * sd_response ** 2)
+                gibbs_iter0_state_error_var.append(level_var_scale_prior
+                                                   / (level_var_shape_prior + 1.))
                 stochastic_index = s
                 s += 1
             else:
@@ -1301,7 +1332,8 @@ class BayesianUnobservedComponents:
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
-                gibbs_iter0_state_error_var.append(0.01 * sd_response ** 2)
+                gibbs_iter0_state_error_var.append(trend_var_scale_prior
+                                                   / (trend_var_shape_prior + 1.))
 
                 stochastic_index = s
                 s += 1
@@ -1316,7 +1348,7 @@ class BayesianUnobservedComponents:
                     damped_trend_coeff_prec_prior = np.array([[1.]])
 
                 damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
-                gibbs_iter0_damped_trend_coeff = np.array([[0.]])
+                gibbs_iter0_damped_trend_coeff = damped_trend_coeff_mean_prior
                 init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
                                             (1 - gibbs_iter0_damped_trend_coeff[0, 0] ** 2))
                 init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
@@ -1344,7 +1376,7 @@ class BayesianUnobservedComponents:
                     damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
 
                 damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
-                gibbs_iter0_damped_season_coeff = np.zeros((self.num_damped_lag_season, 1))
+                gibbs_iter0_damped_season_coeff = damped_lag_season_coeff_mean_prior
 
             i = j
             d = 0  # indexes damped periodicities
@@ -1352,16 +1384,18 @@ class BayesianUnobservedComponents:
                 seasonal_period.append(v)
                 if self.stochastic_lag_seasonal[c]:
                     if lag_season_var_shape_prior is None:
-                        state_var_shape_post.append(1e-6 + 0.5 * n)
+                        shape_prior = 1e-6
                     else:
-                        state_var_shape_post.append(lag_season_var_shape_prior[c] + 0.5 * n)
+                        shape_prior = lag_season_var_shape_prior[c]
+                    state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        state_var_scale_prior.append(1e-6)
+                        scale_prior = 1e-6
                     else:
-                        state_var_scale_prior.append(lag_season_var_scale_prior[c])
+                        scale_prior = lag_season_var_scale_prior[c]
+                    state_var_scale_prior.append(scale_prior)
 
-                    gibbs_iter0_state_error_var.append(0.01 * sd_response ** 2)
+                    gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
 
                     stochastic_index = s
                     s += 1
@@ -1403,16 +1437,18 @@ class BayesianUnobservedComponents:
                 seasonal_period.append(v)
                 if self.stochastic_dummy_seasonal[c]:
                     if dum_season_var_shape_prior is None:
-                        state_var_shape_post.append(1e-6 + 0.5 * n)
+                        shape_prior = 1e-6
                     else:
-                        state_var_shape_post.append(dum_season_var_shape_prior[c] + 0.5 * n)
+                        shape_prior = dum_season_var_shape_prior[c]
+                    state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        state_var_scale_prior.append(1e-6)
+                        scale_prior = 1e-6
                     else:
-                        state_var_scale_prior.append(dum_season_var_scale_prior[c])
+                        scale_prior = dum_season_var_scale_prior[c]
+                    state_var_scale_prior.append(scale_prior)
 
-                    gibbs_iter0_state_error_var.append(0.01 * sd_response ** 2)
+                    gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
 
                     stochastic_index = s
                     s += 1
@@ -1450,29 +1486,32 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0:
             i = j
             for c, v in enumerate(self.trig_seasonal):
-                f, h = v
-                num_terms = 2 * h
-                seasonal_period.append(f)
+                period, num_harmonics = v
+
+                if period / num_harmonics == 2:
+                    num_eqs = 2 * num_harmonics - 1
+                else:
+                    num_eqs = 2 * num_harmonics
+
+                seasonal_period.append(period)
                 if self.stochastic_trig_seasonal[c]:
                     if trig_season_var_shape_prior is None:
-                        for k in range(num_terms):
-                            state_var_shape_post.append(1e-6 + 0.5 * n)
+                        shape_prior = 1e-6
                     else:
-                        for k in range(num_terms):
-                            state_var_shape_post.append(trig_season_var_shape_prior[c] + 0.5 * n)
+                        shape_prior = trig_season_var_shape_prior[c]
+                    state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        for k in range(num_terms):
-                            state_var_scale_prior.append(1e-6)
+                        scale_prior = 1e-6
                     else:
-                        for k in range(num_terms):
-                            state_var_scale_prior.append(trig_season_var_scale_prior[c])
+                        scale_prior = trig_season_var_scale_prior[c]
+                    state_var_scale_prior.append(scale_prior)
 
-                    for k in range(num_terms):
-                        gibbs_iter0_state_error_var.append(0.01 * sd_response ** 2)
+                    for k in range(num_eqs):
+                        gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
 
                     stochastic_index = s
-                    s += num_terms
+                    s += num_eqs
                 else:
                     stochastic_index = None
 
@@ -1485,17 +1524,18 @@ class BayesianUnobservedComponents:
                 # approximate diffuse initialization method is adopted.
                 # That is, a diagonal matrix with large values along
                 # the diagonal. Large in this setting is defined as 1e6.
-                for k in range(num_terms):
+                for k in range(num_eqs):
                     init_state_plus_values.append(0.)
                     init_state_variances.append(1e6)
 
-                components[f'Trigonometric-Seasonal.{f}.{h}'] = dict(start_state_eqn_index=i,
-                                                                     end_state_eqn_index=i + num_terms,
-                                                                     stochastic=self.stochastic_trig_seasonal[c],
-                                                                     stochastic_index=stochastic_index,
-                                                                     damped=None,
-                                                                     damped_transition_index=None)
-                i += 2 * h
+                components[f'Trigonometric-Seasonal.{period}.{num_harmonics}'] = dict(start_state_eqn_index=i,
+                                                                                      end_state_eqn_index=i + num_eqs,
+                                                                                      stochastic=
+                                                                                      self.stochastic_trig_seasonal[c],
+                                                                                      stochastic_index=stochastic_index,
+                                                                                      damped=None,
+                                                                                      damped_transition_index=None)
+                i += num_eqs
 
             for k in self._gibbs_iter0_init_trig_season():
                 gibbs_iter0_init_state.append(k)
@@ -1986,7 +2026,8 @@ class BayesianUnobservedComponents:
         T = self.state_transition_matrix
         C = self.state_intercept_matrix
         R = self.state_error_transformation_matrix
-        A = self.posterior_state_error_covariance_transformation_matrix
+        # A = self.posterior_state_error_covariance_transformation_matrix
+        H = self.state_sse_transformation_matrix
         X = self.predictors
 
         # Bring in the model configuration from _model_setup()
@@ -2166,9 +2207,9 @@ class BayesianUnobservedComponents:
             if q > 0:
                 state_resid = smoothed_errors[s][:, 1:, 0]
                 state_sse = dot(state_resid.T ** 2, n_ones)
-                state_var_scale_post = state_var_scale_prior + 0.5 * state_sse
-                state_err_var_post = dot(A, dist.vec_ig(state_var_shape_post, state_var_scale_post))
-                state_error_covariance[s] = q_eye * state_err_var_post
+                state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
+                state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
+                state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
             # Get new draw for the trend's AR(1) coefficient, if applicable
             if self.trend and self.damped_trend:
