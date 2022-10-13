@@ -379,8 +379,8 @@ $$
 \end{align}
 $$
  
-Accordingly, if $S$ is even and $h = S/2$, then there will be $S - 1$ state equations. In fact, regardless of what $h$ 
-is, there will always be _at most_ $S-1$ state equations.
+Accordingly, if $S$ is even and $h = S/2$, then there will be $S - 1$ state equations. More generally, the number of 
+state equations for a trigonometric specification is $2h$, except when $S$ is even and $h = S/2$.
 
 ## Regression
 There are two ways to configure the model matrices to account for a regression component with static coefficients. 
