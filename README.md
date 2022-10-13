@@ -331,7 +331,7 @@ $$
 
 where $S$ is the number of periods in a seasonal cycle, $\rho$ is an autoregressive parameter expected to lie in the 
 unit circle (-1, 1), and $\eta_{\gamma, t} \sim N(0, \sigma_{\eta_\gamma}^2)$ for all $t$. If damping is not specified 
-for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process. The default prior for $\phi$ 
+for a given periodic lag, $\rho = 1$ and seasonality is treated as a random walk process. The default prior for $\rho$ 
 is $N(0, 1)$.
 
 This specification for seasonality is arguably the most parsimonious representation as it requires the fewest/weakest 
@@ -368,7 +368,19 @@ $$
 $$
 
 where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma_j, t}$ and $\eta_{\gamma_j^ * , t}$ are 
-distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$.
+distributed $N(0, \sigma^2_{\eta_\gamma})$ for all $j, t$. Note that when $S$ is even, $\gamma_{S/2, t+1}^*$ is not 
+needed since 
+
+$$
+\begin{align}
+    \gamma_{S/2, t+1} &= \cos(\pi) \gamma_{S/2, t} + \sin(\pi) \gamma_{S/2, t}^* + \eta_{\gamma_{S/2}, t} \\
+    &= (-1) \gamma_{S/2, t} + (0) \gamma_{S/2, t}^* + \eta_{\gamma_{S/2}, t} \\
+    &= -\gamma_{S/2, t} + \eta_{\gamma_{S/2}, t}
+\end{align}
+$$
+ 
+Accordingly, if $S$ is even and $h = S/2$, then there will be $S - 1$ state equations. In fact, regardless of what $h$ 
+is, there will always be _at most_ $S-1$ state equations.
 
 ## Regression
 There are two ways to configure the model matrices to account for a regression component with static coefficients. 
@@ -409,32 +421,33 @@ state error transformation matrix, and unobserved state vector, respectively, wh
 and $q$ is the number of state parameters to be estimated (i.e., the number of stochastic state equations, 
 which is defined by the number of positive state variance parameters). 
 
-There are $m = 1 + 1 + h * 2 + 1 = 7$ state equations and $q = 1 + 1 + h * 2 = 6$ stochastic state equations. There are 
-6 stochastic state equations because the state value for the regression component is not stochastic; it is 1 for all $t$ 
-by construction. The observation, state transition, and state error transformation matrices may be written as
+There are $m = 1 + 1 + (h * 2 - 1) + 1 = 6$ state equations and $q = 1 + 1 + (h * 2 - 1) = 5$ stochastic state equations
+, where the term $(h * 2 - 1)$ follows from $S=4$ being even and $h = S/2$. Outside of this case, there would generally 
+be $h * 2$ state equations for trigonometric seasonality. Note also that there are 5 stochastic state equations because 
+the state value for the regression component is not stochastic; it is 1 for all $t$ by construction. The observation, 
+state transition, and state error transformation matrices may be 
+written as
 
 $$
 \begin{align}
     \mathbf Z_t &= \left(\begin{array}{cc} 
-                        1 & 0 & 1 & 0 & 1 & 0 & \mathbf x_t^{\prime} \boldsymbol{\beta}
+                        1 & 0 & 1 & 0 & 1 & \mathbf x_t^{\prime} \boldsymbol{\beta}
                         \end{array}\right) \\
     \mathbf T &= \left(\begin{array}{cc} 
-                        1 & 1 & 0 & 0 & 0 & 0 & 0 \\
-                        0 & 1 & 0 & 0 & 0 & 0 & 0 \\
-                        0 & 0 & \cos(2\pi / 4) & \sin(2\pi / 4) & 0 & 0 & 0 \\
-                        0 & 0 & -\sin(2\pi / 4) & \cos(2\pi / 4) & 0 & 0 & 0 \\
-                        0 & 0 & 0 & 0 & \cos(4\pi / 4) & \sin(4\pi / 4) & 0 \\
-                        0 & 0 & 0 & 0 & -\sin(4\pi / 4) & \cos(4\pi / 4) & 0 \\
-                        0 & 0 & 0 & 0 & 0 & 0 & 1
+                        1 & 1 & 0 & 0 & 0 & 0 \\
+                        0 & 1 & 0 & 0 & 0 & 0 \\
+                        0 & 0 & \cos(2\pi / 4) & \sin(2\pi / 4) & 0 & 0 \\
+                        0 & 0 & -\sin(2\pi / 4) & \cos(2\pi / 4) & 0 & 0 \\
+                        0 & 0 & 0 & 0 & -1 & 0 \\
+                        0 & 0 & 0 & 0 & 0 & 1
                         \end{array}\right) \\
     \mathbf R &= \left(\begin{array}{cc} 
-                    1 & 0 & 0 & 0 & 0 & 0 \\
-                    0 & 1 & 0 & 0 & 0 & 0 \\
-                    0 & 0 & 1 & 0 & 0 & 0 \\
-                    0 & 0 & 0 & 1 & 0 & 0 \\
-                    0 & 0 & 0 & 0 & 1 & 0 \\
-                    0 & 0 & 0 & 0 & 0 & 1 \\
-                    0 & 0 & 0 & 0 & 0 & 0
+                    1 & 0 & 0 & 0 & 0 \\
+                    0 & 1 & 0 & 0 & 0 \\
+                    0 & 0 & 1 & 0 & 0 \\
+                    0 & 0 & 0 & 1 & 0 \\
+                    0 & 0 & 0 & 0 & 1 \\
+                    0 & 0 & 0 & 0 & 0
                     \end{array}\right)
 \end{align}
 $$
@@ -455,11 +468,11 @@ where
 $$
 \begin{align}
     \boldsymbol{\alpha}_ t &= \left(\begin{array}{cc} 
-                            \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & \gamma_{2, t}^* & 1
+                            \mu_t & \delta_t & \gamma_{1, t} & \gamma_{1, t}^* & \gamma_{2, t} & 1
                             \end{array}\right)^\prime \\
     \boldsymbol{\eta}_ t &= \left(\begin{array}{cc} 
                             \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma_ 1, t} & \eta_{\gamma_ 1^\*, t} & 
-                            \eta_{\gamma_ 2, t} & \eta_{\gamma_ 2^\*, t}
+                            \eta_{\gamma_ 2, t}
                             \end{array}\right)^\prime
 \end{align}
 $$
@@ -469,8 +482,7 @@ and
 $$
 \mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta = 
 \mathrm{diag}(\sigma^2_{\eta_\mu}, \sigma^2_{\eta_\delta}, \sigma^2_{\eta_{\gamma_ 1}}, \sigma^2_{\eta_{\gamma_ 1^\*}}, 
-\sigma^2_{\eta_{\gamma_ 2}}, \sigma^2_{\eta_{\gamma_ 2^\*}}) \in \mathbb{R}^{6 \times 6} \hspace{5pt} \textrm{for all } 
-t=1,2,...,n
+\sigma^2_{\eta_{\gamma_ 2}}) \in \mathbb{R}^{5 \times 5} \hspace{5pt} \textrm{for all } t=1,2,...,n
 $$
 
 # Estimation
