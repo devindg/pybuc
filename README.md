@@ -10,6 +10,7 @@ The current version of `pybuc` includes the following options for modeling and
 forecasting a structural time series: 
 
 - Stochastic or non-stochastic level
+- Damped level
 - Stochastic or non-stochastic trend
 - Damped trend <sup/>*</sup>
 - Multiple stochastic or non-stochastic periodic-lag seasonality
@@ -295,7 +296,7 @@ The unobserved level evolves according to the following general transition equat
 
 $$
 \begin{align}
-    \mu_{t+1} &= \mu_t + \delta_t + \eta_{\mu, t} \\ 
+    \mu_{t+1} &= \kappa \mu_t + \delta_t + \eta_{\mu, t} \\ 
     \delta_{t+1} &= \phi \delta_t + \eta_{\delta, t} 
 \end{align}
 $$ 
@@ -303,21 +304,22 @@ $$
 where $\eta_{\mu, t} \sim N(0, \sigma_{\eta_\mu}^2)$ and $\eta_{\delta, t} \sim N(0, \sigma_{\eta_\delta}^2)$ for all 
 $t$. The state equation for $\delta_t$ represents the local trend at time $t$. 
 
-The parameter $\phi$ represents an autoregressive coefficient. In general, $\phi$ is expected to be in the interval 
-$(-1, 1)$, which implies a stationary process for trend. In practice, however, it is possible for $\phi$ to be 
-outside the unit circle, which implies an explosive process. While it is mathematically possible for an explosive 
-process to be stationary, the implication of such a result implies that the future predicts the past, which is not a 
-realistic assumption. 
+The parameters $\kappa$ and $\phi$ represent autoregressive coefficients. In general, $\kappa$ and $\phi$ are expected 
+to be in the interval $(-1, 1)$, which implies a stationary process. In practice, however, it is possible for either 
+$\kappa$ or $\phi$ to be outside the unit circle, which implies an explosive process. While it is mathematically 
+possible for an explosive process to be stationary, the implication of such a result implies that the future predicts 
+the past, which is not a realistic assumption. 
 
-If an autoregressive trend is specified, no hard constraints (by default) are placed on the bounds of $\phi$. Instead, 
-the default prior for $\phi$ is $N(0, 1)$. Thus, -1 and 1 are within two standard deviations of the mean. It is 
-therefore possible for the Gibbs sampler to sample values outside the unit circle. If the posterior mean of $\phi$ is 
-outside the unit circle (or very close to the bounds), then an autoregressive trend is not a good assumption. If only 
-a "few" of the posterior samples have $\phi$ outside the unit circle, this shouldn't be problematic for forecasting. 
-$\phi$ is set to 1 if a damped trend is not specified.
+If an autoregressive level or trend is specified, no hard constraints (by default) are placed on the bounds of the 
+autoregressive parameters. Instead, the default prior for these parameters is $N(0, 1)$. Thus, -1 and 1 are within two 
+standard deviations of the mean. It is therefore possible for the Gibbs sampler to sample values outside the unit circle. 
+If the posterior mean of $\kappa$ and/or $\phi$ is outside the unit circle (or very close to the bounds), then an 
+autoregressive level and/or trend is not a good assumption. If only a "few" of the posterior samples are outside the unit 
+circle, this shouldn't be problematic for forecasting.
 
-Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$, then the level component in 
-the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
+Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$ and $\kappa = 1$, 
+then the level component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time 
+trend.
 
 ## Seasonality
 
