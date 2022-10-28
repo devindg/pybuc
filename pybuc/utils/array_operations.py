@@ -42,6 +42,11 @@ def is_2d(x: np.ndarray) -> bool:
 
 
 @njit
+def is_3d(x: np.ndarray) -> bool:
+    return x.ndim == 3
+
+
+@njit
 def is_square(x: np.ndarray) -> bool:
     return x.shape[0] == x.shape[1]
 

@@ -89,7 +89,7 @@ if __name__ == '__main__':
     ''' Fit the airline data using Bayesian unobserved components '''
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
-                                                trend=True, stochastic_trend=True, damped_trend=False,
+                                                trend=True, stochastic_trend=True,
                                                 trig_seasonal=((12, 0),),
                                                 seed=123)
     post = bayes_uc.sample(5000)

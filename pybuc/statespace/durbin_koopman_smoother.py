@@ -23,9 +23,45 @@ def simulate_fake_linear_state_space(observation_matrix,
                                      state_transition_matrix,
                                      state_intercept_matrix,
                                      state_error_transformation_matrix,
-                                     init_state,
-                                     response_error_variance,
-                                     state_error_variance_matrix):
+                                     init_state_plus,
+                                     response_error_variance_matrix,
+                                     state_error_covariance_matrix):
+    """
+
+    :param observation_matrix: ndarray of dimension (n, 1, m), where m is the
+    number of state equations. Data type must be float64. Matrix that maps the
+    state to the response.
+
+    :param state_transition_matrix: ndarray of dimension (m, m). Data type must
+    be float64. Matrix that maps previous state values to the current state.
+
+    :param state_intercept_matrix: ndarray of dimension (m, 1). Data type
+    must be float64. An intercept that may be added to the transition state equations.
+    Generally, the intercept is a matrix of zeros and thus has no impact.
+
+    :param state_error_transformation_matrix: ndarray of dimension (m, q), where
+    q is the number of state equations that evolve stochastically. Data type must
+    be float64. Matrix that maps state equations to stochastic or non-stochastic form.
+
+    :param init_state_plus: ndarray of dimension (m, 1). Data type must be float64.
+    The initial starting values for each of the m state equations.
+
+    :param response_error_variance_matrix: ndarray of dimension (1, 1). Data type
+    must be float64. A singleton-matrix that captures the error variance of the
+    response.
+
+    :param state_error_covariance_matrix: ndarray of dimension (q, q). Data type
+    must be float64. A diagonal matrix that captures the error variance of each
+    stochastic state equation. It is possible for this matrix to be empty, in
+    which case no state equation evolves stochastically.
+
+    :return: Named tuple with the following:
+
+    1. simulated_response: ndarray of dimension (n, 1). Simulated 0-mean response.
+    2. simulated_state: ndarray of dimension (n + 1, m, 1). Simulated 0-mean state.
+    3. simulated_errors: ndarray of dimension (n, 1 + q, 1). Simulated error with
+    0 mean and variances matching the error variances estimated from the model.
+    """
     # Get state and observation transformation matrices
     T = state_transition_matrix
     C = state_intercept_matrix
@@ -38,16 +74,17 @@ def simulate_fake_linear_state_space(observation_matrix,
     n = Z.shape[0]
 
     if q > 0:
-        error_variances = np.concatenate((response_error_variance, ao.diag_2d(state_error_variance_matrix)))
+        error_variances = np.concatenate((response_error_variance_matrix,
+                                          ao.diag_2d(state_error_covariance_matrix)))
     else:
-        error_variances = response_error_variance
+        error_variances = response_error_variance_matrix
 
     errors = np.empty((n, 1 + q, 1), dtype=np.float64)
     for t in range(n):
         errors[t] = dist.vec_norm(np.zeros((1 + q, 1)), np.sqrt(error_variances))
 
     alpha = np.empty((n + 1, m, 1), dtype=np.float64)
-    alpha[0] = init_state
+    alpha[0] = init_state_plus
     y = np.empty((n, 1), dtype=np.float64)
     for t in range(n):
         y[t] = Z[t].dot(alpha[t]) + errors[t, 0, :]
@@ -66,11 +103,61 @@ def dk_smoother(y: np.ndarray,
                 state_intercept_matrix: np.ndarray,
                 state_error_transformation_matrix: np.ndarray,
                 response_error_variance_matrix: np.ndarray,
-                state_error_variance_matrix: np.ndarray,
-                init_state_values: np.ndarray,
-                init_state_plus_values: np.ndarray,
+                state_error_covariance_matrix: np.ndarray,
+                init_state: np.ndarray,
+                init_state_plus: np.ndarray,
                 init_state_covariance: np.ndarray,
                 has_predictors: bool = False):
+    """
+
+    :param y: ndarray of dimension (n, 1), where n is the number of observations.
+    Data type must be float64. Response variable for observation equation.
+
+    :param observation_matrix: ndarray of dimension (n, 1, m), where m is the
+    number of state equations. Data type must be float64. Matrix that maps the
+    state to the response.
+
+    :param state_transition_matrix: ndarray of dimension (m, m). Data type must
+    be float64. Matrix that maps previous state values to the current state.
+
+    :param state_intercept_matrix: ndarray of dimension (m, 1). Data type
+    must be float64. An intercept that may be added to the transition state equations.
+    Generally, the intercept is a matrix of zeros and thus has no impact.
+
+    :param state_error_transformation_matrix: ndarray of dimension (m, q), where
+    q is the number of state equations that evolve stochastically. Data type must
+    be float64. Matrix that maps state equations to stochastic or non-stochastic form.
+
+    :param response_error_variance_matrix: ndarray of dimension (1, 1). Data type
+    must be float64. A singleton-matrix that captures the error variance of the
+    response.
+
+    :param state_error_covariance_matrix: ndarray of dimension (q, q). Data type
+    must be float64. A diagonal matrix that captures the error variance of each
+    stochastic state equation. It is possible for this matrix to be empty, in
+    which case no state equation evolves stochastically.
+
+    :param init_state: ndarray of dimension (m, 1). Data type must be float64.
+    The initial starting values for each of the m state equations.
+
+    :param init_state_plus: ndarray of dimension (m, 1). Data type must be float64.
+    The initial starting values for each of the synthetic m state equations.
+
+    :param init_state_covariance: ndarray of dimension (m, m). Data type must be float64.
+    The initial state covariance matrix for the m state equations.
+
+    :param has_predictors: boolean. True if the model has static regression coefficients.
+
+
+    :return: Named tuple with the following:
+
+    1. simulated_smoothed_errors: np.ndarray of dimension (n, 1 + q, 1). Simulated smoothed
+    errors from Durbin-Koopman algorithm.
+    2. simulated_smoothed_state: np.ndarray of dimension (n + 1, m, 1). Simulated smoothed
+    state from Durbin-Koopman algorithm.
+    3. simulated_smoothed_prediction: np.ndarray of dimension (n, 1). Simulated smoothed
+    response prediction from Durbin-Koopman algorithm.
+    """
     # Get state and observation transformation matrices
     T = state_transition_matrix
     C = state_intercept_matrix
@@ -78,10 +165,74 @@ def dk_smoother(y: np.ndarray,
     R = state_error_transformation_matrix
 
     # Store number of state variables (m), state parameters (u), observations (n)
-    m = Z.shape[2]
+    m = T.shape[0]
     q = R.shape[1]
     n = y.shape[0]
 
+    # Data checks
+    if not y.shape == (n, 1):
+        raise ValueError('The response vector must have shape (n, 1), where n is the number of '
+                         'observations.')
+
+    if not T.shape == (m, m):
+        raise ValueError('The state transition matrix must have shape (m, m), where m denotes '
+                         'the number of state equations.')
+
+    if not Z.shape == (n, 1, m):
+        raise ValueError('The observation matrix must have shape (n, 1, m), where n denotes the '
+                         'number of observations and m is the number of stochastic state equations.')
+
+    if not R.shape == (m, q):
+        raise ValueError('The state error transformation matrix must have shape (m, q), where m '
+                         'denotes the number of state equations and q is the number of stochastic '
+                         'state equations.')
+
+    if not C.shape == (m, 1):
+        raise ValueError('The state intercept vector must have shape (m, 1), where m denotes '
+                         'the number of state equations.')
+
+    if not response_error_variance_matrix.shape == (1, 1):
+        raise ValueError('The response error variance matrix must have shape (1, 1).')
+
+    if not state_error_covariance_matrix.shape == (q, q):
+        raise ValueError('The state error covariance matrix must have shape (q, q), where '
+                         'q denotes the number of stochastic state equations.')
+
+    if not np.all(response_error_variance_matrix > 0):
+        raise ValueError('The response error variance must be a strictly positive number.')
+
+    if not np.all(np.diag(state_error_covariance_matrix) >= 0):
+        raise ValueError('All values along the diagonal of the state error covariance matrix '
+                         'must be non-negative.')
+
+    if not ao.is_symmetric(state_error_covariance_matrix):
+        raise ValueError('The state error covariance matrix must be symmetric.')
+
+    if not init_state.shape == (m, 1):
+        raise ValueError('The initial state value vector must have shape (m, 1), where m denotes '
+                         'the number of state equations.')
+
+    if not init_state_covariance.shape == (m, m):
+        raise ValueError('The initial state covariance matrix must have shape (m, m), where m denotes '
+                         'the number of state equations.')
+
+    # Given the construction of the observation and state transition
+    # matrices when static regression coefficients are specified,
+    # and given how the synthetic state and response values are generated,
+    # the actual state covariance matrix has to be modified before running
+    # y* = y - y+ through the Kalman filter. When static coefficients are
+    # specified, the state value is always 1 because the state variance
+    # for the regression component is 0. It's not valid, however, to use a
+    # fixed state value when running the Kalman filter on y*.
+
+    # If a fixed state value of 1 was used for y*, this would imply that y*
+    # has an identical relationship with the regression component as y does.
+    # This is never guaranteed nor should it be. Thus, when running the
+    # Kalman filter on y*, we must allow the relationship between y*
+    # and the regression component to be different. This is accomplished
+    # by resetting the variance of 0 for the regression component to some
+    # other positive number. To be consistent with default initial state
+    # variance values, this number is set to 1e6.
     init_state_cov = init_state_covariance.copy()
     if has_predictors:
         init_state_cov[-1, -1] = 1e6
@@ -89,13 +240,13 @@ def dk_smoother(y: np.ndarray,
         init_state_cov = init_state_covariance
 
     C_plus = C - C
-    sim_fake_lss = simulate_fake_linear_state_space(Z,
-                                                    T,
-                                                    C_plus,
-                                                    R,
-                                                    init_state_plus_values,
-                                                    response_error_variance_matrix,
-                                                    state_error_variance_matrix)
+    sim_fake_lss = simulate_fake_linear_state_space(observation_matrix=Z,
+                                                    state_transition_matrix=T,
+                                                    state_intercept_matrix=C_plus,
+                                                    state_error_transformation_matrix=R,
+                                                    init_state_plus=init_state_plus,
+                                                    response_error_variance_matrix=response_error_variance_matrix,
+                                                    state_error_covariance_matrix=state_error_covariance_matrix)
 
     y_plus = sim_fake_lss.simulated_response
     alpha_plus = sim_fake_lss.simulated_state
@@ -103,14 +254,14 @@ def dk_smoother(y: np.ndarray,
 
     # Run y* = y - y+ through Kalman filter.
     y_star = y - y_plus
-    y_star_kf = kf(y_star,
-                   Z,
-                   T,
-                   C,
-                   R,
-                   response_error_variance_matrix,
-                   state_error_variance_matrix,
-                   init_state=init_state_values - init_state_plus_values,
+    y_star_kf = kf(y=y_star,
+                   observation_matrix=Z,
+                   state_transition_matrix=T,
+                   state_intercept_matrix=C,
+                   state_error_transformation_matrix=R,
+                   response_error_variance_matrix=response_error_variance_matrix,
+                   state_error_covariance_matrix=state_error_covariance_matrix,
+                   init_state=init_state - init_state_plus,
                    init_state_covariance=init_state_cov)
 
     v = y_star_kf.one_step_ahead_prediction_resid
@@ -130,11 +281,16 @@ def dk_smoother(y: np.ndarray,
     # Compute smoothed observation and state residuals and state vector
     w_hat = np.empty((n, 1 + q, 1), dtype=np.float64)
     alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
-    alpha_hat[0] = init_state_values - init_state_plus_values + init_state_covariance.dot(r_init)
+
+    # Note that if static regression coefficients are specified, we revert to the
+    # "real" state covariance matrix when computing the smoothed state. This is
+    # because the relationship between y* and the regression component was accounted
+    # for in the Kalman filter step above (y_star_kf).
+    alpha_hat[0] = init_state - init_state_plus + init_state_covariance.dot(r_init)
     for t in range(n):
         eps_hat = response_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
         if q > 0:
-            eta_hat = state_error_variance_matrix.dot(R.T).dot(r[t])
+            eta_hat = state_error_covariance_matrix.dot(R.T).dot(r[t])
             w_hat[t] = np.concatenate((eps_hat, eta_hat))
             alpha_hat[t + 1] = C + T.dot(alpha_hat[t]) + R.dot(eta_hat)
         else:

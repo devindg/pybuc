@@ -15,59 +15,6 @@ class KF(NamedTuple):
     L: np.ndarray
 
 
-# @njit
-# def var_mat_check(var_mat):
-#     if not is_2d(var_mat):
-#         raise ValueError('The variance-covariance matrix must have a row and column dimension. '
-#                          'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-#
-#     if not is_square(var_mat):
-#         raise ValueError('The variance-covariance matrix must be square.')
-#
-#     return
-#
-#
-# @njit
-# def lss_mat_check(y: np.ndarray,
-#                   observation_matrix: np.ndarray,
-#                   state_transition_matrix: np.ndarray,
-#                   state_error_transformation_matrix: np.ndarray):
-#     Z = observation_matrix
-#     T = state_transition_matrix
-#     R = state_error_transformation_matrix
-#     m = Z.shape[2]
-#     n = y.shape[0]
-#
-#     # if not all(is_2d(Z[t]) for t in range(n)):
-#     #     raise ValueError('The observation matrix must have a row and column dimension for each observation. '
-#     #                      'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-#
-#     if not is_2d(T):
-#         raise ValueError('The state transition matrix must have a row and column dimension. '
-#                          'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-#
-#     if not is_2d(R):
-#         raise ValueError('The state error transformation matrix must have a row and column dimension. '
-#                          'Flat/1D arrays or arrays with more than 2 dimensions are not valid.')
-#
-#     if not is_square(T):
-#         raise ValueError('The state transition matrix must be square.')
-#
-#     if Z.shape[1] != 1:
-#         raise ValueError('The number of rows in the observation matrix must match the '
-#                          'number of observation variables, i.e., 1..')
-#
-#     if T.shape[0] != m:
-#         raise ValueError('The numbers of rows/columns in the state transition matrix '
-#                          'must match the number of columns in the observation matrix.')
-#
-#     if R.shape[0] != m:
-#         raise ValueError('The number of rows in the state error transformation matrix '
-#                          'must match the number of columns in the observation matrix.')
-#
-#     return
-
-
 @njit(cache=True)
 def kalman_filter(y: np.ndarray,
                   observation_matrix: np.ndarray,
@@ -75,9 +22,57 @@ def kalman_filter(y: np.ndarray,
                   state_intercept_matrix: np.ndarray,
                   state_error_transformation_matrix: np.ndarray,
                   response_error_variance_matrix: np.ndarray,
-                  state_error_variance_matrix: np.ndarray,
+                  state_error_covariance_matrix: np.ndarray,
                   init_state: np.ndarray = np.array([[]]),
                   init_state_covariance: np.ndarray = np.array([[]])):
+    """
+
+    :param y: ndarray of dimension (n, 1), where n is the number of observations.
+    Data type must be float64. Response variable for observation equation.
+
+    :param observation_matrix: ndarray of dimension (n, 1, m), where m is the
+    number of state equations. Data type must be float64. Matrix that maps the
+    state to the response.
+
+    :param state_transition_matrix: ndarray of dimension (m, m). Data type must
+    be float64. Matrix that maps previous state values to the current state.
+
+    :param state_intercept_matrix: ndarray of dimension (m, 1). Data type
+    must be float64. An intercept that may be added to the transition state equations.
+    Generally, the intercept is a matrix of zeros and thus has no impact.
+
+    :param state_error_transformation_matrix: ndarray of dimension (m, q), where
+    q is the number of state equations that evolve stochastically. Data type must
+    be float64. Matrix that maps state equations to stochastic or non-stochastic form.
+
+    :param response_error_variance_matrix: ndarray of dimension (1, 1). Data type
+    must be float64. A singleton-matrix that captures the error variance of the
+    response.
+
+    :param state_error_covariance_matrix: ndarray of dimension (q, q). Data type
+    must be float64. A diagonal matrix that captures the error variance of each
+    stochastic state equation. It is possible for this matrix to be empty, in
+    which case no state equation evolves stochastically.
+
+    :param init_state: ndarray of dimension (m, 1). Data type must be float64.
+    The initial starting values for each of the m state equations. If none are
+    provided, a (m, 1) matrix of zeros will be used.
+
+    :param init_state_covariance: ndarray of dimension (m, m). Data type must be float64.
+    The initial state covariance matrix for the m state equations. If one is not
+    provided, a (m, m) diagonal matrix with 1e6 along the diagonal will be used.
+
+    :return: Named tuple with the following:
+
+    1. one_step_ahead_prediction: One-step-ahead predicted values from Kalman filter
+    2. one_step_ahead_prediction_resid: One-step-ahead residuals from Kalman filter
+    3. kalman_gain: Kalman gain matrix
+    4. filtered_state: Filtered state values, E[state(t) | state(t-1)]
+    5. state_covariance: State covariance matrix, E[dot(state(t), state(t).T) | state(t-1)]
+    6. response_variance: Response variance, E[dot(y(t).T, y(t)) | state(t)]
+    7. inverse_response_variance: Inverse of response variance
+    8. L: State Transition Matrix - dot(Kalman Gain, Observation Matrix)
+    """
     # Get state and observation transformation matrices
     T = state_transition_matrix
     C = state_intercept_matrix
@@ -85,9 +80,56 @@ def kalman_filter(y: np.ndarray,
     R = state_error_transformation_matrix
 
     # Establish number of state variables (m), state parameters (q), and observations (n)
-    m = Z.shape[2]
+    m = T.shape[0]
     q = R.shape[1]
     n = y.shape[0]
+
+    # Data checks
+    if not y.shape == (n, 1):
+        raise ValueError('The response vector must have shape (n, 1), where n is the number of '
+                         'observations.')
+
+    if not T.shape == (m, m):
+        raise ValueError('The state transition matrix must have shape (m, m), where m denotes '
+                         'the number of state equations.')
+
+    if not Z.shape == (n, 1, m):
+        raise ValueError('The observation matrix must have shape (n, 1, m), where n denotes the '
+                         'number of observations and m is the number of stochastic state equations.')
+
+    if not R.shape == (m, q):
+        raise ValueError('The state error transformation matrix must have shape (m, q), where m '
+                         'denotes the number of state equations and q is the number of stochastic '
+                         'state equations.')
+
+    if not C.shape == (m, 1):
+        raise ValueError('The state intercept vector must have shape (m, 1), where m denotes '
+                         'the number of state equations.')
+
+    if not response_error_variance_matrix.shape == (1, 1):
+        raise ValueError('The response error variance matrix must have shape (1, 1).')
+
+    if not state_error_covariance_matrix.shape == (q, q):
+        raise ValueError('The state error covariance matrix must have shape (q, q), where '
+                         'q denotes the number of stochastic state equations.')
+
+    if not np.all(response_error_variance_matrix > 0):
+        raise ValueError('The response error variance must be a strictly positive number.')
+
+    if not np.all(np.diag(state_error_covariance_matrix) >= 0):
+        raise ValueError('All values along the diagonal of the state error covariance matrix '
+                         'must be non-negative.')
+
+    if not ao.is_symmetric(state_error_covariance_matrix):
+        raise ValueError('The state error covariance matrix must be symmetric.')
+
+    if not init_state.shape == (m, 1):
+        raise ValueError('The initial state value vector must have shape (m, 1), where m denotes '
+                         'the number of state equations.')
+
+    if not init_state_covariance.shape == (m, m):
+        raise ValueError('The initial state covariance matrix must have shape (m, m), where m denotes '
+                         'the number of state equations.')
 
     # Initialize Kalman filter matrices
     y_pred = np.empty((n, 1), dtype=np.float64)
@@ -132,7 +174,7 @@ def kalman_filter(y: np.ndarray,
         a[t + 1] = C + T.dot(a[t]) + K[t].dot(v[t])
 
         if q > 0:
-            P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_variance_matrix).dot(R.T)
+            P[t + 1] = T.dot(P[t]).dot(L[t].T) + R.dot(state_error_covariance_matrix).dot(R.T)
         else:
             P[t + 1] = T.dot(P[t]).dot(L[t].T)
 

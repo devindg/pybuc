@@ -24,6 +24,7 @@ class Posterior(NamedTuple):
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
+    damped_level_coefficient: np.ndarray
     damped_trend_coefficient: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
@@ -40,6 +41,10 @@ class ModelSetup(NamedTuple):
     gibbs_iter0_state_error_covariance: np.ndarray
     init_state_plus_values: np.ndarray
     init_state_covariance: np.ndarray
+    damped_level_coeff_mean_prior: np.ndarray
+    damped_level_coeff_prec_prior: np.ndarray
+    damped_level_coeff_cov_prior: np.ndarray
+    gibbs_iter0_damped_level_coeff: np.ndarray
     damped_trend_coeff_mean_prior: np.ndarray
     damped_trend_coeff_prec_prior: np.ndarray
     damped_trend_coeff_cov_prior: np.ndarray
@@ -62,23 +67,52 @@ def _set_seed(value):
     np.random.seed(value)
 
 
-def _ar_state_post_upd(response: np.ndarray,
+def _ar_state_post_upd(smoothed_state: np.ndarray,
                        lag: tuple,
                        mean_prior: np.ndarray,
                        precision_prior: np.ndarray,
                        state_err_var_post: np.ndarray,
                        state_eqn_index: list,
                        state_err_var_post_index: list):
+    """
+
+    :param smoothed_state: ndarray, float64. Array that represents that smoothed values for each state
+    in an unobserved components model.
+
+    :param lag: tuple of positive integers. An integer represents an autoregressive lag of the
+    state variable.
+
+    :param mean_prior: ndarray, float64. An element represents the mean of a Gaussian
+    random variable. Row length must match the number of lags.
+
+    :param precision_prior: ndarray, float64. An element represents the precision of a Gaussian
+    random variable. Row length must match the number of lags.
+
+    :param state_err_var_post: ndarray, float64. An element represents the posterior variance
+    of a state's error.
+
+    :param state_eqn_index: list of non-negative integers. An integer represents the row index of a
+    state within an unobserved components model.
+
+    :param state_err_var_post_index: list of non-negative integers. An integer represents the row index
+    of a state's posterior error variance (i.e., a row index for state_err_var_post).
+
+
+    :return: ndarray of dimension (L, 1), where L is the number of lags in the lag tuple. An
+    element represents the posterior autoregressive coefficient for an autoregressive process of the
+    form y(t) = rho * y(t - l) + epsilon(t), where l is some lag.
+    """
+
     ar_coeff_mean_post = np.empty((len(lag), 1))
     cov_post = np.empty((len(lag), 1))
 
     c = 0
     for i in lag:
-        resp = response[:, state_eqn_index[c]][i:]
-        resp_lag = np.roll(response[:, state_eqn_index[c]], i)[i:]
-        ar_coeff_cov_post = ao.mat_inv(dot(resp_lag.T, resp_lag) + precision_prior[c])
+        y = smoothed_state[:, state_eqn_index[c]][i:]
+        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
+        ar_coeff_cov_post = ao.mat_inv(dot(y_lag.T, y_lag) + precision_prior[c])
         ar_coeff_mean_post[c] = dot(ar_coeff_cov_post,
-                                    dot(resp_lag.T, resp)
+                                    dot(y_lag.T, y)
                                     + dot(precision_prior[c], mean_prior[c]))
         cov_post[c] = state_err_var_post[state_err_var_post_index[c], 0] * ar_coeff_cov_post
         c += 1
@@ -95,11 +129,40 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
                                             random_sample_size_prop: float = 1.) -> np.ndarray:
     """
 
-    :param posterior:
-    :param burn:
-    :param num_first_obs_ignore:
-    :param random_sample_size_prop:
-    :return:
+    :param posterior: NamedTuple with attributes:
+
+    num_samp: int
+    smoothed_state: np.ndarray
+    smoothed_errors: np.ndarray
+    smoothed_prediction: np.ndarray
+    filtered_state: np.ndarray
+    filtered_prediction: np.ndarray
+    response_variance: np.ndarray
+    state_covariance: np.ndarray
+    response_error_variance: np.ndarray
+    state_error_covariance: np.ndarray
+    damped_trend_coefficient: np.ndarray
+    damped_season_coefficients: np.ndarray
+    regression_coefficients: np.ndarray
+
+    :param burn: non-negative integer. Represents how many of the first posterior samples to
+    ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+    :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+    of a response variable to ignore for computing the posterior predictive distribution of the
+    response. The number of observations to ignore depends on the state specification of the unobserved
+    components model. Some observations are ignored because diffuse initialization is used for the
+    state vector in the Kalman filter. Default value is 0.
+
+    :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+    posterior samples to take for constructing the posterior predictive distribution. Sampling is
+    done without replacement. Default value is 1.
+
+    :return: ndarray of dimension (S, n), where S is the number of posterior samples and
+    n is the number of observations used for constructing the posterior predictive distribution.
+    Note that S = random_sample_size_prop * S_total, where S_total is total number of
+    posterior samples, and n = n_tot - num_first_obs_ignore, where n_tot is the total number
+    of observations for the response.
     """
 
     response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
@@ -134,6 +197,13 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
 
 def _simulate_posterior_predictive_state_worker(state_mean: np.ndarray,
                                                 state_covariance: np.ndarray) -> np.ndarray:
+    """
+
+    :param state_mean: ndarray of dimension (m, 1), where m is the number of state equations.
+    Data type if float64.
+    :param state_covariance: ndarray of dimension (m, m). Data type if float64.
+    :return:
+    """
     state_post = (np.random
                   .multivariate_normal(mean=state_mean,
                                        cov=state_covariance,
@@ -149,12 +219,42 @@ def _simulate_posterior_predictive_state(posterior: Posterior,
                                          has_predictors: bool = False) -> np.ndarray:
     """
 
-    :param posterior:
-    :param burn:
-    :param num_first_obs_ignore:
-    :param random_sample_size_prop:
-    :param has_predictors:
-    :return:
+    :param posterior: NamedTuple with attributes:
+
+    num_samp: int
+    smoothed_state: np.ndarray
+    smoothed_errors: np.ndarray
+    smoothed_prediction: np.ndarray
+    filtered_state: np.ndarray
+    filtered_prediction: np.ndarray
+    response_variance: np.ndarray
+    state_covariance: np.ndarray
+    response_error_variance: np.ndarray
+    state_error_covariance: np.ndarray
+    damped_trend_coefficient: np.ndarray
+    damped_season_coefficients: np.ndarray
+    regression_coefficients: np.ndarray
+
+    :param burn: non-negative integer. Represents how many of the first posterior samples to
+    ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+    :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+    of a response variable to ignore for computing the posterior predictive distribution of the
+    response. The number of observations to ignore depends on the state specification of the unobserved
+    components model. Some observations are ignored because diffuse initialization is used for the
+    state vector in the Kalman filter. Default value is 0.
+
+    :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+    posterior samples to take for constructing the posterior predictive distribution. Sampling is
+    done without replacement. Default value is 1.
+
+    :param has_predictors: bool. If True,
+
+    :return: ndarray with shape (S, n, m, 1), where S is the number of posterior samples
+    drawn from the full posterior distribution, n is the number of observations for the response
+    variable, and m is the number of state equations. For a given sample s in S, there are n
+    predictions for each of the m state equations. This array represents the posterior predictive
+    distribution for each of the m state equations.
     """
 
     if has_predictors:
@@ -203,18 +303,70 @@ def _forecast(posterior: Posterior,
               state_error_transformation_matrix: np.ndarray,
               future_predictors: np.ndarray = np.array([[]]),
               burn: int = 0,
+              damped_level_transition_index: tuple = (),
               damped_trend_transition_index: tuple = (),
               damped_season_transition_index: tuple = ()) -> np.ndarray:
     """
 
-    :param posterior:
-    :param num_periods:
-    :param state_observation_matrix:
-    :param state_transition_matrix:
-    :param state_error_transformation_matrix:
-    :param future_predictors:
-    :param burn:
-    :return:
+    :param posterior: NamedTuple with attributes:
+
+    num_samp: int
+    smoothed_state: np.ndarray
+    smoothed_errors: np.ndarray
+    smoothed_prediction: np.ndarray
+    filtered_state: np.ndarray
+    filtered_prediction: np.ndarray
+    response_variance: np.ndarray
+    state_covariance: np.ndarray
+    response_error_variance: np.ndarray
+    state_error_covariance: np.ndarray
+    damped_trend_coefficient: np.ndarray
+    damped_season_coefficients: np.ndarray
+    regression_coefficients: np.ndarray
+
+    :param num_periods: positive integer. Defines how many future periods to forecast.
+
+    :param state_observation_matrix: ndarray of dimension (n, 1, m), where m is the
+    number of state equations. Data type must be float64. Matrix that maps the
+    state to the response.
+
+    :param state_transition_matrix: ndarray of dimension (m, m). Data type must
+    be float64. Matrix that maps previous state values to the current state.
+
+    :param state_error_transformation_matrix: ndarray of dimension (m, q), where
+    q is the number of state equations that evolve stochastically. Data type must
+    be float64. Matrix that maps state equations to stochastic or non-stochastic form.
+
+    :param future_predictors: ndarray of dimension (k, 1), where k is the number of predictors.
+    Data type is float64. Default is an empty array.
+
+    :param burn: non-negative integer. Represents how many of the first posterior samples to
+    ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+    :param damped_level_transition_index: tuple of the form (i, j), where i and j index
+    the row and column, respectively, of the state transition matrix corresponding to the
+    address of the level component's autoregressive coefficient. This index is used when a
+    damped level is specified. Specifically, the element in the state transition matrix at
+    address (i, j) is assigned the values from the posterior distribution of the level's
+    AR(1) coefficient. Default is an empty tuple.
+
+    :param damped_trend_transition_index: tuple of the form (i, j), where i and j index
+    the row and column, respectively, of the state transition matrix corresponding to the
+    address of the trend component's autoregressive coefficient. This index is used when a
+    damped trend is specified. Specifically, the element in the state transition matrix at
+    address (i, j) is assigned the values from the posterior distribution of the trend's
+    AR(1) coefficient. Default is an empty tuple.
+
+    :param damped_season_transition_index: tuple of the form ((i_0, j_0), (i_1, j_1), ..., (i_P, j_P)),
+    where i_p and j_p index the row and column, respectively, of the state transition matrix
+    corresponding to the address of the p-th periodic-lag seasonal component's autoregressive coefficient.
+    This index is used when damped periodic-lag seasonality is specified. Specifically, the element in
+    the state transition matrix at address (i_p, j_p) is assigned the values from the posterior distribution
+    of the p-th periodic-lag seasonal component's AR(1) coefficient. Default is an empty tuple.
+
+    :return: ndarray of dimension (S, h, 1), where S is the number of posterior samples and
+    h is the number of future periods to be forecast. This array represents the posterior
+    forecast distribution for the response.
     """
 
     Z = state_observation_matrix
@@ -235,6 +387,9 @@ def _forecast(posterior: Posterior,
     if X_fut.size > 0:
         reg_coeff = posterior.regression_coefficients[burn:]
 
+    if len(damped_level_transition_index) > 0:
+        damped_level_coeff = posterior.damped_level_coefficient[burn:]
+
     if len(damped_trend_transition_index) > 0:
         damped_trend_coeff = posterior.damped_trend_coefficient[burn:]
 
@@ -253,6 +408,9 @@ def _forecast(posterior: Posterior,
         if q > 0:
             state_error = dist.vec_norm(num_periods_u_zeros,
                                         num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_covariance[s])))
+
+        if len(damped_level_transition_index) > 0:
+            T[damped_level_transition_index] = damped_level_coeff[s][0, 0]
 
         if len(damped_trend_transition_index) > 0:
             T[damped_trend_transition_index] = damped_trend_coeff[s][0, 0]
@@ -284,6 +442,7 @@ class BayesianUnobservedComponents:
                  predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]]),
                  level: bool = False,
                  stochastic_level: bool = True,
+                 damped_level: bool = False,
                  trend: bool = False,
                  stochastic_trend: bool = True,
                  damped_trend: bool = False,
@@ -307,6 +466,9 @@ class BayesianUnobservedComponents:
         :param level: bool. If true, a level component is added to the model. Default is false.
 
         :param stochastic_level: bool. If true, the level component evolves stochastically. Default is true.
+
+        :param damped_trend: bool. If true, the level obeys an autoregressive process of order 1.
+        Note that stochastic_level must be true if damped_level is true. Default is false.
 
         :param trend: bool. If true, a trend component is added to the model. Note, that a trend
         is applicable only when a level component is specified. Default is false.
@@ -361,6 +523,7 @@ class BayesianUnobservedComponents:
         self.future_time_index = None
         self.num_first_obs_ignore = None
         self.posterior = None
+        self.damped_level_transition_index = ()
         self.damped_trend_transition_index = ()
         self.damped_lag_season_transition_index = ()
 
@@ -702,6 +865,9 @@ class BayesianUnobservedComponents:
         if not isinstance(level, bool) or not isinstance(stochastic_level, bool):
             raise ValueError('level and stochastic_level must be of boolean type.')
 
+        if level and not stochastic_level and damped_level:
+            raise ValueError('stochastic_level must be true if level and damped_level are true.')
+
         if not isinstance(trend, bool) or not isinstance(stochastic_trend, bool):
             raise ValueError('trend and stochastic_trend must be of boolean type.')
 
@@ -744,6 +910,7 @@ class BayesianUnobservedComponents:
         self.predictors = pred
         self.level = level
         self.stochastic_level = stochastic_level
+        self.damped_level = damped_level
         self.trend = trend
         self.stochastic_trend = stochastic_trend
         self.damped_trend = damped_trend
@@ -977,6 +1144,11 @@ class BayesianUnobservedComponents:
         i, j = 0, 0
         if self.level:
             T[i, j] = 1.
+
+            # Get transition index for level if damping specified
+            if self.damped_level:
+                self.damped_level_transition_index = (i, j)
+
             i += 1
             j += 1
 
@@ -1216,6 +1388,7 @@ class BayesianUnobservedComponents:
     def _model_setup(self,
                      response_var_shape_prior, response_var_scale_prior,
                      level_var_shape_prior, level_var_scale_prior,
+                     damped_level_coeff_mean_prior, damped_level_coeff_prec_prior,
                      trend_var_shape_prior, trend_var_scale_prior,
                      damped_trend_coeff_mean_prior, damped_trend_coeff_prec_prior,
                      lag_season_var_shape_prior, lag_season_var_scale_prior,
@@ -1227,7 +1400,6 @@ class BayesianUnobservedComponents:
 
         n = self.num_obs
         q = self.num_stoch_states
-        sd_response = np.nanstd(self.response)
 
         # Initialize outputs
         if q > 0:
@@ -1244,6 +1416,12 @@ class BayesianUnobservedComponents:
         init_state_variances = []
         init_state_plus_values = []
         seasonal_period = [0]
+
+        if not self.damped_level:
+            damped_level_coeff_mean_prior = None
+            damped_level_coeff_prec_prior = None
+            damped_level_coeff_cov_prior = None
+            gibbs_iter0_damped_level_coeff = None
 
         if not self.damped_trend:
             damped_trend_coeff_mean_prior = None
@@ -1301,6 +1479,24 @@ class BayesianUnobservedComponents:
             else:
                 stochastic_index = None
 
+            if self.damped_level:
+                if damped_level_coeff_mean_prior is None:
+                    damped_level_coeff_mean_prior = np.array([[0.]])
+
+                if damped_level_coeff_prec_prior is None:
+                    damped_level_coeff_prec_prior = np.array([[1.]])
+
+                damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
+                gibbs_iter0_damped_level_coeff = damped_level_coeff_mean_prior
+                init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
+                                            (1 - gibbs_iter0_damped_level_coeff[0, 0] ** 2))
+                init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
+                damped_index = self.damped_level_transition_index
+            else:
+                damped_index = None
+                init_state_variances.append(1e6)
+                init_state_plus_values.append(0.)
+
             # The level state equation represents a random walk.
             # Diffuse initialization is required in this case.
             # The fake states used in Durbin-Koopman for simulating
@@ -1310,15 +1506,13 @@ class BayesianUnobservedComponents:
             # approximate diffuse initialization method is adopted.
             # That is, a diagonal matrix with large values along
             # the diagonal. Large in this setting is defined as 1e6.
-            init_state_plus_values.append(0.)
-            init_state_variances.append(1e6)
             gibbs_iter0_init_state.append(self._gibbs_iter0_init_level())
             components['Level'] = dict(start_state_eqn_index=j,
                                        end_state_eqn_index=j + 1,
                                        stochastic=self.stochastic_level,
                                        stochastic_index=stochastic_index,
-                                       damped=None,
-                                       damped_transition_index=None)
+                                       damped=self.damped_level,
+                                       damped_transition_index=damped_index)
             j += 1
 
         # TREND STATE
@@ -1528,13 +1722,13 @@ class BayesianUnobservedComponents:
                     init_state_plus_values.append(0.)
                     init_state_variances.append(1e6)
 
-                components[f'Trigonometric-Seasonal.{period}.{num_harmonics}'] = dict(start_state_eqn_index=i,
-                                                                                      end_state_eqn_index=i + num_eqs,
-                                                                                      stochastic=
-                                                                                      self.stochastic_trig_seasonal[c],
-                                                                                      stochastic_index=stochastic_index,
-                                                                                      damped=None,
-                                                                                      damped_transition_index=None)
+                components[f'Trigonometric-Seasonal'
+                           f'.{period}.{num_harmonics}'] = dict(start_state_eqn_index=i,
+                                                                end_state_eqn_index=i + num_eqs,
+                                                                stochastic=self.stochastic_trig_seasonal[c],
+                                                                stochastic_index=stochastic_index,
+                                                                damped=None,
+                                                                damped_transition_index=None)
                 i += num_eqs
 
             for k in self._gibbs_iter0_init_trig_season():
@@ -1592,6 +1786,10 @@ class BayesianUnobservedComponents:
                                       gibbs_iter0_state_error_covariance,
                                       init_state_plus_values,
                                       init_state_covariance,
+                                      damped_level_coeff_mean_prior,
+                                      damped_level_coeff_prec_prior,
+                                      damped_level_coeff_cov_prior,
+                                      gibbs_iter0_damped_level_coeff,
                                       damped_trend_coeff_mean_prior,
                                       damped_trend_coeff_prec_prior,
                                       damped_trend_coeff_cov_prior,
@@ -1616,6 +1814,8 @@ class BayesianUnobservedComponents:
                response_var_scale_prior: float = None,
                level_var_shape_prior: float = None,
                level_var_scale_prior: float = None,
+               damped_level_coeff_mean_prior: np.ndarray = None,
+               damped_level_coeff_prec_prior: np.ndarray = None,
                trend_var_shape_prior: float = None,
                trend_var_scale_prior: float = None,
                damped_trend_coeff_mean_prior: np.ndarray = None,
@@ -1647,6 +1847,13 @@ class BayesianUnobservedComponents:
 
         :param level_var_scale_prior: float > 0. Specifies the inverse-Gamma scale prior for the
         level state equation error variance. Default is 1e-6.
+
+        :param damped_level_coeff_mean_prior: Numpy array of dimension (1, 1). Specifies the prior
+        mean for the coefficient governing the level's AR(1) process without drift. Default is [[0.]].
+
+        :param damped_level_coeff_prec_prior: Numpy array of dimension (1, 1). Specifies the prior
+        precision matrix for the coefficient governing the level's an AR(1) process without drift.
+        Default is [[1.]].
 
         :param trend_var_shape_prior: float > 0. Specifies the inverse-Gamma shape prior for the
         trend state equation error variance. Default is 1e-6.
@@ -1772,6 +1979,41 @@ class BayesianUnobservedComponents:
                     raise ValueError('level_var_scale_prior cannot be Inf/-Inf.')
                 if not level_var_scale_prior > 0:
                     raise ValueError('level_var_scale_prior must be a strictly positive float.')
+
+            # Damped level prior check
+            if self.damped_level:
+                if damped_level_coeff_mean_prior is not None:
+                    if not isinstance(damped_level_coeff_mean_prior, np.ndarray):
+                        raise ValueError('damped_level_coeff_mean_prior must be a Numpy array.')
+                    if damped_level_coeff_mean_prior.dtype != 'float64':
+                        raise ValueError('All values in damped_level_coeff_mean_prior must be of type float.')
+                    if not damped_level_coeff_mean_prior.shape == (1, 1):
+                        raise ValueError('damped_level_coeff_mean_prior must have shape (1, 1).')
+                    if np.any(np.isnan(damped_level_coeff_mean_prior)):
+                        raise ValueError('damped_level_coeff_mean_prior cannot have NaN values.')
+                    if np.any(np.isinf(damped_level_coeff_mean_prior)):
+                        raise ValueError('damped_level_coeff_mean_prior cannot have Inf/-Inf values.')
+                    if not abs(damped_level_coeff_mean_prior[0, 0]) < 1:
+                        warnings.warn('The mean damped level coefficient is greater than 1 in absolute value, '
+                                      'which implies an explosive process. Note that an explosive process '
+                                      'can be stationary, but it implies that the future is needed to '
+                                      'predict the past.')
+
+                if damped_level_coeff_prec_prior is not None:
+                    if not isinstance(damped_level_coeff_prec_prior, np.ndarray):
+                        raise ValueError('damped_level_coeff_prec_prior must be a Numpy array.')
+                    if damped_level_coeff_prec_prior.dtype != 'float64':
+                        raise ValueError('All values in damped_level_coeff_prec_prior must be of type float.')
+                    if not damped_level_coeff_prec_prior.shape == (1, 1):
+                        raise ValueError('damped_level_coeff_prec_prior must have shape (1, 1).')
+                    if np.any(np.isnan(damped_level_coeff_prec_prior)):
+                        raise ValueError('damped_level_coeff_prec_prior cannot have NaN values.')
+                    if np.any(np.isinf(damped_level_coeff_prec_prior)):
+                        raise ValueError('damped_level_coeff_prec_prior cannot have Inf/-Inf values.')
+                    if not ao.is_positive_definite(damped_level_coeff_prec_prior):
+                        raise ValueError('damped_level_coeff_prec_prior must be a positive definite matrix.')
+                    if not ao.is_symmetric(damped_level_coeff_prec_prior):
+                        raise ValueError('damped_level_coeff_prec_prior must be a symmetric matrix.')
 
         # Trend prior check
         if self.trend and self.stochastic_trend:
@@ -2026,13 +2268,13 @@ class BayesianUnobservedComponents:
         T = self.state_transition_matrix
         C = self.state_intercept_matrix
         R = self.state_error_transformation_matrix
-        # A = self.posterior_state_error_covariance_transformation_matrix
         H = self.state_sse_transformation_matrix
         X = self.predictors
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
                                   level_var_shape_prior, level_var_scale_prior,
+                                  damped_level_coeff_mean_prior, damped_level_coeff_prec_prior,
                                   trend_var_shape_prior, trend_var_scale_prior,
                                   damped_trend_coeff_mean_prior, damped_trend_coeff_prec_prior,
                                   lag_season_var_shape_prior, lag_season_var_scale_prior,
@@ -2053,6 +2295,9 @@ class BayesianUnobservedComponents:
         gibbs_iter0_state_error_covariance = model.gibbs_iter0_state_error_covariance
         init_state_plus_values = model.init_state_plus_values
         init_state_covariance = model.init_state_covariance
+        damped_level_coeff_mean_prior = model.damped_level_coeff_mean_prior
+        damped_level_coeff_prec_prior = model.damped_level_coeff_prec_prior
+        gibbs_iter0_damped_level_coeff = model.gibbs_iter0_damped_level_coeff
         damped_trend_coeff_mean_prior = model.damped_trend_coeff_mean_prior
         damped_trend_coeff_prec_prior = model.damped_trend_coeff_prec_prior
         gibbs_iter0_damped_trend_coeff = model.gibbs_iter0_damped_trend_coeff
@@ -2078,6 +2323,15 @@ class BayesianUnobservedComponents:
         filtered_prediction = np.empty((num_samp, n, 1))
         state_covariance = np.empty((num_samp, n + 1, m, m))
         response_variance = np.empty((num_samp, n, 1, 1))
+
+        # Initialize damped level coefficient output, if applicable
+        if self.level and self.damped_level:
+            damped_level_coefficient = np.empty((num_samp, 1, 1))
+            level_stoch_idx = [components['Level']['stochastic_index']]
+            level_state_eqn_idx = [components['Level']['start_state_eqn_index']]
+            ar_level_tran_idx = self.damped_level_transition_index
+        else:
+            damped_level_coefficient = np.array([[[]]])
 
         # Initialize damped trend coefficient output, if applicable
         if self.trend and self.damped_trend:
@@ -2132,6 +2386,24 @@ class BayesianUnobservedComponents:
 
                 Z[:, :, -1] = X.dot(reg_coeff)
 
+            if self.level and self.damped_level:
+                if s < 1:
+                    damped_level_coeff = gibbs_iter0_damped_level_coeff
+                else:
+                    damped_level_coeff = damped_level_coefficient[s - 1]
+
+                ar_level_coeff = damped_level_coeff[0, 0]
+                if abs(ar_level_coeff) < 1:
+                    damped_level_var = (state_err_cov[level_stoch_idx[0], level_stoch_idx[0]]
+                                        / (1. - ar_level_coeff ** 2))
+                    init_state_plus_values[level_state_eqn_idx[0]] = dist.vec_norm(0., np.sqrt(damped_level_var))
+                    init_state_covariance[level_state_eqn_idx[0], level_state_eqn_idx[0]] = damped_level_var
+                else:
+                    init_state_plus_values[level_state_eqn_idx[0]] = 0.
+                    init_state_covariance[level_state_eqn_idx[0], level_state_eqn_idx[0]] = 1e6
+
+                T[ar_level_tran_idx] = ar_level_coeff
+
             if self.trend and self.damped_trend:
                 if s < 1:
                     damped_trend_coeff = gibbs_iter0_damped_trend_coeff
@@ -2170,13 +2442,13 @@ class BayesianUnobservedComponents:
                     T[ar_season_tran_idx[j]] = ar_season_coeff
 
             # Filtered state
-            y_kf = kf(y,
-                      Z,
-                      T,
-                      C,
-                      R,
-                      response_err_var,
-                      state_err_cov,
+            y_kf = kf(y=y,
+                      observation_matrix=Z,
+                      state_transition_matrix=T,
+                      state_intercept_matrix=C,
+                      state_error_transformation_matrix=R,
+                      response_error_variance_matrix=response_err_var,
+                      state_error_covariance_matrix=state_err_cov,
                       init_state=init_state_values,
                       init_state_covariance=init_state_covariance)
 
@@ -2185,16 +2457,16 @@ class BayesianUnobservedComponents:
             filtered_prediction[s] = y_kf.one_step_ahead_prediction
             response_variance[s] = y_kf.response_variance
 
-            # Get smoothed state from DK smoother
-            dk = dks(y,
-                     Z,
-                     T,
-                     C,
-                     R,
-                     response_err_var,
-                     state_err_cov,
-                     init_state_plus_values=init_state_plus_values,
-                     init_state_values=init_state_values,
+            # Smoothed state from D-K smoother
+            dk = dks(y=y,
+                     observation_matrix=Z,
+                     state_transition_matrix=T,
+                     state_intercept_matrix=C,
+                     state_error_transformation_matrix=R,
+                     response_error_variance_matrix=response_err_var,
+                     state_error_covariance_matrix=state_err_cov,
+                     init_state_plus=init_state_plus_values,
+                     init_state=init_state_values,
                      init_state_covariance=init_state_covariance,
                      has_predictors=self.has_predictors)
 
@@ -2212,8 +2484,19 @@ class BayesianUnobservedComponents:
                 state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
             # Get new draw for the trend's AR(1) coefficient, if applicable
+            if self.level and self.damped_level:
+                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
+                                              lag=(1,),
+                                              mean_prior=damped_level_coeff_mean_prior,
+                                              precision_prior=damped_level_coeff_prec_prior,
+                                              state_err_var_post=state_err_var_post,
+                                              state_eqn_index=level_state_eqn_idx,
+                                              state_err_var_post_index=level_stoch_idx)
+                damped_level_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+
+            # Get new draw for the trend's AR(1) coefficient, if applicable
             if self.trend and self.damped_trend:
-                ar_state_post_upd_args = dict(response=smoothed_state[s],
+                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
                                               lag=(1,),
                                               mean_prior=damped_trend_coeff_mean_prior,
                                               precision_prior=damped_trend_coeff_prec_prior,
@@ -2224,7 +2507,7 @@ class BayesianUnobservedComponents:
 
             # Get new draw for lag_seasonal AR(1) coefficients, if applicable
             if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                ar_state_post_upd_args = dict(response=smoothed_state[s],
+                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
                                               lag=self.lag_season_damped_lags,
                                               mean_prior=damped_lag_season_coeff_mean_prior,
                                               precision_prior=damped_lag_season_coeff_prec_prior,
@@ -2240,8 +2523,8 @@ class BayesianUnobservedComponents:
                                                    smooth_one_step_ahead_prediction_resid))
             response_error_variance[s] = dist.vec_ig(response_var_shape_post, response_var_scale_post)
 
+            # Get new draw for regression coefficients
             if self.has_predictors:
-                # Get new draw for regression coefficients
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                 y_tilde = y_adj - smooth_time_prediction  # y with smooth time prediction subtracted out
@@ -2255,10 +2538,13 @@ class BayesianUnobservedComponents:
                                               .multivariate_normal(mean=reg_coeff_mean_post.flatten(),
                                                                    cov=cov_post).reshape(-1, 1))
 
-        self.posterior = Posterior(num_samp, smoothed_state, smoothed_errors, smoothed_prediction,
-                                   filtered_state, filtered_prediction, response_variance, state_covariance,
+        self.posterior = Posterior(num_samp, smoothed_state,
+                                   smoothed_errors, smoothed_prediction,
+                                   filtered_state, filtered_prediction,
+                                   response_variance, state_covariance,
                                    response_error_variance, state_error_covariance,
-                                   damped_trend_coefficient, damped_season_coefficients, regression_coefficients)
+                                   damped_level_coefficient, damped_trend_coefficient,
+                                   damped_season_coefficients, regression_coefficients)
 
         return self.posterior
 
@@ -2269,10 +2555,17 @@ class BayesianUnobservedComponents:
 
         """
 
-        :param num_periods:
-        :param burn:
-        :param future_predictors:
-        :return:
+        :param num_periods: positive integer. Defines how many future periods to forecast.
+
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param future_predictors: ndarray of dimension (k, 1), where k is the number of predictors.
+        Data type is float64. Default is an empty array.
+
+        :return: ndarray of dimension (S, h, 1), where S is the number of posterior samples and
+        h is the number of future periods to be forecast. This array represents the posterior
+        forecast distribution for the response.
         """
 
         Z = self.observation_matrix(num_rows=num_periods)
@@ -2383,6 +2676,7 @@ class BayesianUnobservedComponents:
                                state_error_transformation_matrix=R,
                                future_predictors=fut_pred,
                                burn=burn,
+                               damped_level_transition_index=self.damped_level_transition_index,
                                damped_trend_transition_index=self.damped_trend_transition_index,
                                damped_season_transition_index=self.damped_lag_season_transition_index)
 
@@ -2396,11 +2690,22 @@ class BayesianUnobservedComponents:
 
         """
 
-        :param burn:
-        :param cred_int_level:
-        :param random_sample_size_prop:
-        :param smoothed:
-        :return:
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param cred_int_level: float in (0, 1). Defines the width of the predictive distribution.
+        E.g., a value of 0.05 will represent all values of the predicted variable between the
+        2.5% and 97.5% quantiles.
+
+        :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+        posterior samples to take for constructing the posterior predictive distribution. Sampling is
+        done without replacement. Default value is 1.
+
+        :param smoothed: boolean. If True, the smoothed Kalman values will be plotted (as opposed
+        to the filtered Kalman values).
+
+        :return: Return a matplotlib.pyplot figure that plots the posterior predictive distribution
+        of the response and the specified states.
         """
 
         if not isinstance(burn, int):
@@ -2518,9 +2823,16 @@ class BayesianUnobservedComponents:
 
         """
 
-        :param burn:
-        :param cred_int_level:
-        :return:
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param cred_int_level: float in (0, 1). Defines the width of the predictive distribution.
+        E.g., a value of 0.05 will represent all values of the predicted variable between the
+        2.5% and 97.5% quantiles.
+
+        :return: A dictionary that summarizes the statistics of each of the model's parameters.
+        Statistics include the mean, standard deviation, and lower and upper quantiles defined by
+        cred_int_level.
         """
 
         if not isinstance(burn, int):
@@ -2564,13 +2876,19 @@ class BayesianUnobservedComponents:
                     res[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], lb)
                     res[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], ub)
 
-                if c == 'Trend':
-                    if damped:
-                        ar_coeff = self.posterior.damped_trend_coefficient[burn:, 0, 0]
-                        res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                        res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                if c == 'Level' and damped:
+                    ar_coeff = self.posterior.damped_level_coefficient[burn:, 0, 0]
+                    res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                    res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+
+                if c == 'Trend' and damped:
+                    ar_coeff = self.posterior.damped_trend_coefficient[burn:, 0, 0]
+                    res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                    res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
                 if 'Lag-Seasonal' in c:
                     if damped:
