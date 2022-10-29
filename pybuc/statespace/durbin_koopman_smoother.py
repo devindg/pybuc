@@ -235,6 +235,11 @@ def dk_smoother(y: np.ndarray,
     # variance values, this number is set to 1e6.
     init_state_cov = init_state_covariance.copy()
     if has_predictors:
+        # Note that the covariance matrix index for the static regression
+        # component's variance is hardcoded at (-1, -1). This assumes
+        # that the static regression component, if specified, is always
+        # added to the end of the state vector. Otherwise, this code
+        # is not valid.
         init_state_cov[-1, -1] = 1e6
     else:
         init_state_cov = init_state_covariance

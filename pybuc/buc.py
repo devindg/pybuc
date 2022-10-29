@@ -231,6 +231,7 @@ def _simulate_posterior_predictive_state(posterior: Posterior,
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
+    damped_level_coefficient: np.ndarray
     damped_trend_coefficient: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
@@ -320,6 +321,7 @@ def _forecast(posterior: Posterior,
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
+    damped_level_coefficient: np.ndarray
     damped_trend_coefficient: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
@@ -404,10 +406,12 @@ def _forecast(posterior: Posterior,
 
     for s in range(num_samp):
         obs_error = dist.vec_norm(num_periods_zeros,
-                                  num_periods_ones * np.sqrt(response_error_variance[s][0, 0]))
+                                  num_periods_ones
+                                  * np.sqrt(response_error_variance[s][0, 0]))
         if q > 0:
             state_error = dist.vec_norm(num_periods_u_zeros,
-                                        num_periods_u_ones * np.sqrt(ao.diag_2d(state_error_covariance[s])))
+                                        num_periods_u_ones
+                                        * np.sqrt(ao.diag_2d(state_error_covariance[s])))
 
         if len(damped_level_transition_index) > 0:
             T[damped_level_transition_index] = damped_level_coeff[s][0, 0]
@@ -467,7 +471,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_level: bool. If true, the level component evolves stochastically. Default is true.
 
-        :param damped_trend: bool. If true, the level obeys an autoregressive process of order 1.
+        :param damped_level: bool. If true, the level obeys an autoregressive process of order 1.
         Note that stochastic_level must be true if damped_level is true. Default is false.
 
         :param trend: bool. If true, a trend component is added to the model. Note, that a trend
@@ -484,7 +488,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_lag_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in lag_seasonal evolve stochastically. Default is an empty tuple,
-        which will be converted to true bools if lag_seasonal is non-empty.
+        which will be converted to true bools if lag_seasonal is empty.
 
         :param damped_lag_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in lag_seasonal evolve according to an autoregressive process of order 1.
@@ -499,7 +503,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_dummy_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in dummy_seasonal evolve stochastically. Default is an empty tuple,
-        which will be converted to true bools if dummy_seasonal is non-empty.
+        which will be converted to true bools if dummy_seasonal is empty.
 
         :param trig_seasonal: tuple of 2-tuples that takes the form ((periodicity_1, num_harmonics_1),
         (periodicity_2, num_harmonics_2), ...). Each (periodicity, num_harmonics) pair in trig_seasonal
@@ -510,7 +514,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_trig_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding (periodicity, num_harmonics) in trig_seasonal evolve stochastically. Default is an
-        empty tuple, which will be converted to true bools if trig_seasonal is non-empty.
+        empty tuple, which will be converted to true bools if trig_seasonal is empty.
 
         """
 
@@ -673,7 +677,7 @@ class BayesianUnobservedComponents:
 
                 if len(stochastic_lag_seasonal) > 0:
                     if not all(isinstance(v, bool) for v in stochastic_lag_seasonal):
-                        raise ValueError('If an non-empty tuple is passed for the stochastic specification '
+                        raise ValueError('If a non-empty tuple is passed for the stochastic specification '
                                          'of the lag_seasonal components, all elements must be of boolean type.')
 
                     if len(lag_seasonal) > len(stochastic_lag_seasonal):
@@ -693,7 +697,7 @@ class BayesianUnobservedComponents:
 
                 if len(damped_lag_seasonal) > 0:
                     if not all(isinstance(v, bool) for v in damped_lag_seasonal):
-                        raise ValueError('If an non-empty tuple is passed for the damped specification '
+                        raise ValueError('If a non-empty tuple is passed for the damped specification '
                                          'of the lag_seasonal components, all elements must be of boolean type.')
 
                     if len(lag_seasonal) > len(damped_lag_seasonal):
@@ -751,7 +755,7 @@ class BayesianUnobservedComponents:
 
             if len(stochastic_dummy_seasonal) > 0:
                 if not all(isinstance(v, bool) for v in stochastic_dummy_seasonal):
-                    raise ValueError('If an non-empty tuple is passed for the stochastic specification '
+                    raise ValueError('If a non-empty tuple is passed for the stochastic specification '
                                      'of the dummy seasonal components, all elements must be of boolean type.')
 
                 if len(dummy_seasonal) > len(stochastic_dummy_seasonal):
@@ -830,7 +834,7 @@ class BayesianUnobservedComponents:
 
             if len(stochastic_trig_seasonal) > 0:
                 if not all(isinstance(v, bool) for v in stochastic_trig_seasonal):
-                    raise ValueError('If an non-empty tuple is passed for the stochastic specification '
+                    raise ValueError('If a non-empty tuple is passed for the stochastic specification '
                                      'of the trigonometric seasonal components, all elements must be of boolean type.')
 
                 if len(trig_seasonal) > len(stochastic_trig_seasonal):
@@ -1479,6 +1483,22 @@ class BayesianUnobservedComponents:
             else:
                 stochastic_index = None
 
+            # The level state equation represents a random walk if
+            # no damping is specified. Diffuse initialization is required
+            # in this case. The fake states used in Durbin-Koopman for
+            # simulating the smoothed states can take any arbitrary value
+            # under diffuse initialization. Zero is chosen.
+            # For the initial state covariance matrix, an
+            # approximate diffuse initialization method is adopted.
+            # That is, a diagonal matrix with large values along
+            # the diagonal. Large in this setting is defined as 1e6.
+
+            # If damping is specified, then the fake state is drawn
+            # from a Gaussian distribution with mean zero and variance
+            # equal to the variance of its stationary distribution, which
+            # in general for an AR(1) process is
+            # Residual Variance / (1 - [AR(1) Coefficient]^2).
+
             if self.damped_level:
                 if damped_level_coeff_mean_prior is None:
                     damped_level_coeff_mean_prior = np.array([[0.]])
@@ -1497,15 +1517,6 @@ class BayesianUnobservedComponents:
                 init_state_variances.append(1e6)
                 init_state_plus_values.append(0.)
 
-            # The level state equation represents a random walk.
-            # Diffuse initialization is required in this case.
-            # The fake states used in Durbin-Koopman for simulating
-            # the smoothed states can take any arbitrary value
-            # under diffuse initialization. Zero is chosen.
-            # For the initial state covariance matrix, an
-            # approximate diffuse initialization method is adopted.
-            # That is, a diagonal matrix with large values along
-            # the diagonal. Large in this setting is defined as 1e6.
             gibbs_iter0_init_state.append(self._gibbs_iter0_init_level())
             components['Level'] = dict(start_state_eqn_index=j,
                                        end_state_eqn_index=j + 1,
@@ -1533,6 +1544,22 @@ class BayesianUnobservedComponents:
                 s += 1
             else:
                 stochastic_index = None
+
+            # The trend state equation represents a random walk if
+            # no damping is specified. Diffuse initialization is required
+            # in this case. The fake states used in Durbin-Koopman for
+            # simulating the smoothed states can take any arbitrary value
+            # under diffuse initialization. Zero is chosen.
+            # For the initial state covariance matrix, an
+            # approximate diffuse initialization method is adopted.
+            # That is, a diagonal matrix with large values along
+            # the diagonal. Large in this setting is defined as 1e6.
+
+            # If damping is specified, then the fake state is drawn
+            # from a Gaussian distribution with mean zero and variance
+            # equal to the variance of its stationary distribution, which
+            # in general for an AR(1) process is
+            # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
             if self.damped_trend:
                 if damped_trend_coeff_mean_prior is None:
@@ -1596,6 +1623,22 @@ class BayesianUnobservedComponents:
                 else:
                     stochastic_index = None
 
+                # A period-lag seasonal state equation represents a random walk if
+                # no damping is specified. Diffuse initialization is required
+                # in this case. The fake states used in Durbin-Koopman for
+                # simulating the smoothed states can take any arbitrary value
+                # under diffuse initialization. Zero is chosen.
+                # For the initial state covariance matrix, an
+                # approximate diffuse initialization method is adopted.
+                # That is, a diagonal matrix with large values along
+                # the diagonal. Large in this setting is defined as 1e6.
+
+                # If damping is specified, then the fake state is drawn
+                # from a Gaussian distribution with mean zero and variance
+                # equal to the variance of its stationary distribution, which
+                # in general for an AR(1) process is
+                # Residual Variance / (1 - [AR(1) Coefficient]^2).
+
                 if self.damped_lag_seasonal[c]:
                     init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
                                                 (1 - gibbs_iter0_damped_season_coeff[d, 0] ** 2))
@@ -1649,11 +1692,10 @@ class BayesianUnobservedComponents:
                 else:
                     stochastic_index = None
 
-                # The dummy seasonal state equations represent random walks.
-                # Diffuse initialization is required in this case.
-                # The fake states used in Durbin-Koopman for simulating
-                # the smoothed states can take any arbitrary value
-                # under diffuse initialization. Zero is chosen.
+                # A dummy seasonal state equation represents a random walk.
+                # Diffuse initialization is required in this case. The fake states
+                # used in Durbin-Koopman for simulating the smoothed states can take
+                # any arbitrary value under diffuse initialization. Zero is chosen.
                 # For the initial state covariance matrix, an
                 # approximate diffuse initialization method is adopted.
                 # That is, a diagonal matrix with large values along
@@ -1709,15 +1751,15 @@ class BayesianUnobservedComponents:
                 else:
                     stochastic_index = None
 
-                # The trigonometric seasonal state equations represent random walks.
-                # Diffuse initialization is required in this case.
-                # The fake states used in Durbin-Koopman for simulating
-                # the smoothed states can take any arbitrary value
-                # under diffuse initialization. Zero is chosen.
+                # A trigonometric seasonal state equation represents a random walk.
+                # Diffuse initialization is required in this case. The fake states
+                # used in Durbin-Koopman for simulating the smoothed states can take
+                # any arbitrary value under diffuse initialization. Zero is chosen.
                 # For the initial state covariance matrix, an
                 # approximate diffuse initialization method is adopted.
                 # That is, a diagonal matrix with large values along
                 # the diagonal. Large in this setting is defined as 1e6.
+
                 for k in range(num_eqs):
                     init_state_plus_values.append(0.)
                     init_state_variances.append(1e6)
@@ -1745,6 +1787,14 @@ class BayesianUnobservedComponents:
                                             damped=None,
                                             damped_transition_index=None)
             X = self.predictors
+
+            # Static regression coefficients are modeled
+            # by appending X*beta to the observation matrix,
+            # appending a 1 to the state vector, and forcing
+            # the relevant state equation to be non-stochastic.
+            # Thus, the variance for the static regression
+            # state equation is zero and the initial state
+            # value is 1.
             init_state_plus_values.append(0.)
             init_state_variances.append(0.)
             gibbs_iter0_init_state.append(1.)
@@ -1928,8 +1978,9 @@ class BayesianUnobservedComponents:
                     response_error_variance: Posterior variance of the response equation's error term
                     state_error_covariance: Posterior variance-covariance matrix for the state error vector
                     regression_coefficients: Posterior regression coefficients
-                    damped_trend_coefficient: Posterior damped coefficient for trend
-                    damped_lag_season_coefficients: Posterior damped coefficient for lag_seasonal components
+                    damped_level_coefficient: Posterior AR(1) coefficient for level
+                    damped_trend_coefficient: Posterior AR(1) coefficient for trend
+                    damped_lag_season_coefficients: Posterior AR(1) coefficients for lag_seasonal components
         """
 
         if not isinstance(num_samp, int):
@@ -2483,7 +2534,7 @@ class BayesianUnobservedComponents:
                 state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
                 state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
-            # Get new draw for the trend's AR(1) coefficient, if applicable
+            # Get new draw for the level's AR(1) coefficient, if applicable
             if self.level and self.damped_level:
                 ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
                                               lag=(1,),
