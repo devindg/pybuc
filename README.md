@@ -44,8 +44,9 @@ Matplotlib. Python 3.9 and above is supported.
 The Seasonal Autoregressive Integrated Moving Average (SARIMA) model is perhaps the most widely used class of 
 statistical time series models. By design, these models can only operate on covariance-stationary time series. 
 Consequently, if a time series exhibits non-stationarity (e.g., trend and/or seasonality), then the data first have to 
-be stationarized. Transforming a non-stationary series to a stationary one requires taking local and/or seasonal 
-time-differences of the data. Whether to difference the data and to what extent are things that need to be determined 
+be stationarized. Transforming a non-stationary series to a stationary one usually requires taking local and/or seasonal 
+time-differences of the data, but sometimes a linear trend to detrend a trend-stationary series is sufficient. 
+Whether to stationarize the data and to what extent differencing is needed are things that need to be determined 
 beforehand.
 
 Once a stationary series is in hand, a SARIMA specification must be identified. Identifying the "right" SARIMA 
