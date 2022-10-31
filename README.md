@@ -45,21 +45,22 @@ The Seasonal Autoregressive Integrated Moving Average (SARIMA) model is perhaps 
 statistical time series models. By design, these models can only operate on covariance-stationary time series. 
 Consequently, if a time series exhibits non-stationarity (e.g., trend and/or seasonality), then the data first have to 
 be stationarized. Transforming a non-stationary series to a stationary one requires taking local and/or seasonal 
-time-differences of the data. Whether to difference the data and to what extent is a question that is answered using 
-statistical methods. 
+time-differences of the data. Whether to difference the data and to what extent are things that need to be determined 
+beforehand.
 
 Once a stationary series is in hand, a SARIMA specification must be identified. Identifying the "right" SARIMA 
 specification can be achieved algorithmically (e.g., see the Python package `pmdarima`) or through examination of a 
-series' patterns. The latter involves statistical and visual inspection of a series' autocorrelation (ACF) and partial 
-autocorrelation (PACF) functions. Ultimately, the necessary condition for stationarity engenders a prerequisite for 
-rigorous statistical tests. It also implies that the underlying trend and seasonality, if they exist, are eliminated in 
-the process of generating a stationary series. The underlying time components that characterize a series are, therefore, 
-not of empirical interest.
+series' patterns. The latter typically involves statistical tests and visual inspection of a series' autocorrelation 
+(ACF) and partial autocorrelation (PACF) functions. Ultimately, the necessary condition for stationarity requires 
+statistical analysis before a model can be formulated. It also implies that the underlying trend and seasonality, if 
+they exist, are eliminated in the process of generating a stationary series. Consequently, the underlying time 
+components that characterize a series are not of empirical interest.
 
 Another less commonly used class of model is structural time series (STS), also known as unobserved components (UC). 
 Whereas SARIMA models abstract away from an explicit model for trend and seasonality, STS/UC models do not. Thus, it is 
-not possible to visualize the underlying components that characterize a time series using a SARIMA model, but one can do 
-so with a STS/UC model.
+possible to visualize the underlying components that characterize a time series using STS/UC. Moreover, it is relatively 
+straightforward to test for phenomena like level shifts, also known as structural breaks, by statistical examination of 
+a time series' estimated level component.
 
 STS/UC models also have the flexibility to accommodate multiple stochastic seasonalities. SARIMA models, in contrast, 
 can accommodate multiple seasonalities, but only one seasonality/periodicity can be treated as stochastic. For example, 
