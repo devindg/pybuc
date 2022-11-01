@@ -488,7 +488,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_lag_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in lag_seasonal evolve stochastically. Default is an empty tuple,
-        which will be converted to true bools if lag_seasonal is empty.
+        which will be converted to true bools if lag_seasonal is not empty.
 
         :param damped_lag_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in lag_seasonal evolve according to an autoregressive process of order 1.
@@ -503,7 +503,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_dummy_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding periodicities in dummy_seasonal evolve stochastically. Default is an empty tuple,
-        which will be converted to true bools if dummy_seasonal is empty.
+        which will be converted to true bools if dummy_seasonal is not empty.
 
         :param trig_seasonal: tuple of 2-tuples that takes the form ((periodicity_1, num_harmonics_1),
         (periodicity_2, num_harmonics_2), ...). Each (periodicity, num_harmonics) pair in trig_seasonal
@@ -516,7 +516,7 @@ class BayesianUnobservedComponents:
 
         :param stochastic_trig_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding (periodicity, num_harmonics) in trig_seasonal evolve stochastically. Default is an
-        empty tuple, which will be converted to true bools if trig_seasonal is empty.
+        empty tuple, which will be converted to true bools if trig_seasonal is not empty.
 
         """
 
