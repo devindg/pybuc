@@ -510,7 +510,9 @@ class BayesianUnobservedComponents:
         specifies a periodicity and number of harmonics associated with the periodicity. For example,
         (12, 6) would specify a periodicity of 12 with 6 harmonics. The number of harmonics must be an
         integer in [1, periodicity / 2] if periodicity is even, or in [1, (periodicity - 1) / 2]
-        if periodicity is odd. Each period specified must be distinct.
+        if periodicity is odd. Each period specified must be distinct. For any given periodicity specified,
+        if 0 is entered for the number of harmonics, then the maximum number of harmonics will be used
+        (e.g., if ((7, 0),) is passed to trig_seasonal, then (7 - 1) / 2 = 3 harmonics will be used).
 
         :param stochastic_trig_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding (periodicity, num_harmonics) in trig_seasonal evolve stochastically. Default is an
