@@ -366,19 +366,19 @@ harmonic, $\gamma^S_{j, t}$, are represented by a real and imaginary part, speci
 
 $$
 \begin{align}
-    \gamma^S_{j, t+1} &= \cos(\lambda_j) \gamma^S_{j, t} + \sin(\lambda_j) \gamma^S_{j, t}^* + \eta_{\gamma^S_j, t} \\
-    \gamma^S_{j, t+1}^* &= -\sin(\lambda_j) \gamma^S_{j, t} + \cos(\lambda_j) \gamma^S_{j, t}^* + \eta_{\gamma^S_j^* , t}
+    \gamma^{S*}_{j, t+1} &= \cos(\lambda_j) \gamma^S_{j, t} + \sin(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^S_ j, t} \\
+    \gamma^{S*}_{j, t+1} &= -\sin(\lambda_j) \gamma^S_{j, t} + \cos(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^{S*}_ j , t}
 \end{align}
 $$
 
-where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma^S_j, t}$ and $\eta_{\gamma^S_j^ * , t}$ are 
-distributed $N(0, \sigma^2_{\eta^S_\gamma})$ for all $j, t$. Note that when $S$ is even, $\gamma^S_{S/2, t+1}^*$ is not 
+where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma^S_j, t}$ and $\eta_{\gamma^{S*}_j , t}$ are 
+distributed $N(0, \sigma^2_{\eta^S_\gamma})$ for all $j, t$. Note that when $S$ is even, $\gamma^{S*}_{S/2, t+1}$ is not 
 needed since 
 
 $$
 \begin{align}
-    \gamma^S_{S/2, t+1} &= \cos(\pi) \gamma^S_{S/2, t} + \sin(\pi) \gamma^S_{S/2, t}^* + \eta_{\gamma^S_{S/2}, t} \\
-    &= (-1) \gamma^S_{S/2, t} + (0) \gamma^S_{S/2, t}^* + \eta_{\gamma^S_{S/2}, t} \\
+    \gamma^S_{S/2, t+1} &= \cos(\pi) \gamma^S_{S/2, t} + \sin(\pi) \gamma^{S*}_{S/2, t} + \eta_{\gamma^S_{S/2}, t} \\
+    &= (-1) \gamma^S_{S/2, t} + (0) \gamma^{S*}_{S/2, t} + \eta_{\gamma^S_{S/2}, t} \\
     &= -\gamma^S_{S/2, t} + \eta_{\gamma^S_{S/2}, t}
 \end{align}
 $$
