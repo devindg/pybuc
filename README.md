@@ -366,8 +366,8 @@ harmonic, $\gamma^S_{j, t}$, are represented by a real and imaginary part, speci
 
 $$
 \begin{align}
-    \gamma^{S*}_{j, t+1} &= \cos(\lambda_j) \gamma^S_{j, t} + \sin(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^S_ j, t} \\
-    \gamma^{S*}_{j, t+1} &= -\sin(\lambda_j) \gamma^S_{j, t} + \cos(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^{S*}_ j , t}
+    \gamma^{S*}_ {j, t+1} &= \cos(\lambda_j) \gamma^S_{j, t} + \sin(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^S_ j, t} \\
+    \gamma^{S*}_ {j, t+1} &= -\sin(\lambda_j) \gamma^S_{j, t} + \cos(\lambda_j) \gamma^{S*}_{j, t} + \eta_{\gamma^{S*}_ j , t}
 \end{align}
 $$
 
