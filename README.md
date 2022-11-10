@@ -285,7 +285,7 @@ $$
 y_t = \mu_t + \boldsymbol{\gamma}_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
 $$ 
 
-where $\mu_t$ specifies an unobserved dynamic level component, $\boldsymbol{\gamma}_t$ is a vector of unobserved dynamic 
+where $\mu_t$ specifies an unobserved dynamic level component, $\boldsymbol{\gamma}_ t$ is a vector of unobserved dynamic 
 seasonal components that represent unique periodicities, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved 
 regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and 
 $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ 
@@ -326,15 +326,15 @@ trend.
 ## Seasonality
 
 ### Periodic-lag form
-For a given periodicity $S$, a seasonal component in $\boldsymbol{\gamma}_t$, $\gamma(S)_t$, can be modeled in three 
+For a given periodicity $S$, a seasonal component in $\boldsymbol{\gamma}_t$, $\gamma^S_t$, can be modeled in three 
 ways. One way is based on periodic lags. Formally, the seasonal effect on $y$ is modeled as
 
 $$
-\gamma(S)_t = \rho(S) \gamma(S){t-S} + \eta_{\gamma(S), t},
+\gamma^S_t = \rho(S) \gamma^S_{t-S} + \eta_{\gamma^S, t},
 $$
 
 where $S$ is the number of periods in a seasonal cycle, $\rho(S)$ is an autoregressive parameter expected to lie in the 
-unit circle (-1, 1), and $\eta_{\gamma(S), t} \sim N(0, \sigma_{\eta_\gamma(S)}^2)$ for all $t$. If damping is not 
+unit circle (-1, 1), and $\eta_{\gamma^S, t} \sim N(0, \sigma_{\eta_\gamma^S}^2)$ for all $t$. If damping is not 
 specified for a given periodic lag, $\rho(S) = 1$ and seasonality is treated as a random walk process. The default prior 
 for $\rho(S)$ is $N(0, 1)$.
 
@@ -345,10 +345,10 @@ assumptions.
 Another way is known as the "dummy" variable approach. Formally, the seasonal effect on the outcome $y$ is modeled as 
 
 $$
-\sum_{j=0}^{S-1} \gamma(S)_{t-j} = \eta_{\gamma(S), t} \iff \gamma(S)_t = -\sum_{j=1}^{S-1} \gamma(S)_{t-j} + \eta_{\gamma(S), t},
+\sum_{j=0}^{S-1} \gamma^S_{t-j} = \eta_{\gamma^S, t} \iff \gamma^S_t = -\sum_{j=1}^{S-1} \gamma^S_{t-j} + \eta_{\gamma^S, t},
 $$ 
 
-where $j$ indexes the number of periods in a seasonal cycle, and $\eta_{\gamma(S), t} \sim N(0, \sigma_{\eta_\gamma(S)}^2)$ 
+where $j$ indexes the number of periods in a seasonal cycle, and $\eta_{\gamma^S, t} \sim N(0, \sigma_{\eta_\gamma^S}^2)$ 
 for all $t$. Intuitively, if a time series exhibits periodicity, then the sum of the periodic effects over a cycle 
 should, on average, be zero.
 
@@ -357,29 +357,29 @@ The final way to model seasonality is through a trigonometric representation, wh
 cosine functions. Specifically, seasonality is modeled as
 
 $$
-\gamma(S)_t = \sum_{j=1}^h \gamma(S)_{j, t}
+\gamma^S_t = \sum_{j=1}^h \gamma^S_{j, t}
 $$
 
 where $j$ indexes the number of harmonics to represent seasonality of periodicity $S$ and 
 $1 \leq h \leq \lfloor S/2 \rfloor$ is the highest desired number of harmonics. The state transition equations for each 
-harmonic, $\gamma(S)_{j, t}$, are represented by a real and imaginary part, specifically
+harmonic, $\gamma^S_{j, t}$, are represented by a real and imaginary part, specifically
 
 $$
 \begin{align}
-    \gamma(S)_{j, t+1} &= \cos(\lambda_j) \gamma(S)_{j, t} + \sin(\lambda_j) \gamma(S)_{j, t}^* + \eta_{\gamma(S)_j, t} \\
-    \gamma(S)_{j, t+1}^* &= -\sin(\lambda_j) \gamma(S)_{j, t} + \cos(\lambda_j) \gamma(S)_{j, t}^* + \eta_{\gamma(S)_j^* , t}
+    \gamma^S_{j, t+1} &= \cos(\lambda_j) \gamma^S_{j, t} + \sin(\lambda_j) \gamma^S_{j, t}^* + \eta_{\gamma^S_j, t} \\
+    \gamma^S_{j, t+1}^* &= -\sin(\lambda_j) \gamma^S_{j, t} + \cos(\lambda_j) \gamma^S_{j, t}^* + \eta_{\gamma^S_j^* , t}
 \end{align}
 $$
 
-where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma(S)_j, t}$ and $\eta_{\gamma(S)_j^ * , t}$ are 
-distributed $N(0, \sigma^2_{\eta(S)_\gamma})$ for all $j, t$. Note that when $S$ is even, $\gamma(S)_{S/2, t+1}^*$ is not 
+where frequency $\lambda_j = 2j\pi / S$. It is assumed that $\eta_{\gamma^S_j, t}$ and $\eta_{\gamma^S_j^ * , t}$ are 
+distributed $N(0, \sigma^2_{\eta^S_\gamma})$ for all $j, t$. Note that when $S$ is even, $\gamma^S_{S/2, t+1}^*$ is not 
 needed since 
 
 $$
 \begin{align}
-    \gamma(S)_{S/2, t+1} &= \cos(\pi) \gamma(S)_{S/2, t} + \sin(\pi) \gamma(S)_{S/2, t}^* + \eta_{\gamma(S)_{S/2}, t} \\
-    &= (-1) \gamma(S)_{S/2, t} + (0) \gamma(S)_{S/2, t}^* + \eta_{\gamma(S)_{S/2}, t} \\
-    &= -\gamma(S)_{S/2, t} + \eta_{\gamma(S)_{S/2}, t}
+    \gamma^S_{S/2, t+1} &= \cos(\pi) \gamma^S_{S/2, t} + \sin(\pi) \gamma^S_{S/2, t}^* + \eta_{\gamma^S_{S/2}, t} \\
+    &= (-1) \gamma^S_{S/2, t} + (0) \gamma^S_{S/2, t}^* + \eta_{\gamma^S_{S/2}, t} \\
+    &= -\gamma^S_{S/2, t} + \eta_{\gamma^S_{S/2}, t}
 \end{align}
 $$
  
@@ -410,8 +410,8 @@ $$
 
 where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level 
 and seasonal component are specified, this means an initial estimate of the time series component 
-$\tau_t = \mu_t + \gamma_t$ and $\boldsymbol{\beta}$ has to be acquired first. Then $\boldsymbol{\beta}$ can be 
-estimated conditional on $\mathbf y^ * \equiv \left(y_1^ *, y_2^ *, \cdots, y_n^ *\right)^\prime$.
+$\tau_t = \mu_t + \boldsymbol{\gamma}_ t$ and $\boldsymbol{\beta}$ has to be acquired first. Then 
+$\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(y_1^ *, y_2^ *, \cdots, y_n^ *\right)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
@@ -472,11 +472,11 @@ where
 $$
 \begin{align}
     \boldsymbol{\alpha}_ t &= \left(\begin{array}{cc} 
-                            \mu_t & \delta_t & \gamma(4)_{1, t} & \gamma(4)_{1, t}^* & \gamma(4)_{2, t} & 1
+                            \mu_t & \delta_t & \gamma^4_{1, t} & \gamma^4_{1, t}^* & \gamma^4_{2, t} & 1
                             \end{array}\right)^\prime \\
     \boldsymbol{\eta}_ t &= \left(\begin{array}{cc} 
-                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma(4)_ 1, t} & \eta_{\gamma(4)_ 1^\*, t} & 
-                            \eta_{\gamma(4)_ 2, t}
+                            \eta_{\mu, t} & \eta_{\delta, t} & \eta_{\gamma^4_ 1, t} & \eta_{\gamma^4_ 1^\*, t} & 
+                            \eta_{\gamma^4_ 2, t}
                             \end{array}\right)^\prime
 \end{align}
 $$
@@ -485,8 +485,8 @@ and
 
 $$
 \mathrm{Cov}(\boldsymbol{\eta}_ t) = \mathrm{Cov}(\boldsymbol{\eta}_ {t-1}) = \boldsymbol{\Sigma}_ \eta = 
-\mathrm{diag}(\sigma^2_{\eta_\mu}, \sigma^2_{\eta_\delta}, \sigma^2_{\eta_{\gamma(4)_ 1}}, \sigma^2_{\eta_{\gamma(4)_ 1^\*}}, 
-\sigma^2_{\eta_{\gamma(4)_ 2}}) \in \mathbb{R}^{5 \times 5} \hspace{5pt} \textrm{for all } t=1,2,...,n
+\mathrm{diag}(\sigma^2_{\eta_\mu}, \sigma^2_{\eta_\delta}, \sigma^2_{\eta_{\gamma^4_ 1}}, \sigma^2_{\eta_{\gamma^4_ 1^\*}}, 
+\sigma^2_{\eta_{\gamma^4_ 2}}) \in \mathbb{R}^{5 \times 5} \hspace{5pt} \textrm{for all } t=1,2,...,n
 $$
 
 # Estimation
