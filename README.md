@@ -282,15 +282,15 @@ BAYES-UC RMSE: 17.385398629158285
 A structural time series model with level, trend, seasonal, and regression components takes the form: 
 
 $$
-y_t = \mu_t + \boldsymbol{\gamma}_t + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
+y_t = \mu_t + \boldsymbol{\gamma}^\prime _t \mathbb{1}_p + \mathbf x_t^\prime \boldsymbol{\beta} + \epsilon_t
 $$ 
 
-where $\mu_t$ specifies an unobserved dynamic level component, $\boldsymbol{\gamma}_ t$ is a vector of unobserved dynamic 
-seasonal components that represent unique periodicities, $\mathbf x_t^\prime \boldsymbol{\beta}$ a partially unobserved 
-regression component (the regressors $\mathbf x_t$ are observed, but the coefficients $\boldsymbol{\beta}$ are not), and 
-$\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The equation describing the outcome $y_t$ 
-is commonly referred to as the observation equation, and the transition equations governing the evolution of the 
-unobserved states are known as the state equations.
+where $\mu_t$ specifies an unobserved dynamic level component, $\boldsymbol{\gamma}_ t$ is a $p \times 1$ vector of 
+unobserved dynamic seasonal components that represent unique periodicities, $\mathbf x_t^\prime \boldsymbol{\beta}$ a 
+partially unobserved regression component (the regressors $\mathbf x_t$ are observed, but the coefficients 
+$\boldsymbol{\beta}$ are not), and $\epsilon_t \sim N(0, \sigma_{\epsilon}^2)$ an unobserved irregular component. The 
+equation describing the outcome $y_t$ is commonly referred to as the observation equation, and the transition equations 
+governing the evolution of the unobserved states are known as the state equations.
 
 ## Level and trend
 
@@ -410,7 +410,7 @@ $$
 
 where $\tau_t$ represents the time series component of the structural time series model. For example, assuming a level 
 and seasonal component are specified, this means an initial estimate of the time series component 
-$\tau_t = \mu_t + \boldsymbol{\gamma}_ t$ and $\boldsymbol{\beta}$ has to be acquired first. Then 
+$\tau_t = \mu_t + \boldsymbol{\gamma}^\prime_ t \mathbb{1}_p$ and $\boldsymbol{\beta}$ has to be acquired first. Then 
 $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(y_1^ *, y_2^ *, \cdots, y_n^ *\right)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
