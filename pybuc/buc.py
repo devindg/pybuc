@@ -460,9 +460,9 @@ class BayesianUnobservedComponents:
                  seed: int = None):
 
         """
-
+        Test this
         :param response: Numpy array, Pandas Series, or Pandas DataFrame, float64. Array that represents
-        the response variable to modeled.
+        the response variable.
 
         :param predictors: Numpy array, Pandas Series, or Pandas DataFrame, float64. Array that represents
         the predictors, if any, to be used for predicting the response variable. Default is an empty array.
@@ -517,7 +517,6 @@ class BayesianUnobservedComponents:
         :param stochastic_trig_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding (periodicity, num_harmonics) in trig_seasonal evolve stochastically. Default is an
         empty tuple, which will be converted to true bools if trig_seasonal is not empty.
-
         """
 
         self._response = response
