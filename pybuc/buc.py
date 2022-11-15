@@ -2809,11 +2809,7 @@ class BayesianUnobservedComponents:
             state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
         else:
             prediction = filtered_prediction
-            state = _simulate_posterior_predictive_state(self.posterior,
-                                                         burn,
-                                                         num_first_obs_ignore,
-                                                         random_sample_size_prop,
-                                                         self.has_predictors)
+            state = self.posterior.filtered_state[burn:, num_first_obs_ignore:n, :, :]
 
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
@@ -2823,7 +2819,7 @@ class BayesianUnobservedComponents:
         ub = np.quantile(filtered_prediction, cred_int_ub, axis=0)
         ax[0].fill_between(historical_time_index, lb, ub, alpha=0.2)
         ax[0].title.set_text('Predicted vs. observed response')
-        ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - cred_int_level)}% prediction interval'),
+        ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - cred_int_level)}% credible interval'),
                      loc='upper left')
 
         for i, c in enumerate(components):

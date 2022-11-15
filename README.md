@@ -228,10 +228,9 @@ Subsequent runs (assuming the Python kernel isn't restarted) should execute cons
 ''' Fit the airline data using Bayesian unobserved components '''
 bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                             level=True, stochastic_level=True,
-                                            trend=True, stochastic_trend=True, damped_trend=False,
+                                            trend=True, stochastic_trend=True,
                                             trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
                                             seed=123)
-
 post = bayes_uc.sample(5000)
 mcmc_burn = 100
 
