@@ -2809,7 +2809,11 @@ class BayesianUnobservedComponents:
             state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
         else:
             prediction = filtered_prediction
-            state = self.posterior.filtered_state[burn:, num_first_obs_ignore:n, :, :]
+            state = _simulate_posterior_predictive_state(self.posterior,
+                                                         burn,
+                                                         num_first_obs_ignore,
+                                                         random_sample_size_prop,
+                                                         self.has_predictors)
 
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
