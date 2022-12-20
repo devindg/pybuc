@@ -535,13 +535,13 @@ class BayesianUnobservedComponents:
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
         if not isinstance(response, (pd.Series, pd.DataFrame, np.ndarray)):
-            raise ValueError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+            raise TypeError("The response array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
         else:
             resp = response.copy()
             if isinstance(response, (pd.Series, pd.DataFrame)):
                 if not isinstance(response.index, pd.DatetimeIndex):
-                    raise ValueError("Pandas' DatetimeIndex is currently the only supported "
-                                     "index type for Pandas objects.")
+                    raise TypeError("Pandas' DatetimeIndex is currently the only supported "
+                                    "index type for Pandas objects.")
                 else:
                     if response.index.freq is None:
                         warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred for response.')
@@ -557,7 +557,7 @@ class BayesianUnobservedComponents:
 
         # -- dimensions
         if resp.dtype != 'float64':
-            raise ValueError('All values in the response array must be of type float.')
+            raise TypeError('All values in the response array must be of type float.')
         if resp.ndim == 0:
             raise ValueError('The response array must have dimension 1 or 2.')
         if resp.ndim == 1:
@@ -586,7 +586,7 @@ class BayesianUnobservedComponents:
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
         # -- check if correct data type
         if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
-            raise ValueError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
+            raise TypeError("The predictors array must be a Numpy array, Pandas Series, or Pandas DataFrame.")
         else:
             pred = predictors.copy()
             if predictors.size > 0:
@@ -594,19 +594,19 @@ class BayesianUnobservedComponents:
                 # if not isinstance(predictors, type(response)):
                 #     raise ValueError('Object types for response and predictors arrays must match.')
                 if isinstance(response, np.ndarray) and not isinstance(predictors, np.ndarray):
-                    raise ValueError('The response array provided is a NumPy array, but the predictors '
-                                     'array is not. Object types must match.')
+                    raise TypeError('The response array provided is a NumPy array, but the predictors '
+                                    'array is not. Object types must match.')
 
                 if (isinstance(response, (pd.Series, pd.DataFrame)) and
                         not isinstance(predictors, (pd.Series, pd.DataFrame))):
-                    raise ValueError('The response array provided is a Pandas Series/DataFrame, but the predictors '
-                                     'array is not. Object types must match.')
+                    raise TypeError('The response array provided is a Pandas Series/DataFrame, but the predictors '
+                                    'array is not. Object types must match.')
 
                 # -- get predictor names if a Pandas object and sort index
                 if isinstance(predictors, (pd.Series, pd.DataFrame)):
                     if not isinstance(predictors.index, pd.DatetimeIndex):
-                        raise ValueError("Pandas' DatetimeIndex is currently the only supported "
-                                         "index type for Pandas objects.")
+                        raise TypeError("Pandas' DatetimeIndex is currently the only supported "
+                                        "index type for Pandas objects.")
                     else:
                         if not (predictors.index == self.historical_time_index).all():
                             raise ValueError('The response and predictors indexes must match.')
@@ -620,7 +620,7 @@ class BayesianUnobservedComponents:
 
                 # -- dimension and null/inf checks
                 if pred.dtype != 'float64':
-                    raise ValueError('All values in the predictors array must be of type float.')
+                    raise TypeError('All values in the predictors array must be of type float.')
                 if pred.ndim == 0:
                     raise ValueError('The predictors array must have dimension 1 or 2. Dimension is 0.')
                 if pred.ndim == 1:
@@ -658,17 +658,17 @@ class BayesianUnobservedComponents:
 
             # CHECK AND PREPARE LAG SEASONAL
             if not isinstance(lag_seasonal, tuple):
-                raise ValueError('lag_seasonal must be a tuple.')
+                raise TypeError('lag_seasonal must be a tuple.')
 
             if not isinstance(stochastic_lag_seasonal, tuple):
-                raise ValueError('stochastic_lag_seasonal must be a tuple.')
+                raise TypeError('stochastic_lag_seasonal must be a tuple.')
 
             if not isinstance(damped_lag_seasonal, tuple):
-                raise ValueError('damped_lag_seasonal must be a tuple.')
+                raise TypeError('damped_lag_seasonal must be a tuple.')
 
             if len(lag_seasonal) > 0:
                 if not all(isinstance(v, int) for v in lag_seasonal):
-                    raise ValueError('The period for a lag_seasonal component must be an integer.')
+                    raise TypeError('The period for a lag_seasonal component must be an integer.')
 
                 if len(lag_seasonal) != len(set(lag_seasonal)):
                     raise ValueError('Each specified period in lag_seasonal must be distinct.')
@@ -678,8 +678,8 @@ class BayesianUnobservedComponents:
 
                 if len(stochastic_lag_seasonal) > 0:
                     if not all(isinstance(v, bool) for v in stochastic_lag_seasonal):
-                        raise ValueError('If a non-empty tuple is passed for the stochastic specification '
-                                         'of the lag_seasonal components, all elements must be of boolean type.')
+                        raise TypeError('If a non-empty tuple is passed for the stochastic specification '
+                                        'of the lag_seasonal components, all elements must be of boolean type.')
 
                     if len(lag_seasonal) > len(stochastic_lag_seasonal):
                         raise ValueError('Some of the lag_seasonal components were given a stochastic '
@@ -698,8 +698,8 @@ class BayesianUnobservedComponents:
 
                 if len(damped_lag_seasonal) > 0:
                     if not all(isinstance(v, bool) for v in damped_lag_seasonal):
-                        raise ValueError('If a non-empty tuple is passed for the damped specification '
-                                         'of the lag_seasonal components, all elements must be of boolean type.')
+                        raise TypeError('If a non-empty tuple is passed for the damped specification '
+                                        'of the lag_seasonal components, all elements must be of boolean type.')
 
                     if len(lag_seasonal) > len(damped_lag_seasonal):
                         raise ValueError('Some of the lag_seasonal components were given a damped specification, but '
@@ -739,14 +739,14 @@ class BayesianUnobservedComponents:
 
         # CHECK AND PREPARE DUMMY SEASONAL
         if not isinstance(dummy_seasonal, tuple):
-            raise ValueError('dummy_seasonal must be a tuple.')
+            raise TypeError('dummy_seasonal must be a tuple.')
 
         if not isinstance(stochastic_dummy_seasonal, tuple):
-            raise ValueError('stochastic_dummy_seasonal must be a tuple.')
+            raise TypeError('stochastic_dummy_seasonal must be a tuple.')
 
         if len(dummy_seasonal) > 0:
             if not all(isinstance(v, int) for v in dummy_seasonal):
-                raise ValueError('The period for a dummy seasonal component must be an integer.')
+                raise TypeError('The period for a dummy seasonal component must be an integer.')
 
             if len(dummy_seasonal) != len(set(dummy_seasonal)):
                 raise ValueError('Each specified period in dummy_seasonal must be distinct.')
@@ -756,8 +756,8 @@ class BayesianUnobservedComponents:
 
             if len(stochastic_dummy_seasonal) > 0:
                 if not all(isinstance(v, bool) for v in stochastic_dummy_seasonal):
-                    raise ValueError('If a non-empty tuple is passed for the stochastic specification '
-                                     'of the dummy seasonal components, all elements must be of boolean type.')
+                    raise TypeError('If a non-empty tuple is passed for the stochastic specification '
+                                    'of the dummy seasonal components, all elements must be of boolean type.')
 
                 if len(dummy_seasonal) > len(stochastic_dummy_seasonal):
                     raise ValueError('Some of the dummy seasonal components were given a stochastic '
@@ -788,25 +788,25 @@ class BayesianUnobservedComponents:
 
         # CHECK AND PREPARE TRIGONOMETRIC SEASONAL
         if not isinstance(trig_seasonal, tuple):
-            raise ValueError('trig_seasonal must be a tuple.')
+            raise TypeError('trig_seasonal must be a tuple.')
 
         if not isinstance(stochastic_trig_seasonal, tuple):
-            raise ValueError('stochastic_trig_seasonal must be a tuple.')
+            raise TypeError('stochastic_trig_seasonal must be a tuple.')
 
         if len(trig_seasonal) > 0:
             if not all(isinstance(v, tuple) for v in trig_seasonal):
-                raise ValueError('Each element in trig_seasonal must be a tuple.')
+                raise TypeError('Each element in trig_seasonal must be a tuple.')
 
             if not all(len(v) == 2 for v in trig_seasonal):
                 raise ValueError('A (period, num_harmonics) tuple must be provided for each specified trigonometric '
                                  'seasonal component.')
 
             if not all(isinstance(v[0], int) for v in trig_seasonal):
-                raise ValueError('The period for a specified trigonometric seasonal component must be an integer.')
+                raise TypeError('The period for a specified trigonometric seasonal component must be an integer.')
 
             if not all(isinstance(v[1], int) for v in trig_seasonal):
-                raise ValueError('The number of harmonics for a specified trigonometric seasonal component must '
-                                 'be an integer.')
+                raise TypeError('The number of harmonics for a specified trigonometric seasonal component must '
+                                'be an integer.')
 
             if any(v[0] < 2 for v in trig_seasonal):
                 raise ValueError('The period for a trigonometric seasonal component must be an integer greater than 1.')
@@ -835,8 +835,8 @@ class BayesianUnobservedComponents:
 
             if len(stochastic_trig_seasonal) > 0:
                 if not all(isinstance(v, bool) for v in stochastic_trig_seasonal):
-                    raise ValueError('If a non-empty tuple is passed for the stochastic specification '
-                                     'of the trigonometric seasonal components, all elements must be of boolean type.')
+                    raise TypeError('If a non-empty tuple is passed for the stochastic specification '
+                                    'of the trigonometric seasonal components, all elements must be of boolean type.')
 
                 if len(trig_seasonal) > len(stochastic_trig_seasonal):
                     raise ValueError('Some of the trigonometric seasonal components '
@@ -868,13 +868,13 @@ class BayesianUnobservedComponents:
 
         # FINAL VALIDITY CHECKS
         if not isinstance(level, bool) or not isinstance(stochastic_level, bool):
-            raise ValueError('level and stochastic_level must be of boolean type.')
+            raise TypeError('level and stochastic_level must be of boolean type.')
 
         if level and not stochastic_level and damped_level:
             raise ValueError('stochastic_level must be true if level and damped_level are true.')
 
         if not isinstance(trend, bool) or not isinstance(stochastic_trend, bool):
-            raise ValueError('trend and stochastic_trend must be of boolean type.')
+            raise TypeError('trend and stochastic_trend must be of boolean type.')
 
         if trend and not stochastic_trend and damped_trend:
             raise ValueError('stochastic_trend must be true if trend and damped_trend are true.')
@@ -887,7 +887,7 @@ class BayesianUnobservedComponents:
 
         if seed is not None:
             if not isinstance(seed, int):
-                raise ValueError('seed must be an integer.')
+                raise TypeError('seed must be an integer.')
             if not 0 < seed < 2 ** 32 - 1:
                 raise ValueError('seed must be an integer between 0 and 2**32 - 1.')
             _set_seed(seed)  # for Numba JIT functions
@@ -1985,14 +1985,14 @@ class BayesianUnobservedComponents:
         """
 
         if not isinstance(num_samp, int):
-            raise ValueError('num_samp must be of type integer.')
+            raise TypeError('num_samp must be of type integer.')
         if not num_samp > 0:
             raise ValueError('num_samp must a strictly positive integer.')
 
         # Response prior check
         if response_var_shape_prior is not None:
             if not isinstance(response_var_shape_prior, float):
-                raise ValueError('response_var_shape_prior must be of type float.')
+                raise TypeError('response_var_shape_prior must be of type float.')
             if np.isnan(response_var_shape_prior):
                 raise ValueError('response_var_shape_prior cannot be NaN.')
             if np.isinf(response_var_shape_prior):
@@ -2002,7 +2002,7 @@ class BayesianUnobservedComponents:
 
         if response_var_scale_prior is not None:
             if not isinstance(response_var_scale_prior, float):
-                raise ValueError('response_var_scale_prior must be of type float.')
+                raise TypeError('response_var_scale_prior must be of type float.')
             if np.isnan(response_var_scale_prior):
                 raise ValueError('response_var_scale_prior cannot be NaN.')
             if np.isinf(response_var_scale_prior):
@@ -2014,7 +2014,7 @@ class BayesianUnobservedComponents:
         if self.level and self.stochastic_level:
             if level_var_shape_prior is not None:
                 if not isinstance(level_var_shape_prior, float):
-                    raise ValueError('level_var_shape_prior must be of type float.')
+                    raise TypeError('level_var_shape_prior must be of type float.')
                 if np.isnan(level_var_shape_prior):
                     raise ValueError('level_var_shape_prior cannot be NaN.')
                 if np.isinf(level_var_shape_prior):
@@ -2024,7 +2024,7 @@ class BayesianUnobservedComponents:
 
             if level_var_scale_prior is not None:
                 if not isinstance(level_var_scale_prior, float):
-                    raise ValueError('level_var_scale_prior must be of type float.')
+                    raise TypeError('level_var_scale_prior must be of type float.')
                 if np.isnan(level_var_scale_prior):
                     raise ValueError('level_var_scale_prior cannot be NaN.')
                 if np.isinf(level_var_scale_prior):
@@ -2036,9 +2036,9 @@ class BayesianUnobservedComponents:
             if self.damped_level:
                 if damped_level_coeff_mean_prior is not None:
                     if not isinstance(damped_level_coeff_mean_prior, np.ndarray):
-                        raise ValueError('damped_level_coeff_mean_prior must be a Numpy array.')
+                        raise TypeError('damped_level_coeff_mean_prior must be a Numpy array.')
                     if damped_level_coeff_mean_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_level_coeff_mean_prior must be of type float.')
+                        raise TypeError('All values in damped_level_coeff_mean_prior must be of type float.')
                     if not damped_level_coeff_mean_prior.shape == (1, 1):
                         raise ValueError('damped_level_coeff_mean_prior must have shape (1, 1).')
                     if np.any(np.isnan(damped_level_coeff_mean_prior)):
@@ -2053,9 +2053,9 @@ class BayesianUnobservedComponents:
 
                 if damped_level_coeff_prec_prior is not None:
                     if not isinstance(damped_level_coeff_prec_prior, np.ndarray):
-                        raise ValueError('damped_level_coeff_prec_prior must be a Numpy array.')
+                        raise TypeError('damped_level_coeff_prec_prior must be a Numpy array.')
                     if damped_level_coeff_prec_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_level_coeff_prec_prior must be of type float.')
+                        raise TypeError('All values in damped_level_coeff_prec_prior must be of type float.')
                     if not damped_level_coeff_prec_prior.shape == (1, 1):
                         raise ValueError('damped_level_coeff_prec_prior must have shape (1, 1).')
                     if np.any(np.isnan(damped_level_coeff_prec_prior)):
@@ -2071,7 +2071,7 @@ class BayesianUnobservedComponents:
         if self.trend and self.stochastic_trend:
             if trend_var_shape_prior is not None:
                 if not isinstance(trend_var_shape_prior, float):
-                    raise ValueError('trend_var_shape_prior must be of type float.')
+                    raise TypeError('trend_var_shape_prior must be of type float.')
                 if np.isnan(trend_var_shape_prior):
                     raise ValueError('trend_var_shape_prior cannot be NaN.')
                 if np.isinf(trend_var_shape_prior):
@@ -2081,7 +2081,7 @@ class BayesianUnobservedComponents:
 
             if trend_var_scale_prior is not None:
                 if not isinstance(trend_var_scale_prior, float):
-                    raise ValueError('trend_var_scale_prior must be of type float.')
+                    raise TypeError('trend_var_scale_prior must be of type float.')
                 if np.isnan(trend_var_scale_prior):
                     raise ValueError('trend_var_scale_prior cannot be NaN.')
                 if np.isinf(trend_var_scale_prior):
@@ -2093,9 +2093,9 @@ class BayesianUnobservedComponents:
             if self.damped_trend:
                 if damped_trend_coeff_mean_prior is not None:
                     if not isinstance(damped_trend_coeff_mean_prior, np.ndarray):
-                        raise ValueError('damped_trend_coeff_mean_prior must be a Numpy array.')
+                        raise TypeError('damped_trend_coeff_mean_prior must be a Numpy array.')
                     if damped_trend_coeff_mean_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_trend_coeff_mean_prior must be of type float.')
+                        raise TypeError('All values in damped_trend_coeff_mean_prior must be of type float.')
                     if not damped_trend_coeff_mean_prior.shape == (1, 1):
                         raise ValueError('damped_trend_coeff_mean_prior must have shape (1, 1).')
                     if np.any(np.isnan(damped_trend_coeff_mean_prior)):
@@ -2110,9 +2110,9 @@ class BayesianUnobservedComponents:
 
                 if damped_trend_coeff_prec_prior is not None:
                     if not isinstance(damped_trend_coeff_prec_prior, np.ndarray):
-                        raise ValueError('damped_trend_coeff_prec_prior must be a Numpy array.')
+                        raise TypeError('damped_trend_coeff_prec_prior must be a Numpy array.')
                     if damped_trend_coeff_prec_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_trend_coeff_prec_prior must be of type float.')
+                        raise TypeError('All values in damped_trend_coeff_prec_prior must be of type float.')
                     if not damped_trend_coeff_prec_prior.shape == (1, 1):
                         raise ValueError('damped_trend_coeff_prec_prior must have shape (1, 1).')
                     if np.any(np.isnan(damped_trend_coeff_prec_prior)):
@@ -2128,15 +2128,15 @@ class BayesianUnobservedComponents:
         if len(self.lag_seasonal) > 0 and sum(self.stochastic_lag_seasonal) > 0:
             if lag_season_var_shape_prior is not None:
                 if not isinstance(lag_season_var_shape_prior, tuple):
-                    raise ValueError('lag_season_var_shape_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('lag_season_var_shape_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(lag_season_var_shape_prior) != sum(self.stochastic_lag_seasonal):
                     raise ValueError('The number of elements in lag_season_var_shape_prior must match the '
                                      'number of stochastic periodicities in lag_seasonal. That is, for each '
                                      'stochastic periodicity in lag_seasonal, there must be a corresponding '
                                      'shape prior.')
                 if not all(isinstance(i, float) for i in lag_season_var_shape_prior):
-                    raise ValueError('All values in lag_season_var_shape_prior must be of type float.')
+                    raise TypeError('All values in lag_season_var_shape_prior must be of type float.')
                 if any(np.isnan(i) for i in lag_season_var_shape_prior):
                     raise ValueError('No values in lag_season_var_shape_prior can be NaN.')
                 if any(np.isinf(i) for i in lag_season_var_shape_prior):
@@ -2146,15 +2146,15 @@ class BayesianUnobservedComponents:
 
             if lag_season_var_scale_prior is not None:
                 if not isinstance(lag_season_var_scale_prior, tuple):
-                    raise ValueError('lag_season_var_scale_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('lag_season_var_scale_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(lag_season_var_scale_prior) != sum(self.stochastic_lag_seasonal):
                     raise ValueError('The number of elements in lag_season_var_scale_prior must match the '
                                      'number of stochastic periodicities in lag_seasonal. That is, for each '
                                      'stochastic periodicity in lag_seasonal, there must be a corresponding '
                                      'scale prior.')
                 if not all(isinstance(i, float) for i in lag_season_var_scale_prior):
-                    raise ValueError('All values in lag_season_var_scale_prior must be of type float.')
+                    raise TypeError('All values in lag_season_var_scale_prior must be of type float.')
                 if any(np.isnan(i) for i in lag_season_var_scale_prior):
                     raise ValueError('No values in lag_season_var_scale_prior can be NaN.')
                 if any(np.isinf(i) for i in lag_season_var_scale_prior):
@@ -2166,9 +2166,9 @@ class BayesianUnobservedComponents:
             if self.num_damped_lag_season > 0:
                 if damped_lag_season_coeff_mean_prior is not None:
                     if not isinstance(damped_lag_season_coeff_mean_prior, np.ndarray):
-                        raise ValueError('damped_lag_season_coeff_mean_prior must be a Numpy array.')
+                        raise TypeError('damped_lag_season_coeff_mean_prior must be a Numpy array.')
                     if damped_lag_season_coeff_mean_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_lag_season_coeff_mean_prior must be of type float.')
+                        raise TypeError('All values in damped_lag_season_coeff_mean_prior must be of type float.')
                     if not damped_lag_season_coeff_mean_prior.shape == (self.num_damped_lag_season, 1):
                         raise ValueError(f'damped_lag_season_coeff_mean_prior must have shape '
                                          f'({self.num_damped_lag_season}, 1), where the row count '
@@ -2186,9 +2186,9 @@ class BayesianUnobservedComponents:
 
                 if damped_lag_season_coeff_prec_prior is not None:
                     if not isinstance(damped_lag_season_coeff_prec_prior, np.ndarray):
-                        raise ValueError('damped_lag_season_coeff_prec_prior must be a Numpy array.')
+                        raise TypeError('damped_lag_season_coeff_prec_prior must be a Numpy array.')
                     if damped_lag_season_coeff_prec_prior.dtype != 'float64':
-                        raise ValueError('All values in damped_lag_season_coeff_prec_prior must be of type float.')
+                        raise TypeError('All values in damped_lag_season_coeff_prec_prior must be of type float.')
                     if not damped_lag_season_coeff_prec_prior.shape == (self.num_damped_lag_season, 1):
                         raise ValueError(f'damped_lag_season_coeff_prec_prior must have shape '
                                          f'({self.num_damped_lag_season}, 1), where the row count '
@@ -2206,15 +2206,15 @@ class BayesianUnobservedComponents:
         if len(self.dummy_seasonal) > 0 and sum(self.stochastic_dummy_seasonal) > 0:
             if dum_season_var_shape_prior is not None:
                 if not isinstance(dum_season_var_shape_prior, tuple):
-                    raise ValueError('dum_seasonal_var_shape_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('dum_seasonal_var_shape_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(dum_season_var_shape_prior) != sum(self.stochastic_dummy_seasonal):
                     raise ValueError('The number of elements in dum_season_var_shape_prior must match the '
                                      'number of stochastic periodicities in dummy_seasonal. That is, for each '
                                      'stochastic periodicity in dummy_seasonal, there must be a corresponding '
                                      'shape prior.')
                 if not all(isinstance(i, float) for i in dum_season_var_shape_prior):
-                    raise ValueError('All values in dum_season_var_shape_prior must be of type float.')
+                    raise TypeError('All values in dum_season_var_shape_prior must be of type float.')
                 if any(np.isnan(i) for i in dum_season_var_shape_prior):
                     raise ValueError('No values in dum_season_var_shape_prior can be NaN.')
                 if any(np.isinf(i) for i in dum_season_var_shape_prior):
@@ -2224,15 +2224,15 @@ class BayesianUnobservedComponents:
 
             if dum_season_var_scale_prior is not None:
                 if not isinstance(dum_season_var_scale_prior, tuple):
-                    raise ValueError('dum_seasonal_var_scale_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('dum_seasonal_var_scale_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(dum_season_var_shape_prior) != sum(self.stochastic_dummy_seasonal):
                     raise ValueError('The number of elements in dum_season_var_scale_prior must match the '
                                      'number of stochastic periodicities in dummy_seasonal. That is, for each '
                                      'stochastic periodicity in dummy_seasonal, there must be a corresponding '
                                      'scale prior.')
                 if not all(isinstance(i, float) for i in dum_season_var_scale_prior):
-                    raise ValueError('All values in dum_season_var_scale_prior must be of type float.')
+                    raise TypeError('All values in dum_season_var_scale_prior must be of type float.')
                 if any(np.isnan(i) for i in dum_season_var_scale_prior):
                     raise ValueError('No values in dum_season_var_scale_prior can be NaN.')
                 if any(np.isinf(i) for i in dum_season_var_scale_prior):
@@ -2244,15 +2244,15 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0 and sum(self.stochastic_trig_seasonal) > 0:
             if trig_season_var_shape_prior is not None:
                 if not isinstance(trig_season_var_shape_prior, tuple):
-                    raise ValueError('trig_seasonal_var_shape_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('trig_seasonal_var_shape_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(trig_season_var_shape_prior) != sum(self.stochastic_trig_seasonal):
                     raise ValueError('The number of elements in trig_season_var_shape_prior must match the '
                                      'number of stochastic periodicities in trig_seasonal. That is, for each '
                                      'stochastic periodicity in trig_seasonal, there must be a corresponding '
                                      'shape prior.')
                 if not all(isinstance(i, float) for i in trig_season_var_shape_prior):
-                    raise ValueError('All values in trig_season_var_shape_prior must be of type float.')
+                    raise TypeError('All values in trig_season_var_shape_prior must be of type float.')
                 if any(np.isnan(i) for i in trig_season_var_shape_prior):
                     raise ValueError('No values in trig_season_var_shape_prior can be NaN.')
                 if any(np.isinf(i) for i in trig_season_var_shape_prior):
@@ -2262,15 +2262,15 @@ class BayesianUnobservedComponents:
 
             if trig_season_var_scale_prior is not None:
                 if not isinstance(trig_season_var_scale_prior, tuple):
-                    raise ValueError('trig_seasonal_var_scale_prior must be a tuple '
-                                     'to accommodate potentially multiple seasonality.')
+                    raise TypeError('trig_seasonal_var_scale_prior must be a tuple '
+                                    'to accommodate potentially multiple seasonality.')
                 if len(trig_season_var_scale_prior) != sum(self.stochastic_trig_seasonal):
                     raise ValueError('The number of elements in trig_season_var_scale_prior must match the '
                                      'number of stochastic periodicities in trig_seasonal. That is, for each '
                                      'stochastic periodicity in trig_seasonal, there must be a corresponding '
                                      'scale prior.')
                 if not all(isinstance(i, float) for i in trig_season_var_scale_prior):
-                    raise ValueError('All values in trig_season_var_scale_prior must be of type float.')
+                    raise TypeError('All values in trig_season_var_scale_prior must be of type float.')
                 if any(np.isinf(i) for i in trig_season_var_scale_prior):
                     raise ValueError('No values in trig_season_var_scale_prior can be NaN.')
                 if any(np.isinf(i) for i in trig_season_var_scale_prior):
@@ -2282,9 +2282,9 @@ class BayesianUnobservedComponents:
         if self.has_predictors:
             if reg_coeff_mean_prior is not None:
                 if not isinstance(reg_coeff_mean_prior, np.ndarray):
-                    raise ValueError('reg_coeff_mean_prior must be of type Numpy ndarray.')
+                    raise TypeError('reg_coeff_mean_prior must be of type Numpy ndarray.')
                 if reg_coeff_mean_prior.dtype != 'float64':
-                    raise ValueError('All values in reg_coeff_mean_prior must be of type float.')
+                    raise TypeError('All values in reg_coeff_mean_prior must be of type float.')
                 if not reg_coeff_mean_prior.shape == (self.num_predictors, 1):
                     raise ValueError(f'reg_coeff_mean_prior must have shape ({self.num_predictors}, 1).')
                 if np.any(np.isnan(reg_coeff_mean_prior)):
@@ -2294,9 +2294,9 @@ class BayesianUnobservedComponents:
 
             if reg_coeff_prec_prior is not None:
                 if not isinstance(reg_coeff_prec_prior, np.ndarray):
-                    raise ValueError('reg_coeff_prec_prior must be of type Numpy ndarray.')
+                    raise TypeError('reg_coeff_prec_prior must be of type Numpy ndarray.')
                 if reg_coeff_prec_prior.dtype != 'float64':
-                    raise ValueError('All values in reg_coeff_prec_prior must be of type float.')
+                    raise TypeError('All values in reg_coeff_prec_prior must be of type float.')
                 if not reg_coeff_prec_prior.shape == (self.num_predictors, self.num_predictors):
                     raise ValueError(f'reg_coeff_prec_prior must have shape ({self.num_predictors}, '
                                      f'{self.num_predictors}).')
@@ -2307,7 +2307,7 @@ class BayesianUnobservedComponents:
 
             if zellner_prior_obs is not None:
                 if not isinstance(zellner_prior_obs, float):
-                    raise ValueError('zellner_prior_obs must be of type float')
+                    raise TypeError('zellner_prior_obs must be of type float')
                 if not 0 < zellner_prior_obs:
                     raise ValueError('zellner_prior_obs must be a strictly positive float.')
 
@@ -2626,13 +2626,13 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
 
         if not isinstance(num_periods, int):
-            raise ValueError('num_periods must be of type integer.')
+            raise TypeError('num_periods must be of type integer.')
         else:
             if not num_periods > 0:
                 raise ValueError('num_periods must be a strictly positive integer.')
 
         if not isinstance(burn, int):
-            raise ValueError('burn must be of type integer.')
+            raise TypeError('burn must be of type integer.')
         else:
             if burn < 0:
                 raise ValueError('burn must be a non-negative integer.')
@@ -2648,21 +2648,21 @@ class BayesianUnobservedComponents:
 
         # -- check if object type is valid
         if not isinstance(future_predictors, (pd.Series, pd.DataFrame, np.ndarray)):
-            raise ValueError("The future_predictors array must be a NumPy array, Pandas Series, "
-                             "or Pandas DataFrame.")
+            raise TypeError("The future_predictors array must be a NumPy array, Pandas Series, "
+                            "or Pandas DataFrame.")
         else:
             fut_pred = future_predictors.copy()
             if self.has_predictors:
                 # Check and prepare future predictor data
                 # -- data types match across predictors and future_predictors
                 if not isinstance(future_predictors, type(self._predictors)):
-                    raise ValueError('Object types for predictors and future_predictors must match.')
+                    raise TypeError('Object types for predictors and future_predictors must match.')
 
                 else:
                     # -- if Pandas type, grab index and column names
                     if isinstance(future_predictors, (pd.Series, pd.DataFrame)):
                         if not isinstance(future_predictors.index, type(self.future_time_index)):
-                            raise ValueError('The future_predictors and predictors indexes must be of the same type.')
+                            raise TypeError('The future_predictors and predictors indexes must be of the same type.')
 
                         if not (future_predictors.index == self.future_time_index).all():
                             raise ValueError('The future_predictors index must match the future time index '
@@ -2761,27 +2761,27 @@ class BayesianUnobservedComponents:
         """
 
         if not isinstance(burn, int):
-            raise ValueError('burn must be of type integer.')
+            raise TypeError('burn must be of type integer.')
         else:
             if burn < 0:
                 raise ValueError('burn must be a non-negative integer.')
 
         if not isinstance(cred_int_level, float):
-            raise ValueError('cred_int_level must be of type float.')
+            raise TypeError('cred_int_level must be of type float.')
         else:
             if cred_int_level <= 0 or cred_int_level >= 1:
                 raise ValueError('cred_int_level must be a value in the '
                                  'interval (0, 1).')
 
         if not isinstance(random_sample_size_prop, float):
-            raise ValueError('random_sample_size_prop must be of type float.')
+            raise TypeError('random_sample_size_prop must be of type float.')
         else:
             if random_sample_size_prop <= 0 or random_sample_size_prop > 1:
                 raise ValueError('random_sample_size_prop must be a value in the '
                                  'interval (0, 1].')
 
         if not isinstance(smoothed, bool):
-            raise ValueError('smoothed must be of type bool.')
+            raise TypeError('smoothed must be of type bool.')
 
         num_first_obs_ignore = self.num_first_obs_ignore
 
@@ -2888,13 +2888,13 @@ class BayesianUnobservedComponents:
         """
 
         if not isinstance(burn, int):
-            raise ValueError('burn must be of type integer.')
+            raise TypeError('burn must be of type integer.')
         else:
             if burn < 0:
                 raise ValueError('burn must be a non-negative integer.')
 
         if not isinstance(cred_int_level, float):
-            raise ValueError('cred_int_level must be of type float.')
+            raise TypeError('cred_int_level must be of type float.')
         else:
             if not 0 < cred_int_level < 1:
                 raise ValueError('cred_int_level must be a value in the '
