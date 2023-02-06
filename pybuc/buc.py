@@ -75,6 +75,12 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
                        state_eqn_index: list,
                        state_err_var_post_index: list):
     """
+    This is a generic function for updating an AR(p) coefficient for a state variable that
+    has an autoregressive structure. For example, if trend is specified with damping, then the
+    trend state equation will take the form trend(t) = alpha * trend(t-1) + error(t), and the
+    coefficient alpha will be updated in the same way coefficients would be updated in a
+    standard regression context. The smoothed Kalman values of a state variable are required
+    for posterior updating.
 
     :param smoothed_state: ndarray, float64. Array that represents that smoothed values for each state
     in an unobserved components model.
@@ -89,7 +95,7 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
     random variable. Row length must match the number of lags.
 
     :param state_err_var_post: ndarray, float64. An element represents the posterior variance
-    of a state's error.
+    of a state variable's error.
 
     :param state_eqn_index: list of non-negative integers. An integer represents the row index of a
     state within an unobserved components model.
@@ -100,7 +106,7 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
 
     :return: ndarray of dimension (L, 1), where L is the number of lags in the lag tuple. An
     element represents the posterior autoregressive coefficient for an autoregressive process of the
-    form y(t) = rho * y(t - l) + epsilon(t), where l is some lag.
+    form y(t) = rho * y(t - l) + error(t), where l is some lag.
     """
 
     ar_coeff_mean_post = np.empty((len(lag), 1))
@@ -128,6 +134,33 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
                                             num_first_obs_ignore: int = 0,
                                             random_sample_size_prop: float = 1.) -> np.ndarray:
     """
+    Generates the posterior predictive density of the response variable. The filtered, as
+    opposed to the smoothed, states are used. Using smoothed states assumes we have all
+    information available (past, present, future) at any given time t. In contrast, the
+    filtered state assumes we only have information up until time t - 1 for predicting
+    time t. The filtered state, therefore, is what we need for quantifying uncertainty
+    around the model's predictions for the response. The observation equation for the
+    response is
+
+    y(t) = Z(t).a(t|t-1) + response_error(t),
+
+    where Z(t), a(t|t-1) = E[a(t) | t-1], and response_error(t) are the observation matrix,
+    filtered state, and error at time t, respectively. The posterior predictive
+    distribution for the response at any time t is obtained by sampling from
+
+        y(t) | t-1 ~ N(Z(t).a(t|t-1), Z(t).P(t|t-1).Z(t)' + ResponseErrVar),
+
+    where P(t|t-1) = Var[a(t) | t-1] is the state covariance matrix and
+    ResponseErrVar = Var[error(t) | t-1] is the variance of the response error.
+
+    Since y(t) | t-1 is conditionally independent of y(t-1) for all t, the posterior
+    predictive distribution of y(t), t=1,...,n, can be sampled by independently
+    sampling for each y(t).
+
+    y(1) | t=0 ~ N(Z(1).(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
+    y(2) | t=1 ~ N(Z(2).a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
+    ...
+    y(n) | t=n-1 ~ N(Z(n).a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
 
     :param posterior: NamedTuple with attributes:
 
@@ -218,6 +251,42 @@ def _simulate_posterior_predictive_state(posterior: Posterior,
                                          random_sample_size_prop: float = 1.,
                                          has_predictors: bool = False) -> np.ndarray:
     """
+    Generates the posterior predictive density of the filtered state vector. The filtered, as
+    opposed to the smoothed, states are used. Using smoothed states assumes we have all
+    information available (past, present, future) at any given time t. In contrast, the
+    filtered state assumes we only have information up until time t - 1 for predicting
+    time t. The posterior distribution for the smoothed state vector is sampled directly
+    in BayesianUnobservedComponents.sample(). The posterior of the filtered state vector,
+    however, is not. Therefore, this function should be used only if one wants the
+    posterior predictive density of the filtered state vector. The state equations are
+    represented by
+
+    a(t+1) = T.a(t) + R * state_error(t+1),
+
+    where T, a(t), R, and state_error(t) are the state transition matrix, state value,
+    state error transformation matrix, and error at time t, respectively. The
+    posterior predictive distribution for the filtered state at any time t is obtained by
+    sampling from
+
+        a(t+1) | t ~ N(T.a(t), P(t+1 | t)),
+
+    where
+
+        P(t+1|t) = Var[a(t+1) | t] = T.P(t).L(t)' + R.StateErrCovMat.R'
+
+    is the state covariance matrix. L(t) = T - K(t).Z(t), where K(t) is the Kalman
+    gain at time t, and StateErrCovMat = Var[state_error(t+1) | t] is the state
+    error covariance matrix.
+
+    Since a(t+1) is a vector of latent/hidden state equations with covariance matrix
+    P(t+1|t), t=1,...,n, independent draws for each state equation is not appropriate.
+    Instead, each vector a(t), t=1,...,n, must be drawn from a multivariate normal
+    distribution that obeys the correlation implied by the state covariance matrix.
+    Namely, sample
+
+        a(t+1) | t ~ N(T.a(t) + K(t).v(t), T.P(t).L(t)' + R.StateErrCovMat.R'),
+
+    where v(t) = y(t) - Z(t).a(t).
 
     :param posterior: NamedTuple with attributes:
 
@@ -306,8 +375,25 @@ def _forecast(posterior: Posterior,
               burn: int = 0,
               damped_level_transition_index: tuple = (),
               damped_trend_transition_index: tuple = (),
-              damped_season_transition_index: tuple = ()) -> np.ndarray:
+              damped_season_transition_index: tuple = ()) -> tuple:
     """
+    The posterior forecast distributions for the response and the state vector.
+
+    To generate the posterior forecast distributions, the posterior smoothed
+    states are required. Specifically, the last smoothed state value (i.e.,
+    the smoothed state value for time n) is needed to kick off the recursive
+    forecast. Also required are the posterior for the response error variance
+    and the posterior for the state error covariance matrix.
+
+    Give the posterior samples s=1,...,S and the smoothed state vector at time
+    n, the posterior forecast for the response and state vector are computed as:
+
+        for s = 1,...,S:
+            for t = 1,...,h:
+                y(s, t) = Z(t).a(s, t) + RespErrVar(s, t)
+                a(s, t+1) = T.a(s, t) + R.StateErrCovMat(s, t)
+
+    where a(s, 1) is the smoothed state vector value at time n for posterior sample s.
 
     :param posterior: NamedTuple with attributes:
 
@@ -369,6 +455,10 @@ def _forecast(posterior: Posterior,
     :return: ndarray of dimension (S, h, 1), where S is the number of posterior samples and
     h is the number of future periods to be forecast. This array represents the posterior
     forecast distribution for the response.
+
+    ndarray of dimension (S, h, m, 1), where S is the number of posterior samples,
+    h is the number of future periods to be forecast, and m is the number of state equations.
+    This array represents the posterior forecast distribution for the state vector.
     """
 
     Z = state_observation_matrix
@@ -399,6 +489,7 @@ def _forecast(posterior: Posterior,
         damped_season_coeff = posterior.damped_season_coefficients[burn:]
 
     y_forecast = np.empty((num_samp, num_periods, 1), dtype=np.float64)
+    state_forecast = np.empty((num_samp, num_periods, m, 1), dtype=np.float64)
     num_periods_zeros = np.zeros((num_periods, 1))
     num_periods_u_zeros = np.zeros((num_periods, q, 1))
     num_periods_ones = np.ones((num_periods, 1))
@@ -428,16 +519,18 @@ def _forecast(posterior: Posterior,
         if X_fut.size > 0:
             Z[:, :, -1] = X_fut.dot(reg_coeff[s])
 
-        alpha = np.empty((num_periods + 1, m, 1), dtype=np.float64)
-        alpha[0] = smoothed_state[s, -1]
+        state = np.empty((num_periods + 1, m, 1), dtype=np.float64)
+        state[0] = smoothed_state[s, -1]
         for t in range(num_periods):
-            y_forecast[s, t] = Z[t].dot(alpha[t]) + obs_error[t]
+            y_forecast[s, t] = Z[t].dot(state[t]) + obs_error[t]
             if q > 0:
-                alpha[t + 1] = C + T.dot(alpha[t]) + R.dot(state_error[t])
+                state[t + 1] = C + T.dot(state[t]) + R.dot(state_error[t])
             else:
-                alpha[t + 1] = C + T.dot(alpha[t])
+                state[t + 1] = C + T.dot(state[t])
 
-    return y_forecast
+        state_forecast[s] = state[1:]
+
+    return y_forecast, state_forecast
 
 
 class BayesianUnobservedComponents:
@@ -460,7 +553,7 @@ class BayesianUnobservedComponents:
                  seed: int = None):
 
         """
-        Test this
+
         :param response: Numpy array, Pandas Series, or Pandas DataFrame, float64. Array that represents
         the response variable.
 
@@ -558,13 +651,12 @@ class BayesianUnobservedComponents:
         # -- dimensions
         if resp.dtype != 'float64':
             raise TypeError('All values in the response array must be of type float.')
-        if resp.ndim == 0:
+
+        if resp.ndim not in (1, 2):
             raise ValueError('The response array must have dimension 1 or 2.')
-        if resp.ndim == 1:
+        elif resp.ndim == 1:
             resp = resp.reshape(-1, 1)
-        if resp.ndim > 2:
-            raise ValueError('The response array must have dimension 1 or 2.')
-        if resp.ndim == 2:
+        else:
             if all(i > 1 for i in resp.shape):
                 raise ValueError('The response array must have shape (1, n) or (n, 1), '
                                  'where n is the number of observations. Both the row and column '
@@ -621,15 +713,15 @@ class BayesianUnobservedComponents:
                 # -- dimension and null/inf checks
                 if pred.dtype != 'float64':
                     raise TypeError('All values in the predictors array must be of type float.')
-                if pred.ndim == 0:
-                    raise ValueError('The predictors array must have dimension 1 or 2. Dimension is 0.')
-                if pred.ndim == 1:
+
+                if pred.ndim not in (1, 2):
+                    raise ValueError('The predictors array must have dimension 1 or 2.')
+                elif pred.ndim == 1:
                     pred = pred.reshape(-1, 1)
-                if pred.ndim > 2:
-                    raise ValueError('The predictors array must have dimension 1 or 2. Dimension exceeds 2.')
-                if pred.ndim == 2:
+                else:
                     if 1 in pred.shape:
                         pred = pred.reshape(-1, 1)
+
                 if np.any(np.isnan(pred)):
                     raise ValueError('The predictors array cannot have null values.')
                 if np.any(np.isinf(pred)):
@@ -1096,6 +1188,16 @@ class BayesianUnobservedComponents:
 
     def observation_matrix(self,
                            num_rows: int = 0) -> np.ndarray:
+        """
+
+        :param num_rows: Number of rows that matches the number of observations
+        of the response. For a model specified without a regression component,
+        this amounts to replication of the observation matrix (row vector) num_row times.
+        However, if a time-varying regression component is specified, the observation matrix
+        will have distinct rows.
+        :return: ndarray with dimension (num_row, num_state_eqs). This represents the observation
+        matrix for the response equation.
+        """
         if num_rows == 0:
             num_rows = self.num_obs
         m = self.num_state_eqs
@@ -1143,6 +1245,10 @@ class BayesianUnobservedComponents:
 
     @property
     def state_transition_matrix(self) -> np.ndarray:
+        """
+        State transition matrix for the state equations.
+        :return: ndarray of dimension (num_state_eqs, num_state_eqs)
+        """
         m = self.num_state_eqs
         T = np.zeros((m, m))
 
@@ -1220,6 +1326,12 @@ class BayesianUnobservedComponents:
 
     @property
     def state_intercept_matrix(self) -> np.ndarray:
+        """
+        The state intercept for the state equations.
+        * Note that this is not currently being used. It
+        * is here as a placeholder for potential future implementation.
+        :return: ndarray of dimension (num_state_eqs, 1)
+        """
         m = self.num_state_eqs
         C = np.zeros((m, 1))
 
@@ -1227,6 +1339,11 @@ class BayesianUnobservedComponents:
 
     @property
     def state_error_transformation_matrix(self) -> np.ndarray:
+        """
+        State error transformation matrix. This matrix tracks
+        which state equations are stochastic and non-stochastic.
+        :return: ndarray of dimension (num_state_eqs, num_stoch_states).
+        """
         m = self.num_state_eqs
         q = self.num_stoch_states
         R = np.zeros((m, q))
@@ -1284,6 +1401,20 @@ class BayesianUnobservedComponents:
 
     @property
     def state_sse_transformation_matrix(self) -> np.ndarray:
+        """
+        Matrix used for computing posterior scale parameters for
+        posterior state variances. In general, this is an identity
+        matrix of dimension (num_stoch_states, num_stoch_states).
+        However, if a stochastic trigonometric seasonality component
+        is specified, then the sum of squared residuals for each
+        trigonometric state equation is used to arrive at a single
+        variance. In other words, the residuals across all state
+        equations corresponding to a given stochastic trigonometric
+        component are pooled with the assumption that errors
+        across harmonics/frequencies are homoskedastic. This
+        is a simplifying assumption that is commonly used.
+        :return:
+        """
         q = self.num_stoch_states
         q_trig = self.num_stoch_trig_season_state_eqs
 
@@ -1350,6 +1481,11 @@ class BayesianUnobservedComponents:
         return value, index
 
     def _gibbs_iter0_init_level(self):
+        """
+        Iteration-0 Gibbs value for level component.
+        Uses the first non-missing value of the response.
+        :return: scalar
+        """
         if self.level:
             first_y = self._first_value(self.response)[0]
             return first_y
@@ -1357,6 +1493,12 @@ class BayesianUnobservedComponents:
             return
 
     def _gibbs_iter0_init_trend(self):
+        """
+        Iteration-0 Gibbs value for a trend component.
+        Uses the first and last non-missing values of the response to
+        compute an initial linear slope.
+        :return: scalar
+        """
         if self.trend:
             first_y = self._first_value(self.response)
             last_y = self._last_value(self.response)
@@ -1370,6 +1512,11 @@ class BayesianUnobservedComponents:
             return
 
     def _gibbs_iter0_init_lag_season(self):
+        """
+        Iteration-0 Gibbs values for a lag-seasonal component.
+        A vector of 0's is used.
+        :return: Zero-vector of length num_lag_season_state_eqs
+        """
         if len(self.lag_seasonal) > 0:
             num_eqs = self.num_lag_season_state_eqs
             return np.zeros(num_eqs)
@@ -1377,6 +1524,11 @@ class BayesianUnobservedComponents:
             return
 
     def _gibbs_iter0_init_dum_season(self):
+        """
+        Iteration-0 Gibbs values for a lag-seasonal component.
+        A vector of 0's is used.
+        :return: Zero-vector of length num_dum_season_state_eqs
+        """
         if len(self.dummy_seasonal) > 0:
             num_eqs = self.num_dum_season_state_eqs
             return np.zeros(num_eqs)
@@ -1384,6 +1536,11 @@ class BayesianUnobservedComponents:
             return
 
     def _gibbs_iter0_init_trig_season(self):
+        """
+        Iteration-0 Gibbs values for a lag-seasonal component.
+        A vector of 0's is used.
+        :return: Zero-vector of length num_trig_season_state_eqs
+        """
         if len(self.trig_seasonal) > 0:
             num_eqs = self.num_trig_season_state_eqs
             return np.zeros(num_eqs)
@@ -1422,19 +1579,19 @@ class BayesianUnobservedComponents:
         init_state_plus_values = []
         seasonal_period = [0]
 
-        if not self.damped_level:
+        if not self.level or not self.damped_level:
             damped_level_coeff_mean_prior = None
             damped_level_coeff_prec_prior = None
             damped_level_coeff_cov_prior = None
             gibbs_iter0_damped_level_coeff = None
 
-        if not self.damped_trend:
+        if not self.trend or not self.damped_trend:
             damped_trend_coeff_mean_prior = None
             damped_trend_coeff_prec_prior = None
             damped_trend_coeff_cov_prior = None
             gibbs_iter0_damped_trend_coeff = None
 
-        if not self.num_damped_lag_season > 0:
+        if not self.num_lag_season_state_eqs > 0 or not self.num_damped_lag_season > 0:
             damped_lag_season_coeff_mean_prior = None
             damped_lag_season_coeff_prec_prior = None
             damped_lag_season_coeff_cov_prior = None
@@ -1884,6 +2041,7 @@ class BayesianUnobservedComponents:
                zellner_prior_obs: float = None) -> Posterior:
 
         """
+        Posterior distributions for all parameters and states.
 
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
@@ -2606,6 +2764,7 @@ class BayesianUnobservedComponents:
                  future_predictors: Union[np.ndarray, pd.Series, pd.DataFrame] = np.array([[]])):
 
         """
+        Posterior forecast distribution for the response and states.
 
         :param num_periods: positive integer. Defines how many future periods to forecast.
 
@@ -2689,15 +2848,14 @@ class BayesianUnobservedComponents:
                         fut_pred = fut_pred.sort_index().to_numpy()
 
                 # -- dimensions
-                if fut_pred.ndim == 0:
-                    raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension is 0.')
-                if fut_pred.ndim == 1:
+                if fut_pred.ndim not in (1, 2):
+                    raise ValueError('The future_predictors array must have dimension 1 or 2.')
+                elif fut_pred.ndim == 1:
                     fut_pred = fut_pred.reshape(-1, 1)
-                if fut_pred.ndim > 2:
-                    raise ValueError('The future_predictors array must have dimension 1 or 2. Dimension exceeds 2.')
-                if fut_pred.ndim == 2:
+                else:
                     if 1 in fut_pred.shape:
                         fut_pred = fut_pred.reshape(-1, 1)
+
                 if np.isnan(fut_pred).any():
                     raise ValueError('The future_predictors array cannot have null values.')
                 if np.isinf(fut_pred).any():
@@ -2720,19 +2878,19 @@ class BayesianUnobservedComponents:
                                       f'Only the first {num_periods} observations will be used '
                                       f'in future_predictors.')
 
-        y_forecast = _forecast(posterior=self.posterior,
-                               num_periods=num_periods,
-                               state_observation_matrix=Z,
-                               state_transition_matrix=T,
-                               state_intercept_matrix=C,
-                               state_error_transformation_matrix=R,
-                               future_predictors=fut_pred,
-                               burn=burn,
-                               damped_level_transition_index=self.damped_level_transition_index,
-                               damped_trend_transition_index=self.damped_trend_transition_index,
-                               damped_season_transition_index=self.damped_lag_season_transition_index)
+        y_forecast, state_forecast = _forecast(posterior=self.posterior,
+                                               num_periods=num_periods,
+                                               state_observation_matrix=Z,
+                                               state_transition_matrix=T,
+                                               state_intercept_matrix=C,
+                                               state_error_transformation_matrix=R,
+                                               future_predictors=fut_pred,
+                                               burn=burn,
+                                               damped_level_transition_index=self.damped_level_transition_index,
+                                               damped_trend_transition_index=self.damped_trend_transition_index,
+                                               damped_season_transition_index=self.damped_lag_season_transition_index)
 
-        return y_forecast
+        return y_forecast, state_forecast
 
     def plot_components(self,
                         burn: int = 0,
@@ -2741,6 +2899,7 @@ class BayesianUnobservedComponents:
                         smoothed: bool = True):
 
         """
+        Plots the in-sample posterior components and posterior predictive distribution for the response.
 
         :param burn: non-negative integer. Represents how many of the first posterior samples to
         ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
@@ -2757,7 +2916,7 @@ class BayesianUnobservedComponents:
         to the filtered Kalman values).
 
         :return: Return a matplotlib.pyplot figure that plots the posterior predictive distribution
-        of the response and the specified states.
+        of the response and the posterior of each state component.
         """
 
         if not isinstance(burn, int):
@@ -2874,6 +3033,7 @@ class BayesianUnobservedComponents:
                 cred_int_level: float = 0.05) -> dict:
 
         """
+        Summary of the posterior distribution for each parameter in the model.
 
         :param burn: non-negative integer. Represents how many of the first posterior samples to
         ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
@@ -2933,14 +3093,14 @@ class BayesianUnobservedComponents:
                     res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
                     res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
                     res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                    res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
                 if c == 'Trend' and damped:
                     ar_coeff = self.posterior.damped_trend_coefficient[burn:, 0, 0]
                     res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
                     res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
                     res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                    res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
                 if 'Lag-Seasonal' in c:
                     if damped:
@@ -2948,7 +3108,7 @@ class BayesianUnobservedComponents:
                         res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
                         res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
                         res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                        res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
                         d += 1
 
             if c == 'Regression':

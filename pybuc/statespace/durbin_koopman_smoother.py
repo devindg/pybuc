@@ -164,7 +164,7 @@ def dk_smoother(y: np.ndarray,
     Z = observation_matrix
     R = state_error_transformation_matrix
 
-    # Store number of state variables (m), state parameters (u), observations (n)
+    # Store number of state variables (m), stochastic state equations (q), and observations (n)
     m = T.shape[0]
     q = R.shape[1]
     n = y.shape[0]

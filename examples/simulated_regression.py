@@ -122,7 +122,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Get and plot forecast
-    forecast = bayes_uc.forecast(hold_out_size, mcmc_burn, future_predictors=x_test)
+    forecast, _ = bayes_uc.forecast(hold_out_size, mcmc_burn, future_predictors=x_test)
     forecast_mean = np.mean(forecast, axis=0)
     forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
     forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
