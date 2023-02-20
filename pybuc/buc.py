@@ -750,10 +750,8 @@ class BayesianUnobservedComponents:
                                   'Results will be sensitive to choice of priors.')
 
                 k = pred.shape[1]
-                Q_X, R_X = np.linalg.qr(pred)
-                self.Q_X, self.R_X = Q_X * n, R_X / n
-                self.R_X_INV = solve_triangular(self.R_X, np.eye(k))
-                del Q_X, R_X
+                self._U, s, self._Vt = np.linalg.svd(pred, full_matrices=False)
+                self._S = np.diag(s)
 
             # CHECK AND PREPARE LAG SEASONAL
             if not isinstance(lag_seasonal, tuple):
@@ -1951,8 +1949,8 @@ class BayesianUnobservedComponents:
                                             stochastic_index=None,
                                             damped=None,
                                             damped_transition_index=None)
-            Q_X, R_X, R_X_INV = self.Q_X, self.R_X, self.R_X_INV
-            X = self.predictors
+            U, S, Vt = self._U, self._S, self._Vt
+            XtX = Vt.T @ (S ** 2) @ Vt
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -1972,14 +1970,14 @@ class BayesianUnobservedComponents:
                 reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
 
             if reg_coeff_prec_prior is None:
-                reg_coeff_prec_prior = zellner_prior_obs / n * (0.5 * dot(X.T, X)
-                                                                + 0.5 * np.diag(np.diag(dot(X.T, X))))
+                reg_coeff_prec_prior = zellner_prior_obs / n * (0.5 * XtX
+                                                                + 0.5 * np.diag(np.diag(XtX)))
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             else:
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
 
-            reg_ninvg_coeff_prec_post = R_X.T @ (Q_X.T @ Q_X + R_X_INV.T @ reg_coeff_prec_prior @ R_X_INV) @ R_X
-            reg_ninvg_coeff_cov_post = ao.mat_inv(reg_ninvg_coeff_prec_post)
+            reg_ninvg_coeff_prec_post = Vt.T @ (S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
+            reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
             gibbs_iter0_reg_coeff = reg_coeff_mean_prior
 
         if q > 0:
@@ -2577,7 +2575,7 @@ class BayesianUnobservedComponents:
         n_ones = np.ones((n, 1))
 
         if self.has_predictors:
-            Q_X, R_X, R_X_INV = self.Q_X, self.R_X, self.R_X_INV
+            U, S, Vt = self._U, self._S, self._Vt
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
@@ -2587,8 +2585,8 @@ class BayesianUnobservedComponents:
             # Compute the Normal-Inverse-Gamma posterior covariance matrix and
             # precision-weighted mean prior ahead of time. This is to save
             # on computational expense in the sampling for-loop.
-            V = R_X @ reg_ninvg_coeff_cov_post @ R_X.T
-            c = R_X_INV.T @ (reg_coeff_prec_prior @ reg_coeff_mean_prior)
+            W = Vt @ reg_ninvg_coeff_cov_post @ Vt.T
+            c = reg_coeff_prec_prior @ reg_coeff_mean_prior
         else:
             regression_coefficients = np.array([[[]]])
 
@@ -2753,10 +2751,10 @@ class BayesianUnobservedComponents:
                 y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                 y_tilde = y_adj - smooth_time_prediction  # y with smooth time prediction subtracted out
-                reg_coeff_mean_post = solve_triangular(R_X, V @ (Q_X.T @ y_tilde + c))
-                cov_post = response_error_variance[s][0, 0] * V
-                regression_coefficients[s] = (R_X_INV @ np.random
-                                              .multivariate_normal(mean=(R_X @ reg_coeff_mean_post).flatten(),
+                reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                cov_post = response_error_variance[s][0, 0] * W
+                regression_coefficients[s] = (Vt.T @ np.random
+                                              .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
                                                                    cov=cov_post).reshape(-1, 1))
 
         self.posterior = Posterior(num_samp, smoothed_state,
