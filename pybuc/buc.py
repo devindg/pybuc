@@ -6,7 +6,6 @@ from multiprocessing import Pool
 import warnings
 from typing import Union, NamedTuple
 import pandas as pd
-from scipy.linalg import solve_triangular
 
 from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
@@ -676,8 +675,6 @@ class BayesianUnobservedComponents:
             warnings.warn('At least 10% of values in the response array are null. Predictions from the model may be '
                           'significantly compromised.')
 
-        n = resp.shape[0]
-
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
         # -- check if correct data type
         if not isinstance(predictors, (pd.Series, pd.DataFrame, np.ndarray)):
@@ -701,7 +698,7 @@ class BayesianUnobservedComponents:
                         raise TypeError("Pandas' DatetimeIndex is currently the only supported "
                                         "index type for Pandas objects.")
                     else:
-                        if not (predictors.index == self.historical_time_index).all():
+                        if not (predictors.index == response.index).all():
                             raise ValueError('The response and predictors indexes must match.')
 
                     if isinstance(predictors, pd.Series):
@@ -749,9 +746,8 @@ class BayesianUnobservedComponents:
                     warnings.warn('The number of predictors exceeds the number of observations. '
                                   'Results will be sensitive to choice of priors.')
 
-                k = pred.shape[1]
-                self._U, s, self._Vt = np.linalg.svd(pred, full_matrices=False)
-                self._S = np.diag(s)
+                self.X_SVD_U, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
+                self.X_SVD_S = np.diag(s)
 
             # CHECK AND PREPARE LAG SEASONAL
             if not isinstance(lag_seasonal, tuple):
@@ -1008,6 +1004,14 @@ class BayesianUnobservedComponents:
                 raise ValueError('dummy_seasonal and trig_seasonal cannot have periodicities in common.')
 
         # ASSIGN CLASS ATTRIBUTES IF ALL VALIDITY CHECKS ARE PASSED
+        # If the response has NaNs, replace with 0's
+        if np.any(np.isnan(resp)):
+            self.response_nan_indicator = np.isnan(resp) * 1.
+            self.response_replace_nan = ao.replace_nan(resp)
+            self.response_has_nan = True
+        else:
+            self.response_has_nan = False
+
         self.response = resp
         self.predictors = pred
         self.level = level
@@ -1070,6 +1074,7 @@ class BayesianUnobservedComponents:
             warnings.warn('The number of state equations implied by the model specification '
                           'is at least as large as the number of observations in the response '
                           'array. Predictions from the model may be significantly compromised.')
+
 
     @property
     def num_lag_season_state_eqs(self) -> int:
@@ -1949,7 +1954,7 @@ class BayesianUnobservedComponents:
                                             stochastic_index=None,
                                             damped=None,
                                             damped_transition_index=None)
-            U, S, Vt = self._U, self._S, self._Vt
+            S, Vt = self.X_SVD_S, self.X_SVD_Vt
             XtX = Vt.T @ (S ** 2) @ Vt
 
             # Static regression coefficients are modeled
@@ -2521,10 +2526,6 @@ class BayesianUnobservedComponents:
         damped_lag_season_coeff_prec_prior = model.damped_lag_season_coeff_prec_prior
         gibbs_iter0_damped_season_coeff = model.gibbs_iter0_damped_season_coeff
 
-        # Identify NaN values in y, if any
-        y_nan_indicator = np.isnan(y) * 1.
-        y_no_nan = ao.replace_nan(y)
-
         # Initialize output arrays
         if q > 0:
             state_error_covariance = np.empty((num_samp, q, q))
@@ -2575,7 +2576,7 @@ class BayesianUnobservedComponents:
         n_ones = np.ones((n, 1))
 
         if self.has_predictors:
-            U, S, Vt = self._U, self._S, self._Vt
+            S, Vt = self.X_SVD_S, self.X_SVD_Vt
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
@@ -2698,6 +2699,9 @@ class BayesianUnobservedComponents:
             smoothed_state[s] = dk.simulated_smoothed_state
             smoothed_prediction[s] = dk.simulated_smoothed_prediction
 
+            if self.response_has_nan:
+                y = self.response_replace_nan + self.response_nan_indicator * smoothed_prediction[s]
+
             # Get new draws for state variances
             if q > 0:
                 state_resid = smoothed_errors[s][:, 1:, 0]
@@ -2748,9 +2752,8 @@ class BayesianUnobservedComponents:
 
             # Get new draw for regression coefficients
             if self.has_predictors:
-                y_adj = y_no_nan + y_nan_indicator * smoothed_prediction[s]
                 smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
-                y_tilde = y_adj - smooth_time_prediction  # y with smooth time prediction subtracted out
+                y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
                 reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
                 cov_post = response_error_variance[s][0, 0] * W
                 regression_coefficients[s] = (Vt.T @ np.random
