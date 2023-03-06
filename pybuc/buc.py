@@ -612,8 +612,8 @@ class BayesianUnobservedComponents:
         empty tuple, which will be converted to true bools if trig_seasonal is not empty.
         """
 
-        self._response = response
-        self._predictors = predictors
+        self.response_type = type(response)
+        self.predictors_type = type(predictors)
         self.model_setup = None
         self.response_name = None
         self.predictors_names = None
@@ -668,8 +668,9 @@ class BayesianUnobservedComponents:
         if np.all(np.isnan(resp)):
             raise ValueError('All values in the response array are null. At least one value must be non-null.')
 
-        if resp.shape[0] < 2:
-            raise ValueError('At least two observations are required to fit a model.')
+        if resp.shape[0] < 3:
+            raise ValueError('At least three observations are required to fit a model. This restriction '
+                             'may be removed in the future.')
 
         if np.sum(np.isnan(resp) * 1) / resp.shape[0] >= 0.1:
             warnings.warn('At least 10% of values in the response array are null. Predictions from the model may be '
@@ -717,8 +718,7 @@ class BayesianUnobservedComponents:
                 elif pred.ndim == 1:
                     pred = pred.reshape(-1, 1)
                 else:
-                    if 1 in pred.shape:
-                        pred = pred.reshape(-1, 1)
+                    pass
 
                 if np.any(np.isnan(pred)):
                     raise ValueError('The predictors array cannot have null values.')
@@ -1956,6 +1956,9 @@ class BayesianUnobservedComponents:
                                             damped_transition_index=None)
             S, Vt = self.X_SVD_S, self.X_SVD_Vt
             XtX = Vt.T @ (S ** 2) @ Vt
+            X = self.predictors
+            y = self.response
+            X_add_const = np.c_[np.ones((n, 1)), X]
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -1983,7 +1986,15 @@ class BayesianUnobservedComponents:
 
             reg_ninvg_coeff_prec_post = Vt.T @ (S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
-            gibbs_iter0_reg_coeff = reg_coeff_mean_prior
+
+            # Set up initial Gibbs values for regression coefficients
+            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.var(y)],
+                                                                       np.diag(reg_coeff_prec_prior))))
+            gibbs_iter0_reg_coeff_cov_post = ao.mat_inv(X_add_const.T @ X_add_const
+                                                        + gibbs_iter0_reg_coeff_prec_prior)
+            gibbs_iter0_reg_coeff_mean_prior = np.vstack(([0], reg_coeff_mean_prior))
+            gibbs_iter0_reg_coeff = (gibbs_iter0_reg_coeff_cov_post @ (X_add_const.T @ y
+                                     + gibbs_iter0_reg_coeff_prec_prior @ gibbs_iter0_reg_coeff_mean_prior))[1:]
 
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
@@ -2826,7 +2837,7 @@ class BayesianUnobservedComponents:
             if self.has_predictors:
                 # Check and prepare future predictor data
                 # -- data types match across predictors and future_predictors
-                if not isinstance(future_predictors, type(self._predictors)):
+                if not isinstance(future_predictors, self.predictors_type):
                     raise TypeError('Object types for predictors and future_predictors must match.')
 
                 else:
@@ -2865,8 +2876,7 @@ class BayesianUnobservedComponents:
                 elif fut_pred.ndim == 1:
                     fut_pred = fut_pred.reshape(-1, 1)
                 else:
-                    if 1 in fut_pred.shape:
-                        fut_pred = fut_pred.reshape(-1, 1)
+                    pass
 
                 if np.isnan(fut_pred).any():
                     raise ValueError('The future_predictors array cannot have null values.')
