@@ -216,34 +216,6 @@ def dk_smoother(y: np.ndarray,
         raise ValueError('The initial state covariance matrix must have shape (m, m), where m denotes '
                          'the number of state equations.')
 
-    # Given the construction of the observation and state transition
-    # matrices when static regression coefficients are specified,
-    # and given how the synthetic state and response values are generated,
-    # the actual state covariance matrix has to be modified before running
-    # y* = y - y+ through the Kalman filter. When static coefficients are
-    # specified, the state value is always 1 because the state variance
-    # for the regression component is 0. It's not valid, however, to use a
-    # fixed state value when running the Kalman filter on y*.
-
-    # If a fixed state value of 1 was used for y*, this would imply that y*
-    # has an identical relationship with the regression component as y does.
-    # This is never guaranteed nor should it be. Thus, when running the
-    # Kalman filter on y*, we must allow the relationship between y*
-    # and the regression component to be different. This is accomplished
-    # by resetting the variance of 0 for the regression component to some
-    # other positive number. To be consistent with default initial state
-    # variance values, this number is set to 1e6.
-    init_state_cov = init_state_covariance.copy()
-    if has_predictors:
-        # Note that the covariance matrix index for the static regression
-        # component's variance is hardcoded at (-1, -1). This assumes
-        # that the static regression component, if specified, is always
-        # added to the end of the state vector. Otherwise, this code
-        # is not valid.
-        init_state_cov[-1, -1] = 1e6
-    else:
-        init_state_cov = init_state_covariance
-
     C_plus = C - C
     sim_fake_lss = simulate_fake_linear_state_space(observation_matrix=Z,
                                                     state_transition_matrix=T,
@@ -267,7 +239,7 @@ def dk_smoother(y: np.ndarray,
                    response_error_variance_matrix=response_error_variance_matrix,
                    state_error_covariance_matrix=state_error_covariance_matrix,
                    init_state=init_state - init_state_plus,
-                   init_state_covariance=init_state_cov)
+                   init_state_covariance=init_state_covariance)
 
     v = y_star_kf.one_step_ahead_prediction_resid
     F_inv = y_star_kf.inverse_response_variance
@@ -283,14 +255,10 @@ def dk_smoother(y: np.ndarray,
     # Initial backward-pass residual for computing the smoothed state
     r_init = Z[0].T.dot(F_inv[0]).dot(v[0]) + L[0].T.dot(r[0])
 
-    # Compute smoothed observation and state residuals and state vector
+    # Compute smoothed observation residuals, state residuals, and state vector
     w_hat = np.empty((n, 1 + q, 1), dtype=np.float64)
     alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
 
-    # Note that if static regression coefficients are specified, we revert to the
-    # "real" state covariance matrix when computing the smoothed state. This is
-    # because the relationship between y* and the regression component was accounted
-    # for in the Kalman filter step above (y_star_kf).
     alpha_hat[0] = init_state - init_state_plus + init_state_covariance.dot(r_init)
     for t in range(n):
         eps_hat = response_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
