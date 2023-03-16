@@ -627,7 +627,7 @@ class BayesianUnobservedComponents:
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
         if not isinstance(response, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
-            raise TypeError("The response array must be a Numpy array, list, tuple,  Pandas Series, "
+            raise TypeError("The response array must be a Numpy array, list, tuple, Pandas Series, "
                             "or Pandas DataFrame.")
         else:
             if isinstance(response, (list, tuple)):
@@ -638,20 +638,16 @@ class BayesianUnobservedComponents:
             self.response_type = type(resp)
 
             if isinstance(resp, (pd.Series, pd.DataFrame)):
-                if not isinstance(resp.index, pd.DatetimeIndex):
-                    raise TypeError("Pandas' DatetimeIndex is currently the only supported "
-                                    "index type for Pandas objects.")
-                else:
-                    if resp.index.freq is None:
-                        warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred for response.')
-                        resp.index.freq = pd.infer_freq(resp.index)
+                if isinstance(resp.index, pd.DatetimeIndex) and resp.index.freq is None:
+                    warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred for response.')
+                    resp.index.freq = pd.infer_freq(resp.index)
+                    self.historical_time_index = resp.index
 
                 if isinstance(response, pd.Series):
                     self.response_name = [resp.name]
                 else:
                     self.response_name = resp.columns.values.tolist()
 
-                self.historical_time_index = resp.index
                 resp = resp.sort_index().to_numpy()
 
         # -- dimensions
@@ -696,22 +692,18 @@ class BayesianUnobservedComponents:
 
             if pred.size > 0:
                 # -- check if response and predictors are same date type.
-                if isinstance(resp, np.ndarray) and not isinstance(pred, np.ndarray):
+                if isinstance(response, np.ndarray) and not isinstance(pred, np.ndarray):
                     raise TypeError('The response array provided is a NumPy array, list, or tuple, '
                                     'but the predictors array is not. Object types must match.')
 
-                if (isinstance(resp, (pd.Series, pd.DataFrame)) and
+                if (isinstance(response, (pd.Series, pd.DataFrame)) and
                         not isinstance(pred, (pd.Series, pd.DataFrame))):
                     raise TypeError('The response array provided is a Pandas Series/DataFrame, but the predictors '
                                     'array is not. Object types must match.')
 
                 # -- get predictor names if a Pandas object and sort index
                 if isinstance(pred, (pd.Series, pd.DataFrame)):
-                    if not isinstance(pred.index, pd.DatetimeIndex):
-                        raise TypeError("Pandas' DatetimeIndex is currently the only supported "
-                                        "index type for Pandas objects.")
-                    else:
-                        if not (pred.index == resp.index).all():
+                    if not (pred.index == response.index).all():
                             raise ValueError('The response and predictors indexes must match.')
 
                     if isinstance(pred, pd.Series):
@@ -1594,7 +1586,7 @@ class BayesianUnobservedComponents:
             # Can't assign to NoneType because Numba function expects an array type.
             state_var_shape_post = np.array([[]])
             state_var_scale_prior = np.array([[]])
-            gibbs_iter0_state_error_covariance = np.array([[]])
+            gibbs_iter0_state_error_covariance = np.empty((0, 0), dtype=np.float64)
 
         gibbs_iter0_init_state = []
         init_state_variances = []
@@ -3059,6 +3051,7 @@ class BayesianUnobservedComponents:
                                                damped_season_transition_index=self.damped_lag_season_transition_index)
 
         return y_forecast, state_forecast
+
 
     def plot_components(self,
                         burn: int = 0,
