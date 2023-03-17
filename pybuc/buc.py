@@ -131,36 +131,57 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
 @njit(cache=True)
 def _simulate_posterior_predictive_response(posterior: Posterior,
                                             burn: int = 0,
+                                            smoothed: bool = True,
                                             num_first_obs_ignore: int = 0,
                                             random_sample_size_prop: float = 1.) -> np.ndarray:
     """
-    Generates the posterior predictive density of the response variable. The filtered, as
-    opposed to the smoothed, states are used. Using smoothed states assumes we have all
-    information available (past, present, future) at any given time t. In contrast, the
-    filtered state assumes we only have information up until time t - 1 for predicting
-    time t. The filtered state, therefore, is what is needed for quantifying uncertainty
-    around the model's predictions for the response. The observation equation for the
-    response is
+    Generates the posterior predictive density of the response variable. Either the filtered
+    or the smoothed state can be used. The observation equation for the response is
 
-    y(t) = Z(t).a(t|t-1) + response_error(t),
+    y(t) = Z(t).a(t) + response_error(t),
 
-    where Z(t), a(t|t-1) = E[a(t) | t-1], and response_error(t) are the observation matrix,
-    filtered state, and error at time t, respectively. The posterior predictive
+    where Z(t) is the known observation matrix,
+
+        a(t) = E[a(t) | t-1] if filtered,
+        a(t) = E[a(t) | t = 1,...,n] if smoothed
+
+    and response_error(t) is the error at time t, respectively. The posterior predictive
     distribution for the response at any time t is obtained by sampling from
 
-        y(t) | t-1 ~ N(Z(t).a(t|t-1), Z(t).P(t|t-1).Z(t)' + ResponseErrVar),
+        y(t) ~ N(Z(t).a(t), Z(t).P(t).Z(t)' + ResponseErrVar),
 
-    where P(t|t-1) = Var[a(t) | t-1] is the state covariance matrix and
-    ResponseErrVar = Var[error(t) | t-1] is the variance of the response error.
+    where
+        P(t) = Var[a(t) | t-1] if filtered,
+        P(t) = Var[a(t) | t=1,...,n] if smoothed,
 
-    Since y(t) | t-1 is conditionally independent of y(t-1) for all t, the posterior
-    predictive distribution of y(t), t=1,...,n, can be sampled by independently
+    is the state covariance matrix and
+
+        ResponseErrVar = Var[error(t) | t=1,...,n]
+
+    Since y(t) | t-1 and y(t) | t=1,...,n are conditionally independent of y(t-1) for all t,
+    the posterior predictive distribution of y(t), t=1,...,n, can be sampled by independently
     sampling for each y(t).
 
-    y(1) | t=0 ~ N(Z(1).(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
-    y(2) | t=1 ~ N(Z(2).a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
-    ...
-    y(n) | t=n-1 ~ N(Z(n).a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
+    If filtered:
+        y(1) | t=0 ~ N(Z(1).(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
+        y(2) | t=1 ~ N(Z(2).a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
+        ...
+        y(n) | t=n-1 ~ N(Z(n).a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
+
+    If smoothed:
+        y(1) | t=1,...,n ~ N(Z(1).(1|t=1,...,n ), Z(1).P(1|t=1,...,n ).Z(1)' + ResponseErrVar)
+        y(2) | t=1,...,n  ~ N(Z(2).a(2|t=1,...,n ), Z(2).P(2|t=1,...,n ).Z(2)' + ResponseErrVar)
+        ...
+        y(n) | t=1,...,n ~ N(Z(n).a(n|t=1,...,n ), Z(n).P(n|t=1,...,n ).Z(T)' + ResponseErrVar)
+
+    In practice, the posterior predictive distribution is sampled by conditioning on the posterior
+    samples of the parameters, specifically
+
+    y(t, s) | Z(t, s), a(t, s), ResponseErrVar(s) ~ N(Z(t, s).a(t, s), ResponseErrVar(s)),
+
+    where s is the s-th posterior sample. Conditioning on Z(t) is necessary if a regression
+    component is specified since Z(t,s) includes X(t).dot(regression_coefficients(s)) by construction.
+    Otherwise, conditioning on Z(t) is not necessary since Z(t,s) = Z for all t, s.
 
     :param posterior: NamedTuple with attributes:
 
@@ -198,7 +219,11 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
     of observations for the response.
     """
 
-    response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+    if smoothed:
+        response_mean = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
+    else:
+        response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+
     response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
     num_posterior_samp = response_mean.shape[0]
     n = response_mean.shape[1]
@@ -228,8 +253,8 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
     return y_post
 
 
-def _simulate_posterior_predictive_state_worker(state_mean: np.ndarray,
-                                                state_covariance: np.ndarray) -> np.ndarray:
+def _simulate_posterior_predictive_filtered_state_worker(state_mean: np.ndarray,
+                                                         state_covariance: np.ndarray) -> np.ndarray:
     """
 
     :param state_mean: ndarray of dimension (m, 1), where m is the number of state equations.
@@ -245,11 +270,11 @@ def _simulate_posterior_predictive_state_worker(state_mean: np.ndarray,
     return state_post
 
 
-def _simulate_posterior_predictive_state(posterior: Posterior,
-                                         burn: int = 0,
-                                         num_first_obs_ignore: int = 0,
-                                         random_sample_size_prop: float = 1.,
-                                         has_predictors: bool = False) -> np.ndarray:
+def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
+                                                  burn: int = 0,
+                                                  num_first_obs_ignore: int = 0,
+                                                  random_sample_size_prop: float = 1.,
+                                                  has_predictors: bool = False) -> np.ndarray:
     """
     Generates the posterior predictive density of the filtered state vector. The filtered, as
     opposed to the smoothed, states are used. Using smoothed states assumes we have all
@@ -356,7 +381,7 @@ def _simulate_posterior_predictive_state(posterior: Posterior,
     state_mean_args = [mean[i, j] for i in S for j in range(n)]
     state_covariance_args = [cov[i, j] for i in S for j in range(n)]
     with Pool() as pool:
-        state_post = np.array(pool.starmap(_simulate_posterior_predictive_state_worker,
+        state_post = np.array(pool.starmap(_simulate_posterior_predictive_filtered_state_worker,
                                            zip(state_mean_args, state_covariance_args)))
 
     state_post = state_post.reshape((num_samp, n, m, 1))
@@ -3053,6 +3078,26 @@ class BayesianUnobservedComponents:
         return y_forecast, state_forecast
 
 
+    def posterior_predictive_distribution(self,
+                                          burn: int = None,
+                                          smoothed: bool = None,
+                                          num_first_obs_ignore: int = None,
+                                          random_sample_size_prop: float = None):
+        if burn is None:
+            burn = 0
+        if smoothed is None:
+            smoothed = True
+        if num_first_obs_ignore is None:
+            num_first_obs_ignore = 0
+        if random_sample_size_prop is None:
+            random_sample_size_prop = 1.
+
+        return _simulate_posterior_predictive_response(posterior=self.posterior,
+                                                       burn=burn,
+                                                       smoothed=smoothed,
+                                                       num_first_obs_ignore=num_first_obs_ignore,
+                                                       random_sample_size_prop=random_sample_size_prop)
+
     def plot_components(self,
                         burn: int = 0,
                         cred_int_level: float = 0.05,
@@ -3113,29 +3158,26 @@ class BayesianUnobservedComponents:
         cred_int_lb = 0.5 * cred_int_level
         cred_int_ub = 1. - 0.5 * cred_int_level
 
-        filtered_prediction = _simulate_posterior_predictive_response(self.posterior,
-                                                                      burn,
-                                                                      num_first_obs_ignore,
-                                                                      random_sample_size_prop)
-        smoothed_prediction = self.posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
+        ppd = self.posterior_predictive_distribution(burn=burn,
+                                                     smoothed=smoothed,
+                                                     num_first_obs_ignore=num_first_obs_ignore,
+                                                     random_sample_size_prop=random_sample_size_prop)
 
         if smoothed:
-            prediction = smoothed_prediction
             state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
         else:
-            prediction = filtered_prediction
-            state = _simulate_posterior_predictive_state(self.posterior,
-                                                         burn,
-                                                         num_first_obs_ignore,
-                                                         random_sample_size_prop,
-                                                         self.has_predictors)
+            state = _simulate_posterior_predictive_filtered_state(posterior=self.posterior,
+                                                                  burn=burn,
+                                                                  num_first_obs_ignore=num_first_obs_ignore,
+                                                                  random_sample_size_prop=random_sample_size_prop,
+                                                                  has_predictors=self.has_predictors)
 
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
         ax[0].plot(historical_time_index, y)
-        ax[0].plot(historical_time_index, np.mean(filtered_prediction, axis=0))
-        lb = np.quantile(filtered_prediction, cred_int_lb, axis=0)
-        ub = np.quantile(filtered_prediction, cred_int_ub, axis=0)
+        ax[0].plot(historical_time_index, np.mean(ppd, axis=0))
+        lb = np.quantile(ppd, cred_int_lb, axis=0)
+        ub = np.quantile(ppd, cred_int_ub, axis=0)
         ax[0].fill_between(historical_time_index, lb, ub, alpha=0.2)
         ax[0].title.set_text('Predicted vs. observed response')
         ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - cred_int_level)}% credible interval'),
@@ -3143,7 +3185,7 @@ class BayesianUnobservedComponents:
 
         for i, c in enumerate(components):
             if c == 'Irregular':
-                resid = y[np.newaxis] - prediction
+                resid = y[np.newaxis] - ppd
                 ax[i + 1].plot(historical_time_index, np.mean(resid, axis=0))
                 lb = np.quantile(resid, cred_int_lb, axis=0)
                 ub = np.quantile(resid, cred_int_ub, axis=0)
