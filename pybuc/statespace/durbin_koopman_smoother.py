@@ -106,8 +106,7 @@ def dk_smoother(y: np.ndarray,
                 state_error_covariance_matrix: np.ndarray,
                 init_state: np.ndarray,
                 init_state_plus: np.ndarray,
-                init_state_covariance: np.ndarray,
-                has_predictors: bool = False):
+                init_state_covariance: np.ndarray):
     """
 
     :param y: ndarray of dimension (n, 1), where n is the number of observations.
@@ -145,8 +144,6 @@ def dk_smoother(y: np.ndarray,
 
     :param init_state_covariance: ndarray of dimension (m, m). Data type must be float64.
     The initial state covariance matrix for the m state equations.
-
-    :param has_predictors: boolean. True if the model has static regression coefficients.
 
 
     :return: Named tuple with the following:
