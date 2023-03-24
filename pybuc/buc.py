@@ -627,9 +627,17 @@ class BayesianUnobservedComponents:
             self.response_type = type(resp)
 
             if isinstance(resp, (pd.Series, pd.DataFrame)):
-                if isinstance(resp.index, pd.DatetimeIndex) and resp.index.freq is None:
-                    warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred for response.')
-                    resp.index.freq = pd.infer_freq(resp.index)
+                if isinstance(resp.index, pd.DatetimeIndex):
+                    if resp.index.freq is None:
+                        warnings.warn('Frequency of DatetimeIndex is None. Frequency will be inferred '
+                                      'for response.')
+                        resp.index.freq = pd.infer_freq(resp.index)
+
+                    if not resp.index.is_monotonic_increasing:
+                        warnings.warn("The DatetimeIndex for the response is not in ascending order. "
+                                      "Data will be sorted.")
+                        resp = resp.sort_index()
+
                     self.historical_time_index = resp.index
 
                 if isinstance(response, pd.Series):
@@ -637,7 +645,7 @@ class BayesianUnobservedComponents:
                 else:
                     self.response_name = resp.columns.values.tolist()
 
-                resp = resp.sort_index().to_numpy()
+                resp = resp.to_numpy()
 
         # -- dimensions
         if resp.dtype != 'float64':
@@ -661,10 +669,6 @@ class BayesianUnobservedComponents:
         if resp.shape[0] < 3:
             raise ValueError('At least three observations are required to fit a model. This restriction '
                              'may be removed in the future.')
-
-        if np.sum(np.isnan(resp) * 1) / resp.shape[0] >= 0.1:
-            warnings.warn('At least 10% of values in the response array are null. Predictions from the model may be '
-                          'significantly compromised.')
 
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
         # -- check if correct data type
@@ -692,6 +696,12 @@ class BayesianUnobservedComponents:
 
                 # -- get predictor names if a Pandas object and sort index
                 if isinstance(pred, (pd.Series, pd.DataFrame)):
+                    if isinstance(pred.index, pd.DatetimeIndex):
+                        if not pred.index.is_monotonic_increasing:
+                            warnings.warn("The DatetimeIndex for predictors is not in ascending order. "
+                                          "Data will be sorted.")
+                            pred = pred.sort_index()
+
                     if not (pred.index == response.index).all():
                             raise ValueError('The response and predictors indexes must match.')
 
@@ -700,7 +710,7 @@ class BayesianUnobservedComponents:
                     else:
                         self.predictors_names = pred.columns.values.tolist()
 
-                    pred = pred.sort_index().to_numpy()
+                    pred = pred.to_numpy()
 
                 # -- dimension and null/inf checks
                 if pred.dtype != 'float64':
@@ -2994,7 +3004,7 @@ class BayesianUnobservedComponents:
                                 raise ValueError('The order and names of the columns in predictors must match '
                                                  'the order and names in future_predictors.')
 
-                        fut_pred = fut_pred.sort_index().to_numpy()
+                        fut_pred = fut_pred.to_numpy()
 
                 # -- dimensions
                 if fut_pred.ndim not in (1, 2):
