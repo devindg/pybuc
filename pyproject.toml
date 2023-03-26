@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["structural time series", "unobserved components", "bayesian", "bsts"]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.11"
+python = ">=3.8"
 numba = "^0.56.2"
 pandas = "^1.4.4"
 numpy = "^1.23.5"
