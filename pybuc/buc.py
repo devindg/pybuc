@@ -9,7 +9,6 @@ from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
 from .vectorized import distributions as dist
-from multiprocessing import Pool
 
 
 class Posterior(NamedTuple):
@@ -267,22 +266,7 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
 
     return y_post
 
-def _simulate_posterior_predictive_filtered_state_worker(state_mean: np.ndarray,
-                                                         state_covariance: np.ndarray) -> np.ndarray:
-    """
-    :param state_mean: ndarray of dimension (m, 1), where m is the number of state equations.
-    Data type if float64.
-    :param state_covariance: ndarray of dimension (m, m). Data type if float64.
-    :return:
-    """
-    state_post = (np.random
-                  .multivariate_normal(mean=state_mean,
-                                       cov=state_covariance,
-                                       tol=1e-6).reshape(-1, 1))
-
-    return state_post
-
-
+@njit(cache=True)
 def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
                                                   burn: int = 0,
                                                   num_first_obs_ignore: int = 0,
@@ -360,10 +344,10 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
     """
 
     if has_predictors:
-        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1, 0]
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1]
         cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1, :-1, :-1]
     else:
-        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :, 0]
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :]
         cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1]
 
     num_posterior_samp = mean.shape[0]
@@ -385,13 +369,13 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
         num_samp = int(random_sample_size_prop * num_posterior_samp)
         S = list(np.random.choice(num_posterior_samp, num_samp, replace=False))
 
-    state_mean_args = [mean[i, j] for i in S for j in range(n)]
-    state_covariance_args = [cov[i, j] for i in S for j in range(n)]
-    with Pool() as pool:
-        state_post = np.array(pool.starmap(_simulate_posterior_predictive_filtered_state_worker,
-                                           zip(state_mean_args, state_covariance_args)))
-
-    state_post = state_post.reshape((num_samp, n, m, 1))
+    state_post = np.empty((num_samp, n, m, 1), dtype=np.float64)
+    m_zeros, m_ones = np.zeros((m, 1)), np.ones((m, 1))
+    for s in S:
+        for t in range(n):
+            chol = np.linalg.cholesky(cov[s, t])
+            z = dist.vec_norm(m_zeros, m_ones)
+            state_post[s, t] = chol.dot(z) + mean[s, t]
 
     return state_post
 
