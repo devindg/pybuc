@@ -9,6 +9,7 @@ from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
 from .vectorized import distributions as dist
+from multiprocessing import Pool
 
 
 class Posterior(NamedTuple):
@@ -141,37 +142,55 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
         a(t) = E[a(t) | t-1] if filtered,
         a(t) = E[a(t) | t = 1,...,n] if smoothed
 
-    and response_error(t) is the error at time t, respectively. The posterior predictive
-    distribution for the response at any time t is obtained by sampling from
+    and response_error(t) is the error at time t, respectively.
 
-        y(t) | Z(t), a(t), ResponseErrVar ~ N(Z(t).a(t), ResponseErrVar),
+    Filtered Case:
+    -------------
+    Note: The algorithm for computing the posterior distribution of the parameters is conditional
+    on the whole response vector, i.e., on all time periods in the sample t=1,...,n.
+    That is, the posterior distribution of the smoothed state vector a(t|y(1), y(2), ..., y(n))
+    is given, but the posterior distribution of the filtered state vector a(t|y(t-1)) is not.
+    Thus, variance of response_error(t), for any t, is not enough to capture all the variance
+    in y(t) | y(t-1); the systematic variance of Z(t).a(t|t-1) also has to be accounted for.
+    See below.
 
-    where ResponseErrVar = Var[error(t) | t=1,...,n]
+    The posterior predictive distribution for the response at any time t, conditional on t-1,
+    is obtained by sampling from
 
-    Since y(t) | t-1 and y(t) | t=1,...,n are conditionally independent of y(t-1) for all t,
-    the posterior predictive distribution of y(t), t=1,...,n, can be sampled by independently
+    y(t) | t-1, Z(t), ResponseErrVar ~ N(Z(t).a(t|t-1) | a(t|t-1), Z(t).P(t|t-1).Z(t)' + ResponseErrVar),
+
+    where P(t|t-1) = Var[a(t) | t-1] is the state covariance matrix captured by the Kalman filter, and
+    ResponseErrVar = Var[error(t) | t-j] = Var[error(t) | t-k] for all j, k, j !=k,
+    is the homoskedastic variance of the response error.
+
+    Since y(t) | t-1 is conditionally independent of y(t-1) for all t, the posterior
+    predictive distribution of y(t), t=1,...,n, can be sampled by independently
     sampling for each y(t).
 
-    If filtered:
-        y(1) | Z(t), a(t), ResponseErrVar, t=0 ~ N(Z(1).a(1|t=0), ResponseErrVar)
-        y(2) | Z(t), a(t), ResponseErrVar, t=1 ~ N(Z(2).a(2|t=1), ResponseErrVar)
-        ...
-        y(n) | Z(t), a(t), ResponseErrVar, t=n-1 ~ N(Z(n).a(n|t=n-1), ResponseErrVar)
+    y(1) | t=0, Z(1), ResponseErrVar ~ N(Z(1).a(1|t=0) | a(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
+    y(2) | t=1, Z(2), ResponseErrVar ~ N(Z(2).a(2|t=1) | a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
+    ...
+    y(n) | t=n-1, Z(n), ResponseErrVar ~ N(Z(n).a(n|t=n-1) | a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
 
-    If smoothed:
-        y(1) | Z(t), a(t), ResponseErrVar, t=1,...,n ~ N(Z(1).a(1|t=1,...,n), ResponseErrVar)
-        y(2) | Z(t), a(t), ResponseErrVar, t=1,...,n ~ N(Z(2).a(2|t=1,...,n), ResponseErrVar)
-        ...
-        y(n) | Z(t), a(t), ResponseErrVar, t=1,...,n ~ N(Z(n).a(n|t=1,...,n), ResponseErrVar)
+    Smoothed Case:
+    -------------
 
-    In practice, the posterior predictive distribution is sampled by conditioning on the posterior
-    samples of the parameters, specifically
+    The posterior predictive distribution for the response at any time t, conditional on t=1,...,n,
+    is obtained by sampling from
 
-    y(t, s) | Z(t, s), a(t, s), ResponseErrVar(s) ~ N(Z(t, s).a(t, s), ResponseErrVar(s)),
+    y(t) | t=1,...,n, Z(t), a(t|t=1,...,n), ResponseErrVar ~ N(Z(t).a(t|t=1,...,n), ResponseErrVar),
 
-    where s is the s-th posterior sample. Conditioning on Z(t) is necessary if a regression
-    component is specified since Z(t,s) includes X(t).dot(regression_coefficients(s)) by construction.
-    Otherwise, conditioning on Z(t) is not necessary since Z(t,s) = Z for all t, s.
+    Since y(t) | t=1,...,n is conditionally independent of y(t-1) for all t, the posterior
+    predictive distribution of y(t), t=1,...,n, can be sampled by independently sampling for each y(t).
+
+    y(1) | t=1,...,n, Z(1), a(1|t=1,...,n), ResponseErrVar ~ N(Z(1).a(1|t=1,...,n), ResponseErrVar)
+    y(1) | t=1,...,n, Z(2), a(2|t=1,...,n), ResponseErrVar ~ N(Z(2).a(2|t=1,...,n), ResponseErrVar)
+    ...
+    y(n) | t=1,...,n, Z(n), a(n|t=1,...,n), ResponseErrVar ~ N(Z(n).a(n|t=1,...,n), ResponseErrVar)
+
+    Note that conditioning on Z(t) is necessary if a regression component is specified because Z(t,s)
+    includes X(t).dot(regression_coefficients(s)) by construction. Otherwise, conditioning on Z(t) is
+    not necessary since Z(t,s) = Z for all t, s.
 
     :param posterior: NamedTuple with attributes:
 
@@ -211,11 +230,11 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
 
     if smoothed:
         response_mean = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
+        response_variance = posterior.response_error_variance[burn:]
     else:
         response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+        response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
 
-
-    response_error_variance = posterior.response_error_variance[burn:]
     num_posterior_samp = response_mean.shape[0]
     n = response_mean.shape[1]
 
@@ -235,16 +254,36 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
         S = list(np.random.choice(num_posterior_samp, num_samp, replace=False))
 
     y_post = np.empty((num_samp, n), dtype=np.float64)
+
     i = 0
     for s in S:
-        y_post[i] = dist.vec_norm(response_mean[s],
-                                  np.sqrt(response_error_variance[s][0, 0]))
+        if smoothed:
+            y_post[i] = dist.vec_norm(response_mean[s],
+                                      np.sqrt(response_variance[s][0, 0]))
+        else:
+            y_post[i] = dist.vec_norm(response_mean[s],
+                          np.sqrt(response_variance[s][:, 0]))
         i += 1
 
     return y_post
 
+def _simulate_posterior_predictive_filtered_state_worker(state_mean: np.ndarray,
+                                                         state_covariance: np.ndarray) -> np.ndarray:
+    """
+    :param state_mean: ndarray of dimension (m, 1), where m is the number of state equations.
+    Data type if float64.
+    :param state_covariance: ndarray of dimension (m, m). Data type if float64.
+    :return:
+    """
+    state_post = (np.random
+                  .multivariate_normal(mean=state_mean,
+                                       cov=state_covariance,
+                                       tol=1e-6).reshape(-1, 1))
+
+    return state_post
+
+
 def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
-                                                  state_error_transformation_matrix: np.ndarray,
                                                   burn: int = 0,
                                                   num_first_obs_ignore: int = 0,
                                                   random_sample_size_prop: float = 1.,
@@ -267,14 +306,26 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
     posterior predictive distribution for the filtered state at any time t is obtained by
     sampling from
 
-        a(t+1) | T, a(t), StateErrCovMat ~ N(T.a(t), R.StateErrCovMat.R'),
+        a(t+1) | t ~ N(T.a(t), P(t+1 | t)),
 
-    where StateErrCovMat = Var[state_error(t+1) | T, a(t), t] is the state error
-    covariance matrix. Note that T can include autoregressive parameter values, which is
-    why conditioning on T may be necessary.
+    where
+
+        P(t+1|t) = Var[a(t+1) | t] = T.P(t).L(t)' + R.StateErrCovMat.R'
+
+    is the state covariance matrix. L(t) = T - K(t).Z(t), where K(t) is the Kalman
+    gain at time t, and StateErrCovMat = Var[state_error(t+1) | t] is the state
+    error covariance matrix.
+
+    Each vector a(t|t-1), t=1,...,n, must be drawn from a multivariate normal
+    distribution that obeys the correlation implied by the state covariance matrix.
+    Namely, sample
+
+        a(t+1) | T, t ~ N(T.a(t) | a(t), T.P(t-1|t-1).T' + R.StateErrCovMat.R'),
+
+    where the transition matrix T can include autoregressive coefficients. Otherwise,
+    T is a constant.
 
     :param posterior: NamedTuple with attributes:
-
     num_samp: int
     smoothed_state: np.ndarray
     smoothed_errors: np.ndarray
@@ -289,20 +340,16 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
     damped_trend_coefficient: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
-
     :param burn: non-negative integer. Represents how many of the first posterior samples to
     ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
-
     :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
     of a response variable to ignore for computing the posterior predictive distribution of the
     response. The number of observations to ignore depends on the state specification of the unobserved
     components model. Some observations are ignored because diffuse initialization is used for the
     state vector in the Kalman filter. Default value is 0.
-
     :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
     posterior samples to take for constructing the posterior predictive distribution. Sampling is
     done without replacement. Default value is 1.
-
     :param has_predictors: bool. If True,
 
     :return: ndarray with shape (S, n, m, 1), where S is the number of posterior samples
@@ -311,15 +358,17 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
     predictions for each of the m state equations. This array represents the posterior predictive
     distribution for each of the m state equations.
     """
-    R = state_error_transformation_matrix
 
+    if has_predictors:
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :-1, 0]
+        cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1, :-1, :-1]
+    else:
+        mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :, 0]
+        cov = posterior.state_covariance[burn:, num_first_obs_ignore:-1]
 
-    state_mean = posterior.filtered_state[burn:, num_first_obs_ignore:-1, :, 0]
-    state_error_covariance = posterior.state_error_covariance[burn:, :, :]
-
-    num_posterior_samp = state_mean.shape[0]
-    n = state_mean.shape[1]
-    m = state_mean.shape[2]
+    num_posterior_samp = mean.shape[0]
+    n = mean.shape[1]
+    m = mean.shape[2]
 
     if int(random_sample_size_prop * num_posterior_samp) > posterior.num_samp:
         raise ValueError('random_sample_size_prop must be between 0 and 1.')
@@ -329,23 +378,18 @@ def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
                          'Provide a random_sample_size_prop such that the number of samples '
                          'is at least 1 but no larger than the number of posterior samples.')
 
-    if random_sample_size_prop == 1:
+    if random_sample_size_prop == 1.:
         num_samp = num_posterior_samp
         S = list(np.arange(num_posterior_samp))
     else:
         num_samp = int(random_sample_size_prop * num_posterior_samp)
         S = list(np.random.choice(num_posterior_samp, num_samp, replace=False))
 
-    state_post = np.empty((num_samp, n, m), dtype=np.float64)
-    i = 0
-    for s in S:
-        state_error_variance = np.diag(R.dot(state_error_covariance[s]).dot(R.T))
-        state_post[i] = dist.vec_norm(state_mean[s], np.sqrt(state_error_variance))
-        i += 1
-
-    if has_predictors:
-        state_post = state_post[:, :, :-1]
-        m = m - 1
+    state_mean_args = [mean[i, j] for i in S for j in range(n)]
+    state_covariance_args = [cov[i, j] for i in S for j in range(n)]
+    with Pool() as pool:
+        state_post = np.array(pool.starmap(_simulate_posterior_predictive_filtered_state_worker,
+                                           zip(state_mean_args, state_covariance_args)))
 
     state_post = state_post.reshape((num_samp, n, m, 1))
 
@@ -3124,7 +3168,6 @@ class BayesianUnobservedComponents:
         y = self.response[num_first_obs_ignore:, 0]
         n = self.num_obs
         Z = self.observation_matrix(num_rows=n - num_first_obs_ignore)
-        R = self.state_error_transformation_matrix
         historical_time_index = self.historical_time_index[num_first_obs_ignore:]
         model = self.model_setup
         components = model.components
@@ -3141,7 +3184,6 @@ class BayesianUnobservedComponents:
             kalman_type = "Smoothed"
         else:
             state = _simulate_posterior_predictive_filtered_state(posterior=self.posterior,
-                                                                  state_error_transformation_matrix=R,
                                                                   burn=burn,
                                                                   num_first_obs_ignore=num_first_obs_ignore,
                                                                   random_sample_size_prop=random_sample_size_prop,
