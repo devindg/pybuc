@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import warnings
 from typing import Union, NamedTuple
 import pandas as pd
-
 from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
@@ -3139,6 +3138,7 @@ class BayesianUnobservedComponents:
 
         if smoothed:
             state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
+            kalman_type = "Smoothed"
         else:
             state = _simulate_posterior_predictive_filtered_state(posterior=self.posterior,
                                                                   state_error_transformation_matrix=R,
@@ -3146,6 +3146,7 @@ class BayesianUnobservedComponents:
                                                                   num_first_obs_ignore=num_first_obs_ignore,
                                                                   random_sample_size_prop=random_sample_size_prop,
                                                                   has_predictors=self.has_predictors)
+            kalman_type = "Filtered"
 
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
@@ -3154,8 +3155,9 @@ class BayesianUnobservedComponents:
         lb = np.quantile(ppd, cred_int_lb, axis=0)
         ub = np.quantile(ppd, cred_int_ub, axis=0)
         ax[0].fill_between(historical_time_index, lb, ub, alpha=0.2)
-        ax[0].title.set_text('Predicted vs. observed response')
-        ax[0].legend(('Observed', 'One-step-ahead prediction', f'{100 * (1 - cred_int_level)}% credible interval'),
+        ax[0].title.set_text(f"Predicted vs. observed response - {kalman_type}")
+        ax[0].legend(('Observed', f'{kalman_type} prediction',
+                      f'{100 * (1 - cred_int_level)}% credible interval'),
                      loc='upper left')
 
         for i, c in enumerate(components):
