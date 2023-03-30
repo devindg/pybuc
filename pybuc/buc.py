@@ -256,12 +256,8 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
 
     i = 0
     for s in S:
-        if smoothed:
-            y_post[i] = dist.vec_norm(response_mean[s],
-                                      np.sqrt(response_variance[s][0, 0]))
-        else:
-            y_post[i] = dist.vec_norm(response_mean[s],
-                          np.sqrt(response_variance[s][:, 0]))
+        y_post[i] = dist.vec_norm(response_mean[s],
+                                  np.sqrt(response_variance[s][:, 0]))
         i += 1
 
     return y_post
