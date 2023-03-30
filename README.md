@@ -270,7 +270,11 @@ The Bayesian Unobserved Components forecast plot, components plot, and RMSE are 
 
 ![plot](./examples/images/airline_passengers_bayes_uc_forecast.png)
 
+#### Smoothed
+
 ![plot](./examples/images/airline_passengers_bayes_uc_components.png)
+
+#### Filtered
 
 ![plot](./examples/images/airline_passengers_bayes_uc_components_filtered.png)
 
