@@ -2941,7 +2941,7 @@ class BayesianUnobservedComponents:
     def forecast(self,
                  num_periods: int,
                  burn: int = 0,
-                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = np.array([[]])):
+                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None):
 
         """
         Posterior forecast distribution for the response and states.
@@ -2983,7 +2983,7 @@ class BayesianUnobservedComponents:
         else:
             self.future_time_index = np.arange(self.num_obs, self.num_obs + num_periods)
 
-        if self.has_predictors:
+        if self.has_predictors and future_predictors is not None:
             if not isinstance(future_predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
                 raise TypeError("The future_predictors array must be a NumPy array, list, tuple, Pandas Series, "
                                 "or Pandas DataFrame.")
@@ -3058,6 +3058,17 @@ class BayesianUnobservedComponents:
                                       f'number of observations provided in future_predictors {fut_pred.shape[0]}. '
                                       f'Only the first {num_periods} observations will be used '
                                       f'in future_predictors.')
+
+        elif self.has_predictors and future_predictors is None:
+            raise ValueError("The instantiated model has predictors, but forecast() was provided none. "
+                             "Future predictors must be passed to forecast() if the fitted model includes "
+                             "predictors.")
+        elif not self.has_predictors and future_predictors is not None:
+            fut_pred = np.array([[]])
+            warnings.warn("The instantiated model has no predictors, but forecast() was provided some. "
+                          "The future predictors passed to forecast() will be ignored.")
+        else:
+            fut_pred = np.array([[]])
 
         y_forecast, state_forecast = _forecast(posterior=self.posterior,
                                                num_periods=num_periods,
