@@ -2983,17 +2983,16 @@ class BayesianUnobservedComponents:
         else:
             self.future_time_index = np.arange(self.num_obs, self.num_obs + num_periods)
 
-        # -- check if object type is valid
-        if not isinstance(future_predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
-            raise TypeError("The future_predictors array must be a NumPy array, list, tuple, Pandas Series, "
-                            "or Pandas DataFrame.")
-        else:
-            if isinstance(future_predictors, (list, tuple)):
-                fut_pred = np.asarray(future_predictors, dtype=np.float64)
+        if self.has_predictors:
+            if not isinstance(future_predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
+                raise TypeError("The future_predictors array must be a NumPy array, list, tuple, Pandas Series, "
+                                "or Pandas DataFrame.")
             else:
-                fut_pred = future_predictors.copy()
+                if isinstance(future_predictors, (list, tuple)):
+                    fut_pred = np.asarray(future_predictors, dtype=np.float64)
+                else:
+                    fut_pred = future_predictors.copy()
 
-            if self.has_predictors:
                 # Check and prepare future predictor data
                 # -- data types match across predictors and future_predictors
                 if not isinstance(fut_pred, self.predictors_type):
@@ -3005,7 +3004,7 @@ class BayesianUnobservedComponents:
                         if not isinstance(fut_pred.index, type(self.future_time_index)):
                             raise TypeError('The future_predictors and predictors indexes must be of the same type.')
 
-                        if not (fut_pred.index == self.future_time_index).all():
+                        if not (fut_pred.index[:num_periods] == self.future_time_index).all():
                             raise ValueError('The future_predictors index must match the future time index '
                                              'implied by the last observed date for the response and the '
                                              'number of desired forecast periods. Check the class attribute '
@@ -3054,6 +3053,7 @@ class BayesianUnobservedComponents:
                                      f'The former must be no larger than the latter.')
                 else:
                     if num_periods < fut_pred.shape[0]:
+                        fut_pred = fut_pred[:num_periods, :]
                         warnings.warn(f'The number of requested forecast periods {num_periods} is less than the '
                                       f'number of observations provided in future_predictors {fut_pred.shape[0]}. '
                                       f'Only the first {num_periods} observations will be used '
