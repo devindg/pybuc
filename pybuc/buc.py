@@ -3001,7 +3001,7 @@ class BayesianUnobservedComponents:
                 else:
                     # -- if Pandas type, grab index and column names
                     if isinstance(fut_pred, (pd.Series, pd.DataFrame)):
-                        if not isinstance(fut_pred.index, type(self.future_time_index)):
+                        if not isinstance(self.future_time_index, type(self.historical_time_index)):
                             raise TypeError('The future_predictors and predictors indexes must be of the same type.')
 
                         if not (fut_pred.index[:num_periods] == self.future_time_index).all():
