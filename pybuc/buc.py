@@ -2983,6 +2983,7 @@ class BayesianUnobservedComponents:
         else:
             self.future_time_index = np.arange(self.num_obs, self.num_obs + num_periods)
 
+        # Check and prepare future predictor data
         if self.has_predictors and future_predictors is not None:
             if not isinstance(future_predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
                 raise TypeError("The future_predictors array must be a NumPy array, list, tuple, Pandas Series, "
@@ -2993,17 +2994,16 @@ class BayesianUnobservedComponents:
                 else:
                     fut_pred = future_predictors.copy()
 
-                # Check and prepare future predictor data
                 # -- data types match across predictors and future_predictors
                 if not isinstance(fut_pred, self.predictors_type):
                     raise TypeError('Object types for predictors and future_predictors must match.')
 
+                if not isinstance(self.future_time_index, type(self.historical_time_index)):
+                    raise TypeError('The future_predictors and predictors indexes must be of the same type.')
+
                 else:
                     # -- if Pandas type, grab index and column names
                     if isinstance(fut_pred, (pd.Series, pd.DataFrame)):
-                        if not isinstance(self.future_time_index, type(self.historical_time_index)):
-                            raise TypeError('The future_predictors and predictors indexes must be of the same type.')
-
                         if not (fut_pred.index[:num_periods] == self.future_time_index).all():
                             raise ValueError('The future_predictors index must match the future time index '
                                              'implied by the last observed date for the response and the '
