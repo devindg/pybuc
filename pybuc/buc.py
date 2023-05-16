@@ -9,6 +9,7 @@ from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
 from .vectorized import distributions as dist
+from .model_assessment.performance import watanabe_akaike
 
 
 class Posterior(NamedTuple):
@@ -632,6 +633,7 @@ class BayesianUnobservedComponents:
         self.future_time_index = None
         self.num_first_obs_ignore = None
         self.posterior = None
+        self.post_pred_dist = None
         self.damped_level_transition_index = ()
         self.damped_trend_transition_index = ()
         self.damped_lag_season_transition_index = ()
@@ -1502,6 +1504,20 @@ class BayesianUnobservedComponents:
                             j += num_eqs
 
         return H
+
+    def _posterior_exists_check(self):
+        if self.posterior is None:
+            raise AttributeError("No posterior distribution was found. The fit() method must be called.")
+
+        return
+
+    def _post_pred_dist_exists_check(self):
+        if self.post_pred_dist is None:
+            raise AttributeError("No posterior predictive distribution was found. "
+                                 "TThe fit() and posterior_predictive_distribution() methods "
+                                 "must be called.")
+
+        return
 
     @staticmethod
     def _first_value(x: np.ndarray):
@@ -2959,10 +2975,7 @@ class BayesianUnobservedComponents:
         forecast distribution for the response.
         """
 
-        Z = self.observation_matrix(num_rows=num_periods)
-        T = self.state_transition_matrix
-        C = self.state_intercept_matrix
-        R = self.state_error_transformation_matrix
+        self._posterior_exists_check()
 
         if isinstance(num_periods, int) and num_periods > 0:
             pass
@@ -3070,6 +3083,11 @@ class BayesianUnobservedComponents:
         else:
             fut_pred = np.array([[]])
 
+        Z = self.observation_matrix(num_rows=num_periods)
+        T = self.state_transition_matrix
+        C = self.state_intercept_matrix
+        R = self.state_error_transformation_matrix
+
         y_forecast, state_forecast = _forecast(posterior=self.posterior,
                                                num_periods=num_periods,
                                                state_observation_matrix=Z,
@@ -3090,6 +3108,8 @@ class BayesianUnobservedComponents:
                                           smoothed: bool = None,
                                           num_first_obs_ignore: int = None,
                                           random_sample_size_prop: float = None):
+        self._posterior_exists_check()
+
         if burn is None:
             burn = 0
         if smoothed is None:
@@ -3099,11 +3119,30 @@ class BayesianUnobservedComponents:
         if random_sample_size_prop is None:
             random_sample_size_prop = 1.
 
-        return _simulate_posterior_predictive_response(posterior=self.posterior,
-                                                       burn=burn,
-                                                       smoothed=smoothed,
-                                                       num_first_obs_ignore=num_first_obs_ignore,
-                                                       random_sample_size_prop=random_sample_size_prop)
+        self.post_pred_dist = _simulate_posterior_predictive_response(posterior=self.posterior,
+                                                                      burn=burn,
+                                                                      smoothed=smoothed,
+                                                                      num_first_obs_ignore=num_first_obs_ignore,
+                                                                      random_sample_size_prop=random_sample_size_prop)
+
+        return self.post_pred_dist
+
+    def waic(self, burn: int  = None):
+        self._posterior_exists_check()
+
+        if burn is None:
+            burn = 0
+
+        post = self.posterior
+        num_first_obs_ignore = self.num_first_obs_ignore
+        response = self.response[num_first_obs_ignore:]
+        post_resp_mean = post.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+        post_resp_var = post.response_variance[burn:, num_first_obs_ignore:, 0, 0]
+
+        return watanabe_akaike(response=response.T,
+                               post_resp_mean=post_resp_mean,
+                               post_err_var=post_resp_var)
+
 
     def plot_components(self,
                         burn: int = 0,
@@ -3131,6 +3170,8 @@ class BayesianUnobservedComponents:
         :return: Return a matplotlib.pyplot figure that plots the posterior predictive distribution
         of the response and the posterior of each state component.
         """
+
+        self._posterior_exists_check()
 
         if isinstance(burn, int) and burn >= 0:
             pass
@@ -3255,6 +3296,8 @@ class BayesianUnobservedComponents:
         cred_int_level.
         """
 
+        self._posterior_exists_check()
+
         if isinstance(burn, int) and burn >= 0:
             pass
         else:
@@ -3321,10 +3364,14 @@ class BayesianUnobservedComponents:
                 std_reg_coeff = np.std(reg_coeff, axis=0)
                 ci_lb_reg_coeff = np.quantile(reg_coeff, lb, axis=0)
                 ci_ub_reg_coeff = np.quantile(reg_coeff, ub, axis=0)
+                reg_coeff_prob_pos = np.sum((reg_coeff > 0) * 1, axis=0) / self.posterior.num_samp
+
                 for k in range(self.num_predictors):
                     res[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
                     res[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
                     res[f"Posterior.CredInt.LB[beta.{self.predictors_names[k]}]"] = ci_lb_reg_coeff[k]
                     res[f"Posterior.CredInt.UB[beta.{self.predictors_names[k]}]"] = ci_ub_reg_coeff[k]
+                    res[f"Posterior.ProbPositive[Coeff.{self.predictors_names[k]}]"] = reg_coeff_prob_pos[k]
+
 
         return res
