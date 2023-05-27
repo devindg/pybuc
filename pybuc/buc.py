@@ -9,7 +9,7 @@ from .statespace.kalman_filter import kalman_filter as kf
 from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
 from .vectorized import distributions as dist
-from .model_assessment.performance import watanabe_akaike
+from .model_assessment.performance import watanabe_akaike, WAIC
 
 
 class Posterior(NamedTuple):
@@ -59,6 +59,10 @@ class ModelSetup(NamedTuple):
     reg_ninvg_coeff_prec_post: np.ndarray
     zellner_prior_obs: float
     gibbs_iter0_reg_coeff: np.ndarray
+
+class Forecast(NamedTuple):
+    response_forecast: np.ndarray
+    state_forecast: np.ndarray
 
 
 @njit
@@ -556,13 +560,13 @@ class BayesianUnobservedComponents:
                  trend: bool = False,
                  stochastic_trend: bool = True,
                  damped_trend: bool = False,
-                 lag_seasonal: tuple[int] = (),
-                 stochastic_lag_seasonal: tuple[bool] = (),
-                 damped_lag_seasonal: tuple[bool] = (),
-                 dummy_seasonal: tuple[int] = (),
-                 stochastic_dummy_seasonal: tuple[bool] = (),
-                 trig_seasonal: tuple[tuple[int, int]] = (),
-                 stochastic_trig_seasonal: tuple[bool] = (),
+                 lag_seasonal: tuple[int, ...] = (),
+                 stochastic_lag_seasonal: tuple[bool, ...] = (),
+                 damped_lag_seasonal: tuple[bool, ...] = (),
+                 dummy_seasonal: tuple[int, ...] = (),
+                 stochastic_dummy_seasonal: tuple[bool, ...] = (),
+                 trig_seasonal: tuple[tuple[int, int], ...] = (),
+                 stochastic_trig_seasonal: tuple[bool, ...] = (),
                  seed: int = None):
 
         """
@@ -633,7 +637,6 @@ class BayesianUnobservedComponents:
         self.future_time_index = None
         self.num_first_obs_ignore = None
         self.posterior = None
-        self.post_pred_dist = None
         self.damped_level_transition_index = ()
         self.damped_trend_transition_index = ()
         self.damped_lag_season_transition_index = ()
@@ -1505,17 +1508,9 @@ class BayesianUnobservedComponents:
 
         return H
 
-    def _posterior_exists_check(self):
+    def _posterior_exists_check(self) -> None:
         if self.posterior is None:
             raise AttributeError("No posterior distribution was found. The fit() method must be called.")
-
-        return
-
-    def _post_pred_dist_exists_check(self):
-        if self.post_pred_dist is None:
-            raise AttributeError("No posterior predictive distribution was found. "
-                                 "TThe fit() and posterior_predictive_distribution() methods "
-                                 "must be called.")
 
         return
 
@@ -2107,14 +2102,14 @@ class BayesianUnobservedComponents:
                trend_var_scale_prior: Union[int, float] = None,
                damped_trend_coeff_mean_prior: Union[np.ndarray, list, tuple] = None,
                damped_trend_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
-               lag_season_var_shape_prior: tuple[Union[int, float]] = None,
-               lag_season_var_scale_prior: tuple[Union[int, float]] = None,
+               lag_season_var_shape_prior: tuple[Union[int, float], ...] = None,
+               lag_season_var_scale_prior: tuple[Union[int, float], ...] = None,
                damped_lag_season_coeff_mean_prior: Union[np.ndarray, list, tuple] = None,
                damped_lag_season_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
-               dum_season_var_shape_prior: tuple[Union[int, float]] = None,
-               dum_season_var_scale_prior: tuple[Union[int, float]] = None,
-               trig_season_var_shape_prior: tuple[Union[int, float]] = None,
-               trig_season_var_scale_prior: tuple[Union[int, float]] = None,
+               dum_season_var_shape_prior: tuple[Union[int, float], ...] = None,
+               dum_season_var_scale_prior: tuple[Union[int, float], ...] = None,
+               trig_season_var_shape_prior: tuple[Union[int, float], ...] = None,
+               trig_season_var_scale_prior: tuple[Union[int, float], ...] = None,
                reg_coeff_mean_prior: Union[np.ndarray, list, tuple] = None,
                reg_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
                zellner_prior_obs: Union[int, float] = None) -> Posterior:
@@ -2957,7 +2952,7 @@ class BayesianUnobservedComponents:
     def forecast(self,
                  num_periods: int,
                  burn: int = 0,
-                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None):
+                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None) -> Forecast:
 
         """
         Posterior forecast distribution for the response and states.
@@ -2976,6 +2971,7 @@ class BayesianUnobservedComponents:
         """
 
         self._posterior_exists_check()
+        posterior = self.posterior
 
         if isinstance(num_periods, int) and num_periods > 0:
             pass
@@ -3087,57 +3083,61 @@ class BayesianUnobservedComponents:
         T = self.state_transition_matrix
         C = self.state_intercept_matrix
         R = self.state_error_transformation_matrix
+        damped_level_transition_index = self.damped_level_transition_index
+        damped_trend_transition_index = self.damped_trend_transition_index
+        damped_season_transition_index = self.damped_lag_season_transition_index
 
-        y_forecast, state_forecast = _forecast(posterior=self.posterior,
-                                               num_periods=num_periods,
-                                               state_observation_matrix=Z,
-                                               state_transition_matrix=T,
-                                               state_intercept_matrix=C,
-                                               state_error_transformation_matrix=R,
-                                               future_predictors=fut_pred,
-                                               burn=burn,
-                                               damped_level_transition_index=self.damped_level_transition_index,
-                                               damped_trend_transition_index=self.damped_trend_transition_index,
-                                               damped_season_transition_index=self.damped_lag_season_transition_index)
+        response_forecast, state_forecast = _forecast(posterior=posterior,
+                                                      num_periods=num_periods,
+                                                      state_observation_matrix=Z,
+                                                      state_transition_matrix=T,
+                                                      state_intercept_matrix=C,
+                                                      state_error_transformation_matrix=R,
+                                                      future_predictors=fut_pred,
+                                                      burn=burn,
+                                                      damped_level_transition_index=damped_level_transition_index,
+                                                      damped_trend_transition_index=damped_trend_transition_index,
+                                                      damped_season_transition_index=damped_season_transition_index)
 
-        return y_forecast, state_forecast
+        return Forecast(response_forecast, state_forecast)
 
 
     def posterior_predictive_distribution(self,
                                           burn: int = None,
                                           smoothed: bool = None,
                                           num_first_obs_ignore: int = None,
-                                          random_sample_size_prop: float = None):
+                                          random_sample_size_prop: float = None) -> np.ndarray:
         self._posterior_exists_check()
+        posterior = self.posterior
 
         if burn is None:
             burn = 0
         if smoothed is None:
             smoothed = False
         if num_first_obs_ignore is None:
-            num_first_obs_ignore = 0
+            num_first_obs_ignore = self.num_first_obs_ignore
         if random_sample_size_prop is None:
             random_sample_size_prop = 1.
 
-        self.post_pred_dist = _simulate_posterior_predictive_response(posterior=self.posterior,
-                                                                      burn=burn,
-                                                                      smoothed=smoothed,
-                                                                      num_first_obs_ignore=num_first_obs_ignore,
-                                                                      random_sample_size_prop=random_sample_size_prop)
+        post_pred_dist = _simulate_posterior_predictive_response(posterior=posterior,
+                                                                 burn=burn,
+                                                                 smoothed=smoothed,
+                                                                 num_first_obs_ignore=num_first_obs_ignore,
+                                                                 random_sample_size_prop=random_sample_size_prop)
 
-        return self.post_pred_dist
+        return post_pred_dist
 
-    def waic(self, burn: int  = None):
+    def waic(self, burn: int  = None) -> WAIC:
         self._posterior_exists_check()
 
         if burn is None:
             burn = 0
 
-        post = self.posterior
+        posterior = self.posterior
         num_first_obs_ignore = self.num_first_obs_ignore
         response = self.response[num_first_obs_ignore:]
-        post_resp_mean = post.filtered_prediction[burn:, num_first_obs_ignore:, 0]
-        post_resp_var = post.response_variance[burn:, num_first_obs_ignore:, 0, 0]
+        post_resp_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+        post_resp_var = posterior.response_variance[burn:, num_first_obs_ignore:, 0, 0]
 
         return watanabe_akaike(response=response.T,
                                post_resp_mean=post_resp_mean,
@@ -3172,6 +3172,7 @@ class BayesianUnobservedComponents:
         """
 
         self._posterior_exists_check()
+        posterior = self.posterior
 
         if isinstance(burn, int) and burn >= 0:
             pass
@@ -3195,7 +3196,7 @@ class BayesianUnobservedComponents:
 
         if self.has_predictors:
             X = self.predictors[num_first_obs_ignore:, :]
-            reg_coeff = self.posterior.regression_coefficients[burn:, :, 0].T
+            reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
 
         y = self.response[num_first_obs_ignore:, 0]
         n = self.num_obs
@@ -3212,10 +3213,10 @@ class BayesianUnobservedComponents:
                                                      random_sample_size_prop=random_sample_size_prop)
 
         if smoothed:
-            state = self.posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
+            state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
             kalman_type = "Smoothed"
         else:
-            state = _simulate_posterior_predictive_filtered_state(posterior=self.posterior,
+            state = _simulate_posterior_predictive_filtered_state(posterior=posterior,
                                                                   burn=burn,
                                                                   num_first_obs_ignore=num_first_obs_ignore,
                                                                   random_sample_size_prop=random_sample_size_prop,
@@ -3297,6 +3298,7 @@ class BayesianUnobservedComponents:
         """
 
         self._posterior_exists_check()
+        posterior = self.posterior
 
         if isinstance(burn, int) and burn >= 0:
             pass
@@ -3310,18 +3312,18 @@ class BayesianUnobservedComponents:
             raise ValueError('cred_int_level must be a value in the interval (0, 1).')
 
         components = self.model_setup.components
-        resp_err_var = self.posterior.response_error_variance[burn:]
-        state_err_cov = self.posterior.state_error_covariance[burn:]
-        res = dict()
-        res['Number of posterior samples (after burn)'] = self.posterior.num_samp - burn
+        resp_err_var = posterior.response_error_variance[burn:]
+        state_err_cov = posterior.state_error_covariance[burn:]
+        smy = dict()
+        smy['Number of posterior samples (after burn)'] = posterior.num_samp - burn
 
         d = 0  # index for damped seasonal components
         for c in components:
             if c == 'Irregular':
-                res[f"Posterior.Mean[{c}.Var]"] = np.mean(resp_err_var)
-                res[f"Posterior.StdDev[{c}.Var]"] = np.std(resp_err_var)
-                res[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(resp_err_var, lb)
-                res[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(resp_err_var, ub)
+                smy[f"Posterior.Mean[{c}.Var]"] = np.mean(resp_err_var)
+                smy[f"Posterior.StdDev[{c}.Var]"] = np.std(resp_err_var)
+                smy[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(resp_err_var, lb)
+                smy[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(resp_err_var, ub)
 
             if c not in ('Irregular', 'Regression'):
                 v = components[c]
@@ -3330,48 +3332,48 @@ class BayesianUnobservedComponents:
                 idx = v['stochastic_index']
 
                 if stochastic:
-                    res[f"Posterior.Mean[{c}.Var]"] = np.mean(state_err_cov[:, idx, idx])
-                    res[f"Posterior.StdDev[{c}.Var]"] = np.std(state_err_cov[:, idx, idx])
-                    res[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], lb)
-                    res[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], ub)
+                    smy[f"Posterior.Mean[{c}.Var]"] = np.mean(state_err_cov[:, idx, idx])
+                    smy[f"Posterior.StdDev[{c}.Var]"] = np.std(state_err_cov[:, idx, idx])
+                    smy[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], lb)
+                    smy[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], ub)
 
                 if c == 'Level' and damped:
                     ar_coeff = self.posterior.damped_level_coefficient[burn:, 0, 0]
-                    res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                    res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                    smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                    smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                    smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                    smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
                 if c == 'Trend' and damped:
                     ar_coeff = self.posterior.damped_trend_coefficient[burn:, 0, 0]
-                    res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                    res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                    res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                    smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                    smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                    smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                    smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
 
                 if 'Lag-Seasonal' in c:
                     if damped:
                         ar_coeff = self.posterior.damped_season_coefficients[burn:, d, 0]
-                        res[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                        res[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                        res[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                        res[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
+                        smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
+                        smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
+                        smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
+                        smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
                         d += 1
 
             if c == 'Regression':
-                reg_coeff = self.posterior.regression_coefficients[burn:, :, 0]
+                reg_coeff = posterior.regression_coefficients[burn:, :, 0]
                 mean_reg_coeff = np.mean(reg_coeff, axis=0)
                 std_reg_coeff = np.std(reg_coeff, axis=0)
                 ci_lb_reg_coeff = np.quantile(reg_coeff, lb, axis=0)
                 ci_ub_reg_coeff = np.quantile(reg_coeff, ub, axis=0)
-                reg_coeff_prob_pos = np.sum((reg_coeff > 0) * 1, axis=0) / self.posterior.num_samp
+                reg_coeff_prob_pos = np.sum((reg_coeff > 0) * 1, axis=0) / posterior.num_samp
 
                 for k in range(self.num_predictors):
-                    res[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
-                    res[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
-                    res[f"Posterior.CredInt.LB[beta.{self.predictors_names[k]}]"] = ci_lb_reg_coeff[k]
-                    res[f"Posterior.CredInt.UB[beta.{self.predictors_names[k]}]"] = ci_ub_reg_coeff[k]
-                    res[f"Posterior.ProbPositive[Coeff.{self.predictors_names[k]}]"] = reg_coeff_prob_pos[k]
+                    smy[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
+                    smy[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
+                    smy[f"Posterior.CredInt.LB[beta.{self.predictors_names[k]}]"] = ci_lb_reg_coeff[k]
+                    smy[f"Posterior.CredInt.UB[beta.{self.predictors_names[k]}]"] = ci_ub_reg_coeff[k]
+                    smy[f"Posterior.ProbPositive[Coeff.{self.predictors_names[k]}]"] = reg_coeff_prob_pos[k]
 
 
-        return res
+        return smy
