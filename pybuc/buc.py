@@ -762,10 +762,8 @@ class BayesianUnobservedComponents:
                                      'the number of observations in the response array.')
 
                 # -- check if design matrix has a constant
-                pred_column_mean = np.mean(pred, axis=0)
-                pred_offset = pred - pred_column_mean[np.newaxis, :]
-                diag_pred_offset_squared = np.diag(dot(pred_offset.T, pred_offset))
-                if np.any(diag_pred_offset_squared == 0.):
+                var_pred = np.var(pred, axis=0)
+                if np.any(var_pred == 0):
                     raise ValueError('The predictors array cannot have a column with a constant value. Note that '
                                      'the inclusion of a constant/intercept in the predictors array will confound '
                                      'with the level if specified. If a constant level without trend or seasonality '
@@ -777,8 +775,16 @@ class BayesianUnobservedComponents:
                     warnings.warn('The number of predictors exceeds the number of observations. '
                                   'Results will be sensitive to choice of priors.')
 
-                self.X_SVD_U, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
-                self.X_SVD_S = np.diag(s)
+                n, k = pred.shape
+                if n >= k:
+                    _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
+                    X_SVD_S = np.diag(s)
+                    self.X_SVD_StS = X_SVD_S ** 2
+                else:
+                    _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=True)
+                    X_SVD_S = np.zeros((n, k))
+                    X_SVD_S[:n, :n] = np.diag(s)
+                    self.X_SVD_StS = X_SVD_S.T @ X_SVD_S
 
         # CHECK AND PREPARE LAG SEASONAL
         if not isinstance(lag_seasonal, tuple):
@@ -2006,8 +2012,8 @@ class BayesianUnobservedComponents:
                                             stochastic_index=None,
                                             damped=None,
                                             damped_transition_index=None)
-            S, Vt = self.X_SVD_S, self.X_SVD_Vt
-            XtX = Vt.T @ (S ** 2) @ Vt
+            StS, Vt = self.X_SVD_StS, self.X_SVD_Vt
+            XtX = Vt.T @ StS @ Vt
             X = self.predictors
             y = self.response
             X_add_const = np.c_[np.ones((n, 1)), X]
@@ -2036,8 +2042,8 @@ class BayesianUnobservedComponents:
             else:
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
 
-            reg_ninvg_coeff_prec_post = Vt.T @ (S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
-            reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(S**2 + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
+            reg_ninvg_coeff_prec_post = Vt.T @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
+            reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
 
             # Set up initial Gibbs values for regression coefficients
             gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.var(y)],
@@ -2756,7 +2762,7 @@ class BayesianUnobservedComponents:
         n_ones = np.ones((n, 1))
 
         if self.has_predictors:
-            S, Vt = self.X_SVD_S, self.X_SVD_Vt
+            Vt = self.X_SVD_Vt
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
