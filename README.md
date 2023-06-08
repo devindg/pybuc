@@ -424,9 +424,9 @@ the following defaults are used:
 
 $$
 \begin{align}
-    \sigma^2_{\mathrm{level}} &\sim I-G(0.01, (0.01 \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim I-G(0.01, (0.01 \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{trend}} &\sim I-G(1, 0.1 * (0.01 \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(1, 0.1 * (0.01 * \mathrm{Std.Dev}(y))^2) \\
 \end{align}
 $$
 
