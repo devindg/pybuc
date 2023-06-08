@@ -21,6 +21,7 @@ hold_out_size = 12
 # Create train and test sets
 y_train = air.iloc[:-hold_out_size]
 y_test = air.iloc[-hold_out_size:]
+y_train.iloc[50:61] = np.nan
 
 if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(burn=mcmc_burn, smoothed=False)
+    bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
     plt.show()
 
     # Get and plot forecast
