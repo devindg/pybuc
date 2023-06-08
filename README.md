@@ -216,9 +216,7 @@ As noted above, a distinguishing feature of STS/UC models is their explicit mode
 illustrated with the components plot.
 
 Finally, the Bayesian analog of the MLE STS/UC model is demonstrated. Default parameter values are used for the priors 
-corresponding to the variance parameters in the model. If no explicit prior is given, by default each variance's prior 
-is assumed to be inverse-Gamma with shape and scale values equal to 1e-6. This approximates what is known as Jeffreys 
-prior, a vague/non-informative prior.
+corresponding to the variance parameters in the model. See below for default priors on variance parameters.
 
 **Note that because computation is built on Numba, a JIT compiler, the first run of the code could take a while. 
 Subsequent runs (assuming the Python kernel isn't restarted) should execute considerably faster.**
@@ -279,7 +277,7 @@ The Bayesian Unobserved Components forecast plot, components plot, and RMSE are 
 ![plot](./examples/images/airline_passengers_bayes_uc_components_filtered.png)
 
 ```
-BAYES-UC RMSE: 17.385398629158285
+BAYES-UC RMSE: 17.389692065902654
 ```
 
 # Model
@@ -419,6 +417,26 @@ $\tau_t = \mu_t + \boldsymbol{\gamma}^\prime_ t \mathbb{1}_p$ and $\boldsymbol{\
 $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(y_1^ *, y_2^ *, \cdots, y_n^ *\right)^\prime$.
 
 `pybuc` uses Method 2 for estimating static coefficients.
+
+## Priors
+If no priors are given for variances corresponding to stochastic time components (i.e., level, trend, and seasonality), 
+the following defaults are used:
+
+$$
+\begin{align}
+    \sigma^2_{\mathrm{level}} &\sim I-G(0.01, (0.01 \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim I-G(0.01, (0.01 \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{trend}} &\sim I-G(1, 0.1 * (0.01 \mathrm{Std.Dev}(y))^2) \\
+\end{align}
+$$
+
+The level and seasonal priors match the default priors in R's `bsts` package. However, the default trend prior is 
+different. Whereas the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
+more conservative assumption about the variance associated with trend. This is reflected by the higher shape parameter 
+value of 1 (i.e., more weight is given to this prior than the others), and a scale parameter value that is one tenth the 
+size of the scale priors for level and seasonality. In other words, this prior assumes that variation in trend is small 
+relative to variation in level and seasonality. The idea is to guard against noise in the data that could result in 
+overly aggressive future trend.
 
 ## State space representation (example)
 The unobserved components model can be rewritten in state space form. For example, suppose level, trend, seasonal, 
