@@ -1615,7 +1615,7 @@ class BayesianUnobservedComponents:
 
         n = self.num_obs
         q = self.num_stoch_states
-        var_y = np.var(self.response, ddof=1)
+        var_y = np.nanvar(self.response, ddof=1)
         default_shape_prior = 0.01
         default_scale_prior = (0.01 * np.sqrt(var_y)) ** 2
 
@@ -2677,7 +2677,7 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
         H = self.state_sse_transformation_matrix
         X = self.predictors
-        var_y = np.var(self.response, ddof=1)
+        var_y = np.nanvar(self.response, ddof=1)
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
@@ -2780,7 +2780,6 @@ class BayesianUnobservedComponents:
 
         # Run Gibbs sampler
         s = 0
-        # for s in range(num_samp):
         while s < num_samp:
             if s < 1:
                 init_state_values = gibbs_iter0_init_state
