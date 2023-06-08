@@ -1615,6 +1615,9 @@ class BayesianUnobservedComponents:
 
         n = self.num_obs
         q = self.num_stoch_states
+        var_y = np.var(self.response, ddof=1)
+        default_shape_prior = 0.01
+        default_scale_prior = (0.01 * np.sqrt(var_y)) ** 2
 
         # Initialize outputs
         if q > 0:
@@ -1665,13 +1668,12 @@ class BayesianUnobservedComponents:
 
         # RESPONSE ERROR
         if response_var_shape_prior is None:
-            response_var_shape_prior = 1e-6
+            response_var_shape_prior = default_shape_prior
         if response_var_scale_prior is None:
-            response_var_scale_prior = 1e-6
+            response_var_scale_prior = default_scale_prior
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
-        gibbs_iter0_response_error_variance = np.array([[response_var_scale_prior
-                                                         / (response_var_shape_prior + 1.)]])
+        gibbs_iter0_response_error_variance = np.array([[response_var_scale_prior]])
 
         # Record the state specification of the state space model
 
@@ -1680,15 +1682,14 @@ class BayesianUnobservedComponents:
         if self.level:
             if self.stochastic_level:
                 if level_var_shape_prior is None:
-                    level_var_shape_prior = 1e-6
+                    level_var_shape_prior = default_shape_prior
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = 1e-6
+                    level_var_scale_prior = default_scale_prior
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
-                gibbs_iter0_state_error_var.append(level_var_scale_prior
-                                                   / (level_var_shape_prior + 1.))
+                gibbs_iter0_state_error_var.append(level_var_scale_prior)
                 stochastic_index = s
                 s += 1
             else:
@@ -1746,15 +1747,14 @@ class BayesianUnobservedComponents:
         if self.trend:
             if self.stochastic_trend:
                 if trend_var_shape_prior is None:
-                    trend_var_shape_prior = 1e-6
+                    trend_var_shape_prior = 1
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = 1e-6
+                    trend_var_scale_prior = 0.1 * default_scale_prior
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
-                gibbs_iter0_state_error_var.append(trend_var_scale_prior
-                                                   / (trend_var_shape_prior + 1.))
+                gibbs_iter0_state_error_var.append(trend_var_scale_prior)
 
                 stochastic_index = s
                 s += 1
@@ -1826,18 +1826,18 @@ class BayesianUnobservedComponents:
                 seasonal_period.append(v)
                 if self.stochastic_lag_seasonal[c]:
                     if lag_season_var_shape_prior is None:
-                        shape_prior = 1e-6
+                        shape_prior = default_shape_prior
                     else:
                         shape_prior = lag_season_var_shape_prior[c]
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        scale_prior = 1e-6
+                        scale_prior = default_scale_prior
                     else:
                         scale_prior = lag_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
 
-                    gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
+                    gibbs_iter0_state_error_var.append(scale_prior)
 
                     stochastic_index = s
                     s += 1
@@ -1900,18 +1900,18 @@ class BayesianUnobservedComponents:
                 seasonal_period.append(v)
                 if self.stochastic_dummy_seasonal[c]:
                     if dum_season_var_shape_prior is None:
-                        shape_prior = 1e-6
+                        shape_prior = default_shape_prior
                     else:
                         shape_prior = dum_season_var_shape_prior[c]
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        scale_prior = 1e-6
+                        scale_prior = default_scale_prior
                     else:
                         scale_prior = dum_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
 
-                    gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
+                    gibbs_iter0_state_error_var.append(scale_prior)
 
                     stochastic_index = s
                     s += 1
@@ -1958,19 +1958,19 @@ class BayesianUnobservedComponents:
                 seasonal_period.append(period)
                 if self.stochastic_trig_seasonal[c]:
                     if trig_season_var_shape_prior is None:
-                        shape_prior = 1e-6
+                        shape_prior = default_shape_prior
                     else:
                         shape_prior = trig_season_var_shape_prior[c]
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = 1e-6
+                        scale_prior = default_scale_prior
                     else:
                         scale_prior = trig_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
 
                     for k in range(num_eqs):
-                        gibbs_iter0_state_error_var.append(scale_prior / (shape_prior + 1.))
+                        gibbs_iter0_state_error_var.append(scale_prior)
 
                     stochastic_index = s
                     s += num_eqs
@@ -2677,6 +2677,7 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
         H = self.state_sse_transformation_matrix
         X = self.predictors
+        var_y = np.var(self.response, ddof=1)
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
@@ -2778,7 +2779,9 @@ class BayesianUnobservedComponents:
             regression_coefficients = np.array([[[]]])
 
         # Run Gibbs sampler
-        for s in range(num_samp):
+        s = 0
+        # for s in range(num_samp):
+        while s < num_samp:
             if s < 1:
                 init_state_values = gibbs_iter0_init_state
                 response_err_var = gibbs_iter0_response_error_variance
@@ -2862,10 +2865,10 @@ class BayesianUnobservedComponents:
                       init_state=init_state_values,
                       init_state_covariance=init_state_covariance)
 
-            filtered_state[s] = y_kf.filtered_state
-            state_covariance[s] = y_kf.state_covariance
-            filtered_prediction[s] = y_kf.one_step_ahead_prediction
-            response_variance[s] = y_kf.response_variance
+            _filtered_state = y_kf.filtered_state
+            _state_covariance = y_kf.state_covariance
+            _filtered_prediction = y_kf.one_step_ahead_prediction
+            _response_variance = y_kf.response_variance
 
             # Smoothed state from D-K smoother
             dk = dks(y=y,
@@ -2880,70 +2883,103 @@ class BayesianUnobservedComponents:
                      init_state_covariance=init_state_covariance)
 
             # Smoothed disturbances and state
-            smoothed_errors[s] = dk.simulated_smoothed_errors
-            smoothed_state[s] = dk.simulated_smoothed_state
-            smoothed_prediction[s] = dk.simulated_smoothed_prediction
+            _smoothed_errors = dk.simulated_smoothed_errors
+            _smoothed_state = dk.simulated_smoothed_state
+            _smoothed_prediction = dk.simulated_smoothed_prediction
 
             if self.response_has_nan:
-                y = self.response_replace_nan + self.response_nan_indicator * smoothed_prediction[s]
-
-            # Get new draws for state variances
-            if q > 0:
-                state_resid = smoothed_errors[s][:, 1:, 0]
-                state_sse = dot(state_resid.T ** 2, n_ones)
-                state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
-                state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
-                state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
-
-            # Get new draw for the level's AR(1) coefficient, if applicable
-            if self.level and self.damped_level:
-                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                              lag=(1,),
-                                              mean_prior=damped_level_coeff_mean_prior,
-                                              precision_prior=damped_level_coeff_prec_prior,
-                                              state_err_var_post=state_err_var_post,
-                                              state_eqn_index=level_state_eqn_idx,
-                                              state_err_var_post_index=level_stoch_idx)
-                damped_level_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
-
-            # Get new draw for the trend's AR(1) coefficient, if applicable
-            if self.trend and self.damped_trend:
-                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                              lag=(1,),
-                                              mean_prior=damped_trend_coeff_mean_prior,
-                                              precision_prior=damped_trend_coeff_prec_prior,
-                                              state_err_var_post=state_err_var_post,
-                                              state_eqn_index=trend_state_eqn_idx,
-                                              state_err_var_post_index=trend_stoch_idx)
-                damped_trend_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
-
-            # Get new draw for lag_seasonal AR(1) coefficients, if applicable
-            if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                              lag=self.lag_season_damped_lags,
-                                              mean_prior=damped_lag_season_coeff_mean_prior,
-                                              precision_prior=damped_lag_season_coeff_prec_prior,
-                                              state_err_var_post=state_err_var_post,
-                                              state_eqn_index=season_state_eqn_idx,
-                                              state_err_var_post_index=season_stoch_idx)
-                damped_season_coefficients[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+                y = self.response_replace_nan + self.response_nan_indicator * _smoothed_prediction
 
             # Get new draw for observation variance
-            smooth_one_step_ahead_prediction_resid = smoothed_errors[s, :, 0]
+            smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
             response_var_scale_post = (response_var_scale_prior
                                        + 0.5 * dot(smooth_one_step_ahead_prediction_resid.T,
                                                    smooth_one_step_ahead_prediction_resid))
-            response_error_variance[s] = dist.vec_ig(response_var_shape_post, response_var_scale_post)
+            _response_error_variance = dist.vec_ig(response_var_shape_post, response_var_scale_post)
 
-            # Get new draw for regression coefficients
-            if self.has_predictors:
-                smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
-                y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
-                reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
-                cov_post = response_error_variance[s][0, 0] * W
-                regression_coefficients[s] = (Vt.T @ np.random
-                                              .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
-                                                                   cov=cov_post).reshape(-1, 1))
+            if np.all(_response_error_variance < var_y):
+                # Get new draws for state variances
+                if q > 0:
+                    state_resid = _smoothed_errors[:, 1:, 0]
+                    state_sse = dot(state_resid.T ** 2, n_ones)
+                    state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
+                    state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
+
+                    if np.all(state_err_var_post < var_y):
+                        filtered_state[s] = _filtered_state
+                        state_covariance[s] = _state_covariance
+                        filtered_prediction[s] = _filtered_prediction
+                        response_variance[s] = _response_variance
+                        smoothed_errors[s] = _smoothed_errors
+                        smoothed_state[s] = _smoothed_state
+                        smoothed_prediction[s] = _smoothed_prediction
+                        response_error_variance[s] = _response_error_variance
+                        state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
+
+                        # Get new draw for the level's AR(1) coefficient, if applicable
+                        if self.level and self.damped_level:
+                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
+                                                          lag=(1,),
+                                                          mean_prior=damped_level_coeff_mean_prior,
+                                                          precision_prior=damped_level_coeff_prec_prior,
+                                                          state_err_var_post=state_err_var_post,
+                                                          state_eqn_index=level_state_eqn_idx,
+                                                          state_err_var_post_index=level_stoch_idx)
+                            damped_level_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+
+                        # Get new draw for the trend's AR(1) coefficient, if applicable
+                        if self.trend and self.damped_trend:
+                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
+                                                          lag=(1,),
+                                                          mean_prior=damped_trend_coeff_mean_prior,
+                                                          precision_prior=damped_trend_coeff_prec_prior,
+                                                          state_err_var_post=state_err_var_post,
+                                                          state_eqn_index=trend_state_eqn_idx,
+                                                          state_err_var_post_index=trend_stoch_idx)
+                            damped_trend_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+
+                        # Get new draw for lag_seasonal AR(1) coefficients, if applicable
+                        if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
+                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
+                                                          lag=self.lag_season_damped_lags,
+                                                          mean_prior=damped_lag_season_coeff_mean_prior,
+                                                          precision_prior=damped_lag_season_coeff_prec_prior,
+                                                          state_err_var_post=state_err_var_post,
+                                                          state_eqn_index=season_state_eqn_idx,
+                                                          state_err_var_post_index=season_stoch_idx)
+                            damped_season_coefficients[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+
+                        # Get new draw for regression coefficients
+                        if self.has_predictors:
+                            smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
+                            y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
+                            reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                            cov_post = response_error_variance[s][0, 0] * W
+                            regression_coefficients[s] = (Vt.T @ np.random
+                                                          .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
+                                                                               cov=cov_post).reshape(-1, 1))
+
+                        s += 1
+                else:
+                    filtered_state[s] = _filtered_state
+                    state_covariance[s] = _state_covariance
+                    filtered_prediction[s] = _filtered_prediction
+                    response_variance[s] = _response_variance
+                    smoothed_errors[s] = _smoothed_errors
+                    smoothed_state[s] = _smoothed_state
+                    smoothed_prediction[s] = _smoothed_prediction
+                    response_error_variance[s] = _response_error_variance
+
+                    if self.has_predictors:
+                        smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
+                        y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
+                        reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                        cov_post = response_error_variance[s][0, 0] * W
+                        regression_coefficients[s] = (Vt.T @ np.random
+                                                      .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
+                                                                           cov=cov_post).reshape(-1, 1))
+
+                    s += 1
 
         self.posterior = Posterior(num_samp, smoothed_state,
                                    smoothed_errors, smoothed_prediction,
