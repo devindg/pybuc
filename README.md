@@ -277,7 +277,7 @@ The Bayesian Unobserved Components forecast plot, components plot, and RMSE are 
 ![plot](./examples/images/airline_passengers_bayes_uc_components_filtered.png)
 
 ```
-BAYES-UC RMSE: 17.389692065902654
+BAYES-UC RMSE: 17.38140771574873
 ```
 
 # Model
