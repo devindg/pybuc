@@ -10,6 +10,7 @@ from .statespace.durbin_koopman_smoother import dk_smoother as dks
 from .utils import array_operations as ao
 from .vectorized import distributions as dist
 from .model_assessment.performance import watanabe_akaike, WAIC
+from seaborn import histplot, lineplot
 
 
 class Posterior(NamedTuple):
@@ -392,7 +393,7 @@ def _forecast(posterior: Posterior,
               burn: int = 0,
               damped_level_transition_index: tuple = (),
               damped_trend_transition_index: tuple = (),
-              damped_season_transition_index: tuple = ()) -> tuple:
+              damped_season_transition_index: tuple[tuple, ...] = ()) -> tuple:
     """
     The posterior forecast distributions for the response and the state vector.
 
@@ -637,9 +638,7 @@ class BayesianUnobservedComponents:
         self.future_time_index = None
         self.num_first_obs_ignore = None
         self.posterior = None
-        self.damped_level_transition_index = ()
-        self.damped_trend_transition_index = ()
-        self.damped_lag_season_transition_index = ()
+        self.parameters = []
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -1303,10 +1302,6 @@ class BayesianUnobservedComponents:
         if self.level:
             T[i, j] = 1.
 
-            # Get transition index for level if damping specified
-            if self.damped_level:
-                self.damped_level_transition_index = (i, j)
-
             i += 1
             j += 1
 
@@ -1314,29 +1309,18 @@ class BayesianUnobservedComponents:
             T[i - 1, j] = 1.
             T[i, j] = 1.
 
-            # Get transition index for trend if damping specified
-            if self.damped_trend:
-                self.damped_trend_transition_index = (i, j)
-
             i += 1
             j += 1
 
         if len(self.lag_seasonal) > 0:
-            w = ()
             for c, v in enumerate(self.lag_seasonal):
                 T[i, j + v - 1] = 1.
-
-                # Get transition index for lag_seasonal component if damping specified
-                if self.damped_lag_seasonal[c]:
-                    w += ((i, j + v - 1),)
 
                 for k in range(1, v):
                     T[i + k, j + k - 1] = 1.
 
                 i += v
                 j += v
-
-            self.damped_lag_season_transition_index = w
 
         if len(self.dummy_seasonal) > 0:
             for v in self.dummy_seasonal:
@@ -1663,8 +1647,13 @@ class BayesianUnobservedComponents:
 
         # Record the specification of the model.
         # Irregular component will always be a part of the model.
-        components = dict()
-        components['Irregular'] = dict()
+        components = {"Irregular": dict(params=["Irregular.Var"],
+                                        start_state_eqn_index=None,
+                                        end_state_eqn_index=None,
+                                        stochastic=True,
+                                        stochastic_index=None,
+                                        damped=None,
+                                        damped_transition_index=None)}
 
         # RESPONSE ERROR
         if response_var_shape_prior is None:
@@ -1680,7 +1669,10 @@ class BayesianUnobservedComponents:
         # LEVEL STATE
         j, s = 0, 0  # j indexes the state equation, and s indexes stochastic equations
         if self.level:
+            level_params = []
             if self.stochastic_level:
+                level_params.append("Level.Var")
+
                 if level_var_shape_prior is None:
                     level_var_shape_prior = default_shape_prior
 
@@ -1712,6 +1704,7 @@ class BayesianUnobservedComponents:
             # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
             if self.damped_level:
+                level_params.append("Level.AR")
                 if damped_level_coeff_mean_prior is None:
                     damped_level_coeff_mean_prior = np.array([[0.]])
 
@@ -1728,14 +1721,15 @@ class BayesianUnobservedComponents:
                                                 (1. - gibbs_iter0_damped_level_coeff[0, 0] ** 2))
 
                 init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
-                damped_index = self.damped_level_transition_index
+                damped_index = (j, j)
             else:
-                damped_index = None
+                damped_index = ()
                 init_state_variances.append(1e6)
                 init_state_plus_values.append(0.)
 
             gibbs_iter0_init_state.append(self._gibbs_iter0_init_level())
-            components['Level'] = dict(start_state_eqn_index=j,
+            components["Level"] = dict(params=level_params,
+                                       start_state_eqn_index=j,
                                        end_state_eqn_index=j + 1,
                                        stochastic=self.stochastic_level,
                                        stochastic_index=stochastic_index,
@@ -1745,7 +1739,10 @@ class BayesianUnobservedComponents:
 
         # TREND STATE
         if self.trend:
+            trend_params = []
             if self.stochastic_trend:
+                trend_params.append("Trend.Var")
+
                 if trend_var_shape_prior is None:
                     trend_var_shape_prior = 1
 
@@ -1778,6 +1775,8 @@ class BayesianUnobservedComponents:
             # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
             if self.damped_trend:
+                trend_params.append("Trend.AR")
+
                 if damped_trend_coeff_mean_prior is None:
                     damped_trend_coeff_mean_prior = np.array([[0.]])
 
@@ -1794,14 +1793,15 @@ class BayesianUnobservedComponents:
                                                 (1. - gibbs_iter0_damped_trend_coeff[0, 0] ** 2))
 
                 init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
-                damped_index = self.damped_trend_transition_index
+                damped_index = (j, j)
             else:
-                damped_index = None
+                damped_index = ()
                 init_state_variances.append(1e6)
                 init_state_plus_values.append(0.)
 
             gibbs_iter0_init_state.append(self._gibbs_iter0_init_trend())
-            components['Trend'] = dict(start_state_eqn_index=j,
+            components["Trend"] = dict(params=trend_params,
+                                       start_state_eqn_index=j,
                                        end_state_eqn_index=j + 1,
                                        stochastic=self.stochastic_trend,
                                        stochastic_index=stochastic_index,
@@ -1823,8 +1823,11 @@ class BayesianUnobservedComponents:
             i = j
             d = 0  # indexes damped periodicities
             for c, v in enumerate(self.lag_seasonal):
+                lag_season_params = []
                 seasonal_period.append(v)
                 if self.stochastic_lag_seasonal[c]:
+                    lag_season_params.append(f"Lag-Seasonal.{v}.Var")
+
                     if lag_season_var_shape_prior is None:
                         shape_prior = default_shape_prior
                     else:
@@ -1861,6 +1864,7 @@ class BayesianUnobservedComponents:
                 # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
                 if self.damped_lag_seasonal[c]:
+                    lag_season_params.append(f"Lag-Seasonal.{v}.AR")
 
                     if abs(damped_lag_season_coeff_mean_prior[d, 0]) >= 1:
                         init_state_variances.append(1e6)
@@ -1869,10 +1873,12 @@ class BayesianUnobservedComponents:
                                                     (1. - gibbs_iter0_damped_season_coeff[d, 0] ** 2))
 
                     init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
-                    damped_index = d
+                    damped_index = (i, i + v - 1)
+                    damped_ar_coeff_col_index = d
                     d += 1
                 else:
-                    damped_index = None
+                    damped_index = ()
+                    damped_ar_coeff_col_index = None
                     init_state_variances.append(1e6)
                     init_state_plus_values.append(0.)
 
@@ -1880,12 +1886,14 @@ class BayesianUnobservedComponents:
                     init_state_variances.append(1e6)
                     init_state_plus_values.append(0.)
 
-                components[f'Lag-Seasonal.{v}'] = dict(start_state_eqn_index=i,
+                components[f"Lag-Seasonal.{v}"] = dict(params=lag_season_params,
+                                                       start_state_eqn_index=i,
                                                        end_state_eqn_index=i + v,
                                                        stochastic=self.stochastic_lag_seasonal[c],
                                                        stochastic_index=stochastic_index,
                                                        damped=self.damped_lag_seasonal[c],
-                                                       damped_transition_index=damped_index)
+                                                       damped_transition_index=damped_index,
+                                                       damped_ar_coeff_col_index=damped_ar_coeff_col_index)
                 i += v
 
             for k in self._gibbs_iter0_init_lag_season():
@@ -1897,8 +1905,11 @@ class BayesianUnobservedComponents:
         if len(self.dummy_seasonal) > 0:
             i = j
             for c, v in enumerate(self.dummy_seasonal):
+                dum_season_params = []
                 seasonal_period.append(v)
                 if self.stochastic_dummy_seasonal[c]:
+                    dum_season_params.append(f"Dummy-Seasonal.{v}.Var")
+
                     if dum_season_var_shape_prior is None:
                         shape_prior = default_shape_prior
                     else:
@@ -1931,7 +1942,8 @@ class BayesianUnobservedComponents:
                     init_state_plus_values.append(0.)
                     init_state_variances.append(1e6)
 
-                components[f'Dummy-Seasonal.{v}'] = dict(start_state_eqn_index=i,
+                components[f"Dummy-Seasonal.{v}"] = dict(params=dum_season_params,
+                                                         start_state_eqn_index=i,
                                                          end_state_eqn_index=i + (v - 1),
                                                          stochastic=self.stochastic_dummy_seasonal[c],
                                                          stochastic_index=stochastic_index,
@@ -1948,6 +1960,7 @@ class BayesianUnobservedComponents:
         if len(self.trig_seasonal) > 0:
             i = j
             for c, v in enumerate(self.trig_seasonal):
+                trig_season_params = []
                 period, num_harmonics = v
 
                 if period / num_harmonics == 2:
@@ -1957,6 +1970,8 @@ class BayesianUnobservedComponents:
 
                 seasonal_period.append(period)
                 if self.stochastic_trig_seasonal[c]:
+                    trig_season_params.append(f"Trig-Seasonal.{period}.{num_harmonics}.Var")
+
                     if trig_season_var_shape_prior is None:
                         shape_prior = default_shape_prior
                     else:
@@ -1990,8 +2005,9 @@ class BayesianUnobservedComponents:
                     init_state_plus_values.append(0.)
                     init_state_variances.append(1e6)
 
-                components[f'Trigonometric-Seasonal'
-                           f'.{period}.{num_harmonics}'] = dict(start_state_eqn_index=i,
+                components[f"Trig-Seasonal"
+                           f".{period}.{num_harmonics}"] = dict(params=trig_season_params,
+                                                                start_state_eqn_index=i,
                                                                 end_state_eqn_index=i + num_eqs,
                                                                 stochastic=self.stochastic_trig_seasonal[c],
                                                                 stochastic_index=stochastic_index,
@@ -2006,7 +2022,8 @@ class BayesianUnobservedComponents:
 
         # REGRESSION
         if self.has_predictors:
-            components['Regression'] = dict(start_state_eqn_index=j,
+            components["Regression"] = dict(params=[f"Coeff.{i}" for i in self.predictors_names],
+                                            start_state_eqn_index=j,
                                             end_state_eqn_index=j + 1,
                                             stochastic=False,
                                             stochastic_index=None,
@@ -2016,7 +2033,11 @@ class BayesianUnobservedComponents:
             XtX = Vt.T @ StS @ Vt
             X = self.predictors
             y = self.response
-            X_add_const = np.c_[np.ones((n, 1)), X]
+            if self.response_has_nan:
+                nan_index = np.isnan(y).any(axis=1)
+                y = y[~nan_index]
+                X = X[~nan_index]
+            X_add_const = np.c_[np.ones((y.shape[0], 1)), X]
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -2046,7 +2067,8 @@ class BayesianUnobservedComponents:
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
 
             # Set up initial Gibbs values for regression coefficients
-            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.var(y)],
+
+            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.nanvar(y)],
                                                                        np.diag(reg_coeff_prec_prior))))
             gibbs_iter0_reg_coeff_cov_post = ao.mat_inv(X_add_const.T @ X_add_const
                                                         + gibbs_iter0_reg_coeff_prec_prior)
@@ -2063,6 +2085,11 @@ class BayesianUnobservedComponents:
         init_state_plus_values = np.vstack(init_state_plus_values)
         init_state_covariance = np.diag(init_state_variances)
         self.num_first_obs_ignore = max(1 + max(seasonal_period), self.num_state_eqs)
+
+        # Get list of all parameters
+        for c in components:
+            self.parameters += components[c]['params']
+
 
         self.model_setup = ModelSetup(components,
                                       response_var_scale_prior,
@@ -2095,6 +2122,76 @@ class BayesianUnobservedComponents:
                                       gibbs_iter0_reg_coeff)
 
         return self.model_setup
+
+    def posterior_dict(self, burn: int = 0) -> dict:
+        """
+
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+        :return:
+        """
+
+        if isinstance(burn, int) and burn >= 0:
+            pass
+        else:
+            raise ValueError('burn must be a non-negative integer.')
+
+        self._posterior_exists_check()
+        posterior = self.posterior
+
+        components = self.model_setup.components
+        resp_err_var = posterior.response_error_variance[burn:]
+        state_err_cov = posterior.state_error_covariance[burn:]
+        params = self.parameters
+
+        if self.has_predictors:
+            reg_coeff = self.posterior.regression_coefficients[burn:, :, 0]
+
+        post_dict = {}
+        for p in params:
+            if p == 'Irregular.Var':
+                post_dict[p] = resp_err_var[:, 0, 0]
+
+            elif p == 'Level.Var':
+                c = components['Level']
+                idx = c['stochastic_index']
+                post_dict[p] = state_err_cov[:, idx, idx]
+
+            elif p == 'Level.AR':
+                post_dict[p] = self.posterior.damped_level_coefficient[:, 0, 0]
+
+            elif p == 'Trend.Var':
+                c = components['Trend']
+                idx = c['stochastic_index']
+                post_dict[p] = state_err_cov[:, idx, idx]
+
+            elif p == 'Trend.AR':
+                post_dict[p] = self.posterior.damped_trend_coefficient[:, 0, 0]
+
+            elif 'Lag-Seasonal' in p and '.Var' in p:
+                c = components[p.replace('.Var', '')]
+                idx = c['stochastic_index']
+                post_dict[p] = state_err_cov[:, idx, idx]
+
+            elif 'Lag-Seasonal' in p and '.AR' in p:
+                c = components[p.replace('.AR', '')]
+                idx = c['damped_ar_coeff_col_index']
+                post_dict[p] = self.posterior.damped_season_coefficients[:, idx, 0]
+
+            elif 'Dummy-Seasonal' in p and '.Var' in p:
+                c = components[p.replace('.Var', '')]
+                idx = c['stochastic_index']
+                post_dict[p] = state_err_cov[:, idx, idx]
+
+            elif 'Trig-Seasonal' in p and '.Var' in p:
+                c = components[p.replace('.Var', '')]
+                idx = c['stochastic_index']
+                post_dict[p] = state_err_cov[:, idx, idx]
+
+            elif 'Coeff.' in p:
+                post_dict[p] = reg_coeff[:, self.predictors_names.index(p.replace('Coeff.', ''))]
+
+        return post_dict
 
     def sample(self,
                num_samp: int,
@@ -2733,7 +2830,7 @@ class BayesianUnobservedComponents:
             damped_level_coefficient = np.empty((num_samp, 1, 1))
             level_stoch_idx = [components['Level']['stochastic_index']]
             level_state_eqn_idx = [components['Level']['start_state_eqn_index']]
-            ar_level_tran_idx = self.damped_level_transition_index
+            ar_level_tran_idx = components['Level']['damped_transition_index']
         else:
             damped_level_coefficient = np.array([[[]]])
 
@@ -2742,7 +2839,7 @@ class BayesianUnobservedComponents:
             damped_trend_coefficient = np.empty((num_samp, 1, 1))
             trend_stoch_idx = [components['Trend']['stochastic_index']]
             trend_state_eqn_idx = [components['Trend']['start_state_eqn_index']]
-            ar_trend_tran_idx = self.damped_trend_transition_index
+            ar_trend_tran_idx = components['Trend']['damped_transition_index']
         else:
             damped_trend_coefficient = np.array([[[]]])
 
@@ -2751,10 +2848,14 @@ class BayesianUnobservedComponents:
             damped_season_coefficients = np.empty((num_samp, self.num_damped_lag_season, 1))
             season_stoch_idx = []
             season_state_eqn_idx = []
-            ar_season_tran_idx = self.damped_lag_season_transition_index
+            ar_season_tran_idx = ()
             for j in self.lag_seasonal:
                 season_stoch_idx.append(components[f'Lag-Seasonal.{j}']['stochastic_index'])
                 season_state_eqn_idx.append(components[f'Lag-Seasonal.{j}']['start_state_eqn_index'])
+                if components[f'Lag-Seasonal.{j}']['damped']:
+                    ar_season_tran_idx += (components[f'Lag-Seasonal.{j}']['damped_transition_index'], )
+                else:
+                    pass
         else:
             damped_season_coefficients = np.array([[[]]])
 
@@ -3013,6 +3114,7 @@ class BayesianUnobservedComponents:
 
         self._posterior_exists_check()
         posterior = self.posterior
+        components = self.model_setup.components
 
         if isinstance(num_periods, int) and num_periods > 0:
             pass
@@ -3124,9 +3226,20 @@ class BayesianUnobservedComponents:
         T = self.state_transition_matrix
         C = self.state_intercept_matrix
         R = self.state_error_transformation_matrix
-        damped_level_transition_index = self.damped_level_transition_index
-        damped_trend_transition_index = self.damped_trend_transition_index
-        damped_season_transition_index = self.damped_lag_season_transition_index
+        damped_level_transition_index = ()
+        damped_trend_transition_index = ()
+        damped_season_transition_index = ()
+
+        if self.level and self.damped_level:
+            damped_level_transition_index = components['Level']['damped_transition_index']
+
+        if self.trend and self.damped_trend:
+            damped_trend_transition_index = components['Trend']['damped_transition_index']
+
+        if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
+            for c in components:
+                if 'Lag-Seasonal' in c and components[c]['damped']:
+                        damped_season_transition_index += (components[c]['damped_transition_index'], )
 
         response_forecast, state_forecast = _forecast(posterior=posterior,
                                                       num_periods=num_periods,
@@ -3319,6 +3432,51 @@ class BayesianUnobservedComponents:
 
         return
 
+    def plot_trace(self,
+                   parameters: list = None,
+                   burn: int = 0):
+        """
+
+        :param parameters: list of parameter names. A histogram and sampling trace will be plotted
+        for each parameter in the list. Default is all parameters in the model, which can be accessed
+        via the class attribute 'parameters'.
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+        :return:
+        """
+
+        if parameters is None:
+            parameters = self.parameters
+
+        if not isinstance(parameters, list):
+            raise ValueError("parameters must be a list.")
+        else:
+            if not all(i in self.parameters for i in parameters):
+                raise ValueError("Not all parameter names are valid. See the class attribute "
+                                 "'parameters' for the full list of valid parameter names.")
+
+        if isinstance(burn, int) and burn >= 0:
+            pass
+        else:
+            raise ValueError('burn must be a non-negative integer.')
+
+        self._posterior_exists_check()
+        post_dict = self.posterior_dict(burn=burn)
+        num_params = len(parameters)
+
+        fig, ax = plt.subplots(num_params, 2)
+        fig.set_size_inches(12, 10)
+        row = 0
+        for p in parameters:
+            histplot(post_dict[p][burn:], ax=ax[row, 0])
+            lineplot(post_dict[p][burn:], ax=ax[row, 1])
+            ax[row, 0].title.set_text(p)
+            row += 1
+
+        fig.tight_layout()
+
+        return
+
     def summary(self,
                 burn: int = 0,
                 cred_int_level: float = 0.05) -> dict:
@@ -3339,7 +3497,8 @@ class BayesianUnobservedComponents:
         """
 
         self._posterior_exists_check()
-        posterior = self.posterior
+        num_post_samp_after_burn = self.posterior.num_samp - burn
+        post_dict = self.posterior_dict(burn=burn)
 
         if isinstance(burn, int) and burn >= 0:
             pass
@@ -3352,69 +3511,15 @@ class BayesianUnobservedComponents:
         else:
             raise ValueError('cred_int_level must be a value in the interval (0, 1).')
 
-        components = self.model_setup.components
-        resp_err_var = posterior.response_error_variance[burn:]
-        state_err_cov = posterior.state_error_covariance[burn:]
-        smy = dict()
-        smy['Number of posterior samples (after burn)'] = posterior.num_samp - burn
+        smy = {'Number of posterior samples (after burn)': num_post_samp_after_burn}
 
-        d = 0  # index for damped seasonal components
-        for c in components:
-            if c == 'Irregular':
-                smy[f"Posterior.Mean[{c}.Var]"] = np.mean(resp_err_var)
-                smy[f"Posterior.StdDev[{c}.Var]"] = np.std(resp_err_var)
-                smy[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(resp_err_var, lb)
-                smy[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(resp_err_var, ub)
+        for k, v in post_dict.items():
+            smy[f"Posterior.Mean[{k}]"] = np.mean(v)
+            smy[f"Posterior.StdDev[{k}]"] = np.std(v)
+            smy[f"Posterior.CredInt.LB[{k}]"] = np.quantile(v, lb)
+            smy[f"Posterior.CredInt.UB[{k}]"] = np.quantile(v, ub)
 
-            if c not in ('Irregular', 'Regression'):
-                v = components[c]
-                stochastic = v['stochastic']
-                damped = v['damped']
-                idx = v['stochastic_index']
-
-                if stochastic:
-                    smy[f"Posterior.Mean[{c}.Var]"] = np.mean(state_err_cov[:, idx, idx])
-                    smy[f"Posterior.StdDev[{c}.Var]"] = np.std(state_err_cov[:, idx, idx])
-                    smy[f"Posterior.CredInt.LB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], lb)
-                    smy[f"Posterior.CredInt.UB[{c}.Var]"] = np.quantile(state_err_cov[:, idx, idx], ub)
-
-                if c == 'Level' and damped:
-                    ar_coeff = self.posterior.damped_level_coefficient[burn:, 0, 0]
-                    smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                    smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                    smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
-
-                if c == 'Trend' and damped:
-                    ar_coeff = self.posterior.damped_trend_coefficient[burn:, 0, 0]
-                    smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                    smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                    smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                    smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
-
-                if 'Lag-Seasonal' in c:
-                    if damped:
-                        ar_coeff = self.posterior.damped_season_coefficients[burn:, d, 0]
-                        smy[f"Posterior.Mean[{c}.AR]"] = np.mean(ar_coeff)
-                        smy[f"Posterior.StdDev[{c}.AR]"] = np.std(ar_coeff)
-                        smy[f"Posterior.CredInt.LB[{c}.AR]"] = np.quantile(ar_coeff, lb)
-                        smy[f"Posterior.CredInt.UB[{c}.AR]"] = np.quantile(ar_coeff, ub)
-                        d += 1
-
-            if c == 'Regression':
-                reg_coeff = posterior.regression_coefficients[burn:, :, 0]
-                mean_reg_coeff = np.mean(reg_coeff, axis=0)
-                std_reg_coeff = np.std(reg_coeff, axis=0)
-                ci_lb_reg_coeff = np.quantile(reg_coeff, lb, axis=0)
-                ci_ub_reg_coeff = np.quantile(reg_coeff, ub, axis=0)
-                reg_coeff_prob_pos = np.sum((reg_coeff > 0) * 1, axis=0) / posterior.num_samp
-
-                for k in range(self.num_predictors):
-                    smy[f"Posterior.Mean[beta.{self.predictors_names[k]}]"] = mean_reg_coeff[k]
-                    smy[f"Posterior.StdDev[beta.{self.predictors_names[k]}]"] = std_reg_coeff[k]
-                    smy[f"Posterior.CredInt.LB[beta.{self.predictors_names[k]}]"] = ci_lb_reg_coeff[k]
-                    smy[f"Posterior.CredInt.UB[beta.{self.predictors_names[k]}]"] = ci_ub_reg_coeff[k]
-                    smy[f"Posterior.ProbPositive[Coeff.{self.predictors_names[k]}]"] = reg_coeff_prob_pos[k]
-
+            if 'Coeff.' in k:
+                smy[f"Posterior.ProbPositive[{k}]"] = np.sum((v > 0) * 1) / num_post_samp_after_burn
 
         return smy

@@ -90,7 +90,7 @@ if __name__ == '__main__':
     bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
                                                 level=True, stochastic_level=True,
                                                 trend=True, stochastic_trend=True,
-                                                trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
+                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
                                                 seed=123)
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
@@ -103,11 +103,15 @@ if __name__ == '__main__':
     yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
     plt.plot(y_train)
     plt.plot(y_train.index, yhat)
-    plt.title('Bayesian-UC: In-sample')
+    plt.title('Bayesian UC: In-sample')
     plt.show()
 
     # Plot time series components
     bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
+    plt.show()
+
+    # Plot trace of posterior
+    bayes_uc.plot_trace(burn=mcmc_burn)
     plt.show()
 
     # Get and plot forecast
