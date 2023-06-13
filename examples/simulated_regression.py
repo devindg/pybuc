@@ -121,6 +121,10 @@ if __name__ == '__main__':
     bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
     plt.show()
 
+    # Plot trace of posterior
+    bayes_uc.plot_trace(burn=mcmc_burn)
+    plt.show()
+
     # Get and plot forecast
     forecast, _ = bayes_uc.forecast(hold_out_size, mcmc_burn, future_predictors=x_test)
     forecast_mean = np.mean(forecast, axis=0)

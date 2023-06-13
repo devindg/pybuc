@@ -155,13 +155,14 @@ plt.show()
 # Print RMSE
 print(f"SARIMA RMSE: {rmse(y_test.to_numpy(), sarima_forecast['mean'].to_numpy())}")
 ```
-The SARIMA(0, 1, 1)(0, 1, 1) forecast plot and root mean squared error (RMSE) are shown below. 
-
-![plot](./examples/images/airline_passengers_sarima_forecast.png)
 
 ```
 SARIMA RMSE: 21.09028021383853
 ```
+
+The SARIMA(0, 1, 1)(0, 1, 1) forecast plot.
+
+![plot](./examples/images/airline_passengers_sarima_forecast.png)
 
 ### MLE Unobserved Components
 
@@ -202,15 +203,15 @@ plt.show()
 print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
 ```
 
-The MLE Unobserved Components forecast plot, components plot, and RMSE are shown below.
+```
+MLE UC RMSE: 17.961873327622694
+```
+
+The MLE Unobserved Components forecast and component plots.
 
 ![plot](./examples/images/airline_passengers_mle_uc_forecast.png)
 
 ![plot](./examples/images/airline_passengers_mle_uc_components.png)
-
-```
-MLE UC RMSE: 17.961873327622694
-```
 
 As noted above, a distinguishing feature of STS/UC models is their explicit modeling of trend and seasonality. This is 
 illustrated with the components plot.
@@ -264,21 +265,27 @@ plt.show()
 print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
+```
+BAYES-UC RMSE: 17.38140771574873
+```
+
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
 
 ![plot](./examples/images/airline_passengers_bayes_uc_forecast.png)
 
-#### Smoothed
+#### Component plots
+
+##### Smoothed
 
 ![plot](./examples/images/airline_passengers_bayes_uc_components.png)
 
-#### Filtered
+##### Filtered
 
 ![plot](./examples/images/airline_passengers_bayes_uc_components_filtered.png)
 
-```
-BAYES-UC RMSE: 17.38140771574873
-```
+#### Trace plots
+
+![plot](./examples/images/airline_passengers_bayes_uc_trace.png)
 
 # Model
 
