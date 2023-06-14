@@ -431,33 +431,6 @@ $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(
 
 ## Default priors
 
-### Stochastic variances
-
-If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
-the following defaults are used:
-
-$$
-\begin{align}
-    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(1, 0.1 * (0.01 * \mathrm{Std.Dev}(y))^2) \\
-\end{align}
-$$
-
-The level and seasonal priors match the default priors in R's `bsts` package. However, the default trend prior is 
-different. Whereas the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
-more conservative assumption about the variance associated with trend. This is reflected by the higher shape parameter 
-value of 1 (i.e., more weight is given to this prior than the others), and a scale parameter value that is one tenth the 
-size of the scale priors for level and seasonality. In other words, this prior assumes that variation in trend is small 
-relative to variation in level and seasonality. The idea is to guard against noise in the data that could result in 
-overly aggressive future trend.
-
-The default prior for irregular variance is:
-
-$$
-\sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
-$$
-
 ### Irregular and state variances
 
 If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
