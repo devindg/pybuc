@@ -58,7 +58,10 @@ class ModelSetup(NamedTuple):
     reg_coeff_cov_prior: np.ndarray
     reg_ninvg_coeff_cov_post: np.ndarray
     reg_ninvg_coeff_prec_post: np.ndarray
-    zellner_prior_obs: float
+    zellner_prior_obs: Union[int, float]
+    damped_level_coeff_zellner_prior_obs: Union[int, float]
+    damped_trend_coeff_zellner_prior_obs: Union[int, float]
+    damped_lag_season_coeff_zellner_prior_obs: tuple[Union[int, float], ...]
     gibbs_iter0_reg_coeff: np.ndarray
 
 class Forecast(NamedTuple):
@@ -72,12 +75,14 @@ def _set_seed(value):
 
 
 def _ar_state_post_upd(smoothed_state: np.ndarray,
-                       lag: tuple,
+                       lag: tuple[int, ...],
                        mean_prior: np.ndarray,
                        precision_prior: np.ndarray,
                        state_err_var_post: np.ndarray,
                        state_eqn_index: list,
-                       state_err_var_post_index: list):
+                       state_err_var_post_index: list,
+                       num_first_obs_ignore: int,
+                       damped_coeff_zellner_prior_obs: tuple[Union[int, float], ...]):
     """
     This is a generic function for updating an AR(p) coefficient for a state variable that
     has an autoregressive structure. For example, if trend is specified with damping, then the
@@ -118,12 +123,16 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
 
     c = 0
     for i in lag:
-        y = smoothed_state[:, state_eqn_index[c]][i:]
-        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
-        ar_coeff_cov_post = ao.mat_inv(dot(y_lag.T, y_lag) + precision_prior[c])
-        ar_coeff_mean_post[c] = dot(ar_coeff_cov_post,
-                                    dot(y_lag.T, y)
-                                    + dot(precision_prior[c], mean_prior[c]))
+        y = smoothed_state[:, state_eqn_index[c]][num_first_obs_ignore:]
+        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[num_first_obs_ignore:]
+
+        if precision_prior[c] is None:
+            prec_prior = damped_coeff_zellner_prior_obs[c] / y.size * (y_lag.T @ y_lag)
+        else:
+            prec_prior = precision_prior[c]
+
+        ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
+        ar_coeff_mean_post[c] = ar_coeff_cov_post @ (y_lag.T @ y + prec_prior @ mean_prior[c])
         cov_post[c] = state_err_var_post[state_err_var_post_index[c], 0] * ar_coeff_cov_post
         c += 1
 
@@ -639,6 +648,7 @@ class BayesianUnobservedComponents:
         self.num_first_obs_ignore = None
         self.posterior = None
         self.parameters = []
+        self.num_sampling_iterations = None
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -1595,7 +1605,9 @@ class BayesianUnobservedComponents:
                      dum_season_var_shape_prior, dum_season_var_scale_prior,
                      trig_season_var_shape_prior, trig_season_var_scale_prior,
                      reg_coeff_mean_prior, reg_coeff_prec_prior,
-                     zellner_prior_obs) -> ModelSetup:
+                     zellner_prior_obs, damped_level_coeff_zellner_prior_obs,
+                     damped_trend_coeff_zellner_prior_obs,
+                     damped_lag_season_coeff_zellner_prior_obs) -> ModelSetup:
 
         n = self.num_obs
         q = self.num_stoch_states
@@ -1705,13 +1717,18 @@ class BayesianUnobservedComponents:
 
             if self.damped_level:
                 level_params.append("Level.AR")
+                if damped_level_coeff_zellner_prior_obs is None:
+                    damped_level_coeff_zellner_prior_obs = 1e-6
+
                 if damped_level_coeff_mean_prior is None:
                     damped_level_coeff_mean_prior = np.array([[0.]])
 
                 if damped_level_coeff_prec_prior is None:
-                    damped_level_coeff_prec_prior = np.array([[1.]])
+                    damped_level_coeff_prec_prior = (None,)
+                    damped_level_coeff_cov_prior = (None,)
+                else:
+                    damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
 
-                damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
                 gibbs_iter0_damped_level_coeff = damped_level_coeff_mean_prior
 
                 if abs(damped_level_coeff_mean_prior[0, 0]) >= 1:
@@ -1777,13 +1794,18 @@ class BayesianUnobservedComponents:
             if self.damped_trend:
                 trend_params.append("Trend.AR")
 
+                if damped_trend_coeff_zellner_prior_obs is None:
+                    damped_trend_coeff_zellner_prior_obs = 1e-6
+
                 if damped_trend_coeff_mean_prior is None:
                     damped_trend_coeff_mean_prior = np.array([[0.]])
 
                 if damped_trend_coeff_prec_prior is None:
-                    damped_trend_coeff_prec_prior = np.array([[1.]])
+                    damped_trend_coeff_prec_prior = (None,)
+                    damped_trend_coeff_cov_prior = (None,)
+                else:
+                    damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
 
-                damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
                 gibbs_iter0_damped_trend_coeff = damped_trend_coeff_mean_prior
 
                 if abs(damped_trend_coeff_mean_prior[0, 0]) >= 1:
@@ -1812,12 +1834,18 @@ class BayesianUnobservedComponents:
         # LAG SEASONAL STATE
         if len(self.lag_seasonal) > 0:
             if self.num_damped_lag_season > 0:
+                if damped_lag_season_coeff_zellner_prior_obs is None:
+                    damped_lag_season_coeff_zellner_prior_obs = (1e-6,) * self.num_damped_lag_season
+
                 if damped_lag_season_coeff_mean_prior is None:
                     damped_lag_season_coeff_mean_prior = np.zeros((self.num_damped_lag_season, 1))
-                if damped_lag_season_coeff_prec_prior is None:
-                    damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
 
-                damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
+                if damped_lag_season_coeff_prec_prior is None:
+                    damped_lag_season_coeff_prec_prior = (None,) * self.num_damped_lag_season
+                    damped_lag_season_coeff_cov_prior = (None,) * self.num_damped_lag_season
+                else:
+                    damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
+
                 gibbs_iter0_damped_season_coeff = damped_lag_season_coeff_mean_prior
 
             i = j
@@ -2119,6 +2147,9 @@ class BayesianUnobservedComponents:
                                       reg_ninvg_coeff_cov_post,
                                       reg_ninvg_coeff_prec_post,
                                       zellner_prior_obs,
+                                      damped_level_coeff_zellner_prior_obs,
+                                      damped_trend_coeff_zellner_prior_obs,
+                                      damped_lag_season_coeff_zellner_prior_obs,
                                       gibbs_iter0_reg_coeff)
 
         return self.model_setup
@@ -2158,7 +2189,7 @@ class BayesianUnobservedComponents:
                 post_dict[p] = state_err_cov[:, idx, idx]
 
             elif p == 'Level.AR':
-                post_dict[p] = self.posterior.damped_level_coefficient[:, 0, 0]
+                post_dict[p] = self.posterior.damped_level_coefficient[burn:, 0, 0]
 
             elif p == 'Trend.Var':
                 c = components['Trend']
@@ -2166,7 +2197,7 @@ class BayesianUnobservedComponents:
                 post_dict[p] = state_err_cov[:, idx, idx]
 
             elif p == 'Trend.AR':
-                post_dict[p] = self.posterior.damped_trend_coefficient[:, 0, 0]
+                post_dict[p] = self.posterior.damped_trend_coefficient[burn:, 0, 0]
 
             elif 'Lag-Seasonal' in p and '.Var' in p:
                 c = components[p.replace('.Var', '')]
@@ -2176,7 +2207,7 @@ class BayesianUnobservedComponents:
             elif 'Lag-Seasonal' in p and '.AR' in p:
                 c = components[p.replace('.AR', '')]
                 idx = c['damped_ar_coeff_col_index']
-                post_dict[p] = self.posterior.damped_season_coefficients[:, idx, 0]
+                post_dict[p] = self.posterior.damped_season_coefficients[burn:, idx, 0]
 
             elif 'Dummy-Seasonal' in p and '.Var' in p:
                 c = components[p.replace('.Var', '')]
@@ -2215,7 +2246,10 @@ class BayesianUnobservedComponents:
                trig_season_var_scale_prior: tuple[Union[int, float], ...] = None,
                reg_coeff_mean_prior: Union[np.ndarray, list, tuple] = None,
                reg_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
-               zellner_prior_obs: Union[int, float] = None) -> Posterior:
+               zellner_prior_obs: Union[int, float] = None,
+               damped_level_coeff_zellner_prior_obs: Union[int, float] = None,
+               damped_trend_coeff_zellner_prior_obs: Union[int, float] = None,
+               damped_lag_season_coeff_zellner_prior_obs: tuple[Union[int, float], ...] = None) -> Posterior:
 
         """
         Posterior distributions for all parameters and states.
@@ -2239,7 +2273,7 @@ class BayesianUnobservedComponents:
 
         :param damped_level_coeff_prec_prior: Numpy array, list, or tuple. Specifies the prior
         precision matrix for the coefficient governing the level's an AR(1) process without drift.
-        Default is [[1.]].
+        Default is Zellner's g-prior with 0.000001 prior observations of weight..
 
         :param trend_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
         trend state equation error variance. Default is 1e-6.
@@ -2252,7 +2286,7 @@ class BayesianUnobservedComponents:
 
         :param damped_trend_coeff_prec_prior: Numpy, list, or tuple. Specifies the prior
         precision matrix for the coefficient governing the trend's an AR(1) process without drift.
-        Default is [[1.]].
+        Default is Zellner's g-prior with 0.000001 prior observations of weight.
 
         :param lag_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in lag_seasonal.
@@ -2268,8 +2302,8 @@ class BayesianUnobservedComponents:
 
         :param damped_lag_season_coeff_prec_prior: Numpy array, list, or tuple with s elements, where s is the
         number of stochastic periodicities with damping specified. Specifies the prior precision matrix for the
-        coefficient governing a lag_seasonal AR(1) process without drift. Default is [[1.]] for each damped,
-        stochastic periodicity.
+        coefficient governing a lag_seasonal AR(1) process without drift. Default is Zellner's g-prior with 0.000001
+        prior observations of weight for each damped periodicity.
 
         :param dum_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in dummy_seasonal.
@@ -2307,6 +2341,18 @@ class BayesianUnobservedComponents:
         It controls how precise one believes their priors are for the regression coefficients, assuming no regression
         precision matrix is provided. Default value is 1e-6, which gives little weight to the regression coefficient
         mean prior. This should approximate maximum likelihood estimation.
+
+        :param damped_level_coeff_zellner_prior_obs: int, float > 0. Relevant only if no precision value is provided
+        for the autoregressive coefficient in a damped level specification. Default value is 1e-6, which gives little
+        weight to the damped level coefficient mean prior.
+
+        :param damped_trend_coeff_zellner_prior_obs: int, float > 0. Relevant only if no precision value is provided
+        for the autoregressive coefficient in a damped trend specification. Default value is 1e-6, which gives little
+        weight to the damped trend coefficient mean prior.
+
+        :param damped_lag_season_coeff_zellner_prior_obs: tuple(int, float) > 0. Relevant only if no precision values
+        are provided for the autoregressive coefficients in a damped lag seasonal specification. Default value is 1e-6
+        for damped periodicities, which gives little weight to the corresponding damped lag seasonal mean priors.
 
         :return: NamedTuple with the following:
 
@@ -2438,6 +2484,13 @@ class BayesianUnobservedComponents:
                         raise ValueError('damped_level_coeff_prec_prior cannot have Inf/-Inf values.')
                     # No need to do symmetric/positive definite checks since the matrix is 1x1
 
+                if damped_level_coeff_zellner_prior_obs is not None:
+                    if (isinstance(damped_level_coeff_zellner_prior_obs, (int, float))
+                            and damped_level_coeff_zellner_prior_obs > 0):
+                        damped_level_coeff_zellner_prior_obs = float(damped_level_coeff_zellner_prior_obs)
+                    else:
+                        raise ValueError('damped_level_coeff_zellner_prior_obs must be strictly positive.')
+
         # Trend prior check
         if self.trend and self.stochastic_trend:
             if trend_var_shape_prior is not None:
@@ -2519,6 +2572,13 @@ class BayesianUnobservedComponents:
                     if np.any(np.isinf(damped_trend_coeff_prec_prior)):
                         raise ValueError('damped_trend_coeff_prec_prior cannot have Inf/-Inf values.')
                     # No need to do symmetric/positive definite checks since the matrix is 1x1
+
+                if damped_trend_coeff_zellner_prior_obs is not None:
+                    if (isinstance(damped_trend_coeff_zellner_prior_obs, (int, float))
+                            and damped_trend_coeff_zellner_prior_obs > 0):
+                        damped_trend_coeff_zellner_prior_obs = float(damped_trend_coeff_zellner_prior_obs)
+                    else:
+                        raise ValueError('damped_trend_coeff_zellner_prior_obs must be strictly positive.')
 
         # Lag seasonal prior check
         if len(self.lag_seasonal) > 0 and sum(self.stochastic_lag_seasonal) > 0:
@@ -2624,6 +2684,22 @@ class BayesianUnobservedComponents:
                     if np.any(np.isinf(damped_lag_season_coeff_prec_prior)):
                         raise ValueError('damped_lag_season_coeff_prec_prior cannot have Inf/-Inf values.')
                     # No need to do symmetric/positive definite checks since the matrix is 1x1 for each periodicity
+
+                if damped_lag_season_coeff_zellner_prior_obs is not None:
+                    if not isinstance(damped_lag_season_coeff_zellner_prior_obs, tuple):
+                        raise TypeError('damped_lag_season_coeff_zellner_prior_obs must be a tuple '
+                                        'with length that matches the number of specified damped periodicities.')
+                    else:
+                        if len(damped_lag_season_coeff_zellner_prior_obs) != self.num_damped_lag_season:
+                            raise ValueError('The length of damped_lag_season_coeff_zellner_prior_obs must '
+                                             'match the number of specified damped periodicities.')
+                        if all(isinstance(i, (int, float)) and i > 0
+                               for i in damped_lag_season_coeff_zellner_prior_obs):
+                            damped_lag_season_coeff_zellner_prior_obs = tuple(float(i) for i in
+                                                                              damped_lag_season_coeff_zellner_prior_obs)
+                        else:
+                            raise ValueError('Each element in damped_lag_season_coeff_zellner_prior_obs '
+                                             'must be a strictly positive integer or float.')
 
         # Dummy seasonal prior check
         if len(self.dummy_seasonal) > 0 and sum(self.stochastic_dummy_seasonal) > 0:
@@ -2787,7 +2863,9 @@ class BayesianUnobservedComponents:
                                   dum_season_var_shape_prior, dum_season_var_scale_prior,
                                   trig_season_var_shape_prior, trig_season_var_scale_prior,
                                   reg_coeff_mean_prior, reg_coeff_prec_prior,
-                                  zellner_prior_obs)
+                                  zellner_prior_obs, damped_level_coeff_zellner_prior_obs,
+                                  damped_trend_coeff_zellner_prior_obs,
+                                  damped_lag_season_coeff_zellner_prior_obs)
 
         # Bring in model configuration
         components = model.components
@@ -2802,12 +2880,15 @@ class BayesianUnobservedComponents:
         init_state_covariance = model.init_state_covariance
         damped_level_coeff_mean_prior = model.damped_level_coeff_mean_prior
         damped_level_coeff_prec_prior = model.damped_level_coeff_prec_prior
+        damped_level_coeff_zellner_prior_obs = model.damped_level_coeff_zellner_prior_obs
         gibbs_iter0_damped_level_coeff = model.gibbs_iter0_damped_level_coeff
         damped_trend_coeff_mean_prior = model.damped_trend_coeff_mean_prior
         damped_trend_coeff_prec_prior = model.damped_trend_coeff_prec_prior
+        damped_trend_coeff_zellner_prior_obs = model.damped_trend_coeff_zellner_prior_obs
         gibbs_iter0_damped_trend_coeff = model.gibbs_iter0_damped_trend_coeff
         damped_lag_season_coeff_mean_prior = model.damped_lag_season_coeff_mean_prior
         damped_lag_season_coeff_prec_prior = model.damped_lag_season_coeff_prec_prior
+        damped_lag_season_coeff_zellner_prior_obs = model.damped_lag_season_coeff_zellner_prior_obs
         gibbs_iter0_damped_season_coeff = model.gibbs_iter0_damped_season_coeff
 
         # Initialize output arrays
@@ -2881,6 +2962,7 @@ class BayesianUnobservedComponents:
 
         # Run Gibbs sampler
         s = 0
+        num_iter = 0
         while s < num_samp:
             if s < 1:
                 init_state_values = gibbs_iter0_init_state
@@ -3018,36 +3100,42 @@ class BayesianUnobservedComponents:
 
                         # Get new draw for the level's AR(1) coefficient, if applicable
                         if self.level and self.damped_level:
-                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                                          lag=(1,),
-                                                          mean_prior=damped_level_coeff_mean_prior,
-                                                          precision_prior=damped_level_coeff_prec_prior,
-                                                          state_err_var_post=state_err_var_post,
-                                                          state_eqn_index=level_state_eqn_idx,
-                                                          state_err_var_post_index=level_stoch_idx)
-                            damped_level_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+                            ar_args = dict(smoothed_state=smoothed_state[s],
+                                           lag=(1,),
+                                           mean_prior=damped_level_coeff_mean_prior,
+                                           precision_prior=damped_level_coeff_prec_prior,
+                                           state_err_var_post=state_err_var_post,
+                                           state_eqn_index=level_state_eqn_idx,
+                                           state_err_var_post_index=level_stoch_idx,
+                                           num_first_obs_ignore=self.num_first_obs_ignore,
+                                           damped_coeff_zellner_prior_obs=(damped_level_coeff_zellner_prior_obs,))
+                            damped_level_coefficient[s] = _ar_state_post_upd(**ar_args)
 
                         # Get new draw for the trend's AR(1) coefficient, if applicable
                         if self.trend and self.damped_trend:
-                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                                          lag=(1,),
-                                                          mean_prior=damped_trend_coeff_mean_prior,
-                                                          precision_prior=damped_trend_coeff_prec_prior,
-                                                          state_err_var_post=state_err_var_post,
-                                                          state_eqn_index=trend_state_eqn_idx,
-                                                          state_err_var_post_index=trend_stoch_idx)
-                            damped_trend_coefficient[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+                            ar_args = dict(smoothed_state=smoothed_state[s],
+                                           lag=(1,),
+                                           mean_prior=damped_trend_coeff_mean_prior,
+                                           precision_prior=damped_trend_coeff_prec_prior,
+                                           state_err_var_post=state_err_var_post,
+                                           state_eqn_index=trend_state_eqn_idx,
+                                           state_err_var_post_index=trend_stoch_idx,
+                                           num_first_obs_ignore=self.num_first_obs_ignore,
+                                           damped_coeff_zellner_prior_obs=(damped_trend_coeff_zellner_prior_obs,))
+                            damped_trend_coefficient[s] = _ar_state_post_upd(**ar_args)
 
                         # Get new draw for lag_seasonal AR(1) coefficients, if applicable
                         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                            ar_state_post_upd_args = dict(smoothed_state=smoothed_state[s],
-                                                          lag=self.lag_season_damped_lags,
-                                                          mean_prior=damped_lag_season_coeff_mean_prior,
-                                                          precision_prior=damped_lag_season_coeff_prec_prior,
-                                                          state_err_var_post=state_err_var_post,
-                                                          state_eqn_index=season_state_eqn_idx,
-                                                          state_err_var_post_index=season_stoch_idx)
-                            damped_season_coefficients[s] = _ar_state_post_upd(**ar_state_post_upd_args)
+                            ar_args = dict(smoothed_state=smoothed_state[s],
+                                           lag=self.lag_season_damped_lags,
+                                           mean_prior=damped_lag_season_coeff_mean_prior,
+                                           precision_prior=damped_lag_season_coeff_prec_prior,
+                                           state_err_var_post=state_err_var_post,
+                                           state_eqn_index=season_state_eqn_idx,
+                                           state_err_var_post_index=season_stoch_idx,
+                                           num_first_obs_ignore=self.num_first_obs_ignore,
+                                           damped_coeff_zellner_prior_obs=damped_lag_season_coeff_zellner_prior_obs)
+                            damped_season_coefficients[s] = _ar_state_post_upd(**ar_args)
 
                         # Get new draw for regression coefficients
                         if self.has_predictors:
@@ -3080,6 +3168,16 @@ class BayesianUnobservedComponents:
                                                                            cov=cov_post).reshape(-1, 1))
 
                     s += 1
+
+            num_iter += 1
+            if num_iter > 2 * num_samp:
+                warnings.warn("Number of sampling iterations exceeds twice the amount of "
+                              "desired posterior samples, which may indicate an issue with "
+                              "convergence of the sampler. Consider killing the kernel and: (1) "
+                              "scaling your data (e.g., scaling the response by its standard "
+                              "deviation) and/or (2) redefining the specification of the model.")
+
+        self.num_sampling_iterations = num_iter
 
         self.posterior = Posterior(num_samp, smoothed_state,
                                    smoothed_errors, smoothed_prediction,
