@@ -455,7 +455,7 @@ overly aggressive future trend.
 The default prior for irregular variance is:
 
 $$
-\sigma^2_{\mathrm{irregular}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
+\sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
 $$
 
 ### Irregular and state variances
