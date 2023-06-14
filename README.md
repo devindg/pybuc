@@ -429,8 +429,11 @@ $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
-## Priors
-If no priors are given for variances corresponding to stochastic time components (i.e., level, trend, and seasonality), 
+## Default priors
+
+### Stochastic variances
+
+If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
 the following defaults are used:
 
 $$
@@ -448,6 +451,100 @@ value of 1 (i.e., more weight is given to this prior than the others), and a sca
 size of the scale priors for level and seasonality. In other words, this prior assumes that variation in trend is small 
 relative to variation in level and seasonality. The idea is to guard against noise in the data that could result in 
 overly aggressive future trend.
+
+The default prior for irregular variance is:
+
+$$
+\sigma^2_{\mathrm{irregular}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
+$$
+
+### Irregular and state variances
+
+If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
+the following defaults are used:
+
+$$
+\begin{align}
+    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(1, 0.1 * (0.01 * \mathrm{Std.Dev}(y))^2) \\
+\end{align}
+$$
+
+The level and seasonal priors match the default priors in R's `bsts` package. However, the default trend prior is 
+different. Whereas the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
+more conservative assumption about the variance associated with trend. This is reflected by the higher shape parameter 
+value of 1 (i.e., more weight is given to this prior than the others), and a scale parameter value that is one tenth the 
+size of the scale priors for level and seasonality. In other words, this prior assumes that variation in trend is small 
+relative to variation in level and seasonality. The idea is to guard against noise in the data that could result in 
+overly aggressive future trend.
+
+The default prior for irregular variance is:
+
+$$
+\sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
+$$
+
+### Damped/autoregressive state coefficients
+
+Damping can be applied to level, trend, and periodic-lag seasonality state components. By default, if no prior is given 
+for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
+
+$$
+\phi \sim N(0, \frac{\kappa}{n^* } \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j})
+$$
+
+where $\phi$ represents some autoregressive coefficient, $\kappa = 0.000001$ is the number of "prior observations" given 
+to the mean prior of 0, $n^\*$ is the number of observations present in state variable $\mathbf{a}$, $j$ 
+is the lag structure associated with the state variable, and $s$ is the $s$-th posterior sample.
+
+There are a few things to note here. First, given the diffuse initialization of the Kalman filter, $n^\*$ will not equal 
+the number of response observations, $n$. The first few observations will be ignored to account for burn-in as a result 
+of diffuse initialization. The number of first observations ignored is
+
+$$ n_{\mathrm{ignore}} = \max [1 + \max[\textrm{Seasonal periodicity}], \textrm{Number of state equations}] $$
+
+Thus,
+
+$$
+\begin{align}
+    n^* &= n - n_{\mathrm{ignore}} \\
+    \mathbf a_ {s,-j} &= a_ {s, t - j} \textrm{ for } t > n_{\mathrm{ignore}}
+\end{align} 
+$$
+
+Second, the precision prior $\frac{\kappa}{n^* } \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j}$ is dynamic in that it 
+depends on the $s$-th posterior sample. This is unlike a regression component where the design matrix is known *a priori*. 
+With regression, in particular, Zellner's g-prior is fixed. In contrast, the values of the state variables have to be 
+estimated using the posterior values of the parameters (e.g., the posterior values of the state variances). Thus, the 
+"state design matrix" changes with each posterior sample. What is not dynamic is the number of prior observations placed 
+on the mean prior, i.e., $\frac{\kappa}{n^* }$. Ultimately, if a dynamic precision prior is not desired, a static prior 
+on $\phi$ can be placed, such as $N(0, 1)$.
+
+Third, it is possible to change the number of prior observations for the precision prior. For example, if $\kappa = 1$ 
+is desired for a damped level components, the argument `damped_level_coeff_zellner_prior_obs = 1` can be passed to the 
+`sample()` method in `pybuc`. Note, however, that if a precision prior is also passed to `sample()`, e.g., 
+`damped_level_coeff_prec_prior = [0.5]`, then `damped_level_coeff_zellner_prior_obs = 1` will be ignored.
+
+Finally, note that $j$ will depend on the type of state variable. If the state variable represents the level of the 
+time series, then $j = 1$ since $\mathrm{level}_ t = \phi \mathrm{level}_ {t-1} + \eta_{\mathrm{level}, t}$. However, if 
+the state variable respresents periodic-lag seasonality with periodicity $S$, then $j = S$ since 
+$\mathrm{seasonal}_ t = \phi \mathrm{seasonal}_ {t-S} + \eta_{\mathrm{seasonal}, t}$.
+
+### Regression coefficients
+
+The default prior for regression coefficients is
+
+$$
+\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{\kappa}{n} \left(\frac{1}{2} \mathbf X^\prime \mathbf X + \frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X \right)\right)
+$$
+
+where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 0.000001$ is the number 
+of default prior observations given to the mean prior of $\mathbf 0$. This prior is a slight modification of Zellner's 
+g-prior (to guard against potential singularity of the design matrix). The number of prior observations, $\kappa$, can be 
+changed by passing a value to the argument `zellner_prior_obs` in the `sample()` method. If Zellner's g-prior is not 
+desired, then a custom precision matrix can be passed to the argument `reg_coeff_prec_prior`. Similarly, if a zero-mean 
+prior is not wanted, a custom mean prior can be passed to `reg_coeff_mean_prior`.
 
 ## State space representation (example)
 The unobserved components model can be rewritten in state space form. For example, suppose level, trend, seasonal, 
