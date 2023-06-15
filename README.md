@@ -270,7 +270,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 17.38140771574873
+BAYES-UC RMSE: 17.389692065902654
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
