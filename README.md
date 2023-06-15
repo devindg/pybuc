@@ -324,18 +324,12 @@ The parameters $\kappa$ and $\phi$ represent autoregressive coefficients. In gen
 to be in the interval $(-1, 1)$, which implies a stationary process. In practice, however, it is possible for either 
 $\kappa$ or $\phi$ to be outside the unit circle, which implies an explosive process. While it is mathematically 
 possible for an explosive process to be stationary, the implication of such a result implies that the future predicts 
-the past, which is not a realistic assumption. 
+the past, which is not a realistic assumption. If an autoregressive level or trend is specified, no hard constraints 
+(by default) are placed on the bounds of the autoregressive parameters. Instead, the default prior for these parameters 
+is vague (see section on priors below).
 
-If an autoregressive level or trend is specified, no hard constraints (by default) are placed on the bounds of the 
-autoregressive parameters. Instead, the default prior for these parameters is $N(0, 1)$. Thus, -1 and 1 are within two 
-standard deviations of the mean. It is therefore possible for the Gibbs sampler to sample values outside the unit circle. 
-If the posterior mean of $\kappa$ and/or $\phi$ is outside the unit circle (or very close to the bounds), then an 
-autoregressive level and/or trend is not a good assumption. If only a "few" of the posterior samples are outside the unit 
-circle, this shouldn't be problematic for forecasting.
-
-Finally, note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$ and $\kappa = 1$, 
-then the level component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time 
-trend.
+Note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$ and $\kappa = 1$, then the level 
+component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
 ## Seasonality
 
@@ -349,11 +343,10 @@ $$
 
 where $S$ is the number of periods in a seasonal cycle, $\rho(S)$ is an autoregressive parameter expected to lie in the 
 unit circle (-1, 1), and $\eta_{\gamma^S, t} \sim N(0, \sigma_{\eta_\gamma^S}^2)$ for all $t$. If damping is not 
-specified for a given periodic lag, $\rho(S) = 1$ and seasonality is treated as a random walk process. The default prior 
-for $\rho(S)$ is $N(0, 1)$.
+specified for a given periodic lag, $\rho(S) = 1$ and seasonality is treated as a random walk process.
 
-This specification for seasonality is arguably the most parsimonious representation as it requires the fewest/weakest 
-assumptions.
+This specification for seasonality is arguably the most robust representation (relative to dummy and trigonometric) 
+because its structural assumption on periodicity is the least complex.
 
 ### Dummy form
 Another way is known as the "dummy" variable approach. Formally, the seasonal effect on the outcome $y$ is modeled as 
