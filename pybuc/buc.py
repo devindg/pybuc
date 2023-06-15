@@ -81,7 +81,6 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
                        state_err_var_post: np.ndarray,
                        state_eqn_index: list,
                        state_err_var_post_index: list,
-                       num_first_obs_ignore: int,
                        damped_coeff_zellner_prior_obs: tuple[Union[int, float], ...]):
     """
     This is a generic function for updating an AR(p) coefficient for a state variable that
@@ -112,6 +111,9 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
     :param state_err_var_post_index: list of non-negative integers. An integer represents the row index
     of a state's posterior error variance (i.e., a row index for state_err_var_post).
 
+    :param damped_coeff_zellner_prior_obs: tuple of integers or floats. Controls how much weight is given
+    to the mean prior for the autoregressive coefficient.
+
 
     :return: ndarray of dimension (L, 1), where L is the number of lags in the lag tuple. An
     element represents the posterior autoregressive coefficient for an autoregressive process of the
@@ -123,8 +125,8 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
 
     c = 0
     for i in lag:
-        y = smoothed_state[:, state_eqn_index[c]][num_first_obs_ignore:]
-        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[num_first_obs_ignore:]
+        y = smoothed_state[:, state_eqn_index[c]][i:]
+        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
 
         if precision_prior[c] is None:
             prec_prior = damped_coeff_zellner_prior_obs[c] / y.size * (y_lag.T @ y_lag)
@@ -645,7 +647,6 @@ class BayesianUnobservedComponents:
         self.predictors_names = None
         self.historical_time_index = None
         self.future_time_index = None
-        self.num_first_obs_ignore = None
         self.posterior = None
         self.parameters = []
         self.num_sampling_iterations = None
@@ -1236,6 +1237,14 @@ class BayesianUnobservedComponents:
     def num_obs(self) -> int:
         return self.response.shape[0]
 
+    @property
+    def num_first_obs_ignore(self) -> int:
+        p = 1 + max((0,)
+             + self.lag_seasonal
+             + self.dummy_seasonal
+             + tuple(j[0] for j in self.trig_seasonal))
+        return max(p, self.num_state_eqs)
+
     @staticmethod
     def trig_transition_matrix(freq: int) -> np.ndarray:
         real_part = np.array([[np.cos(freq), np.sin(freq)]])
@@ -1629,7 +1638,6 @@ class BayesianUnobservedComponents:
         gibbs_iter0_init_state = []
         init_state_variances = []
         init_state_plus_values = []
-        seasonal_period = [0]
 
         if not self.level or not self.damped_level:
             damped_level_coeff_mean_prior = None
@@ -1852,7 +1860,7 @@ class BayesianUnobservedComponents:
             d = 0  # indexes damped periodicities
             for c, v in enumerate(self.lag_seasonal):
                 lag_season_params = []
-                seasonal_period.append(v)
+
                 if self.stochastic_lag_seasonal[c]:
                     lag_season_params.append(f"Lag-Seasonal.{v}.Var")
 
@@ -1934,7 +1942,7 @@ class BayesianUnobservedComponents:
             i = j
             for c, v in enumerate(self.dummy_seasonal):
                 dum_season_params = []
-                seasonal_period.append(v)
+
                 if self.stochastic_dummy_seasonal[c]:
                     dum_season_params.append(f"Dummy-Seasonal.{v}.Var")
 
@@ -1996,7 +2004,6 @@ class BayesianUnobservedComponents:
                 else:
                     num_eqs = 2 * num_harmonics
 
-                seasonal_period.append(period)
                 if self.stochastic_trig_seasonal[c]:
                     trig_season_params.append(f"Trig-Seasonal.{period}.{num_harmonics}.Var")
 
@@ -2112,7 +2119,6 @@ class BayesianUnobservedComponents:
         gibbs_iter0_init_state = np.vstack(gibbs_iter0_init_state)
         init_state_plus_values = np.vstack(init_state_plus_values)
         init_state_covariance = np.diag(init_state_variances)
-        self.num_first_obs_ignore = max(1 + max(seasonal_period), self.num_state_eqs)
 
         # Get list of all parameters
         for c in components:
@@ -3100,40 +3106,37 @@ class BayesianUnobservedComponents:
 
                         # Get new draw for the level's AR(1) coefficient, if applicable
                         if self.level and self.damped_level:
-                            ar_args = dict(smoothed_state=smoothed_state[s],
+                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
                                            lag=(1,),
                                            mean_prior=damped_level_coeff_mean_prior,
                                            precision_prior=damped_level_coeff_prec_prior,
                                            state_err_var_post=state_err_var_post,
                                            state_eqn_index=level_state_eqn_idx,
                                            state_err_var_post_index=level_stoch_idx,
-                                           num_first_obs_ignore=self.num_first_obs_ignore,
                                            damped_coeff_zellner_prior_obs=(damped_level_coeff_zellner_prior_obs,))
                             damped_level_coefficient[s] = _ar_state_post_upd(**ar_args)
 
                         # Get new draw for the trend's AR(1) coefficient, if applicable
                         if self.trend and self.damped_trend:
-                            ar_args = dict(smoothed_state=smoothed_state[s],
+                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
                                            lag=(1,),
                                            mean_prior=damped_trend_coeff_mean_prior,
                                            precision_prior=damped_trend_coeff_prec_prior,
                                            state_err_var_post=state_err_var_post,
                                            state_eqn_index=trend_state_eqn_idx,
                                            state_err_var_post_index=trend_stoch_idx,
-                                           num_first_obs_ignore=self.num_first_obs_ignore,
                                            damped_coeff_zellner_prior_obs=(damped_trend_coeff_zellner_prior_obs,))
                             damped_trend_coefficient[s] = _ar_state_post_upd(**ar_args)
 
                         # Get new draw for lag_seasonal AR(1) coefficients, if applicable
                         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                            ar_args = dict(smoothed_state=smoothed_state[s],
+                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
                                            lag=self.lag_season_damped_lags,
                                            mean_prior=damped_lag_season_coeff_mean_prior,
                                            precision_prior=damped_lag_season_coeff_prec_prior,
                                            state_err_var_post=state_err_var_post,
                                            state_eqn_index=season_state_eqn_idx,
                                            state_err_var_post_index=season_stoch_idx,
-                                           num_first_obs_ignore=self.num_first_obs_ignore,
                                            damped_coeff_zellner_prior_obs=damped_lag_season_coeff_zellner_prior_obs)
                             damped_season_coefficients[s] = _ar_state_post_upd(**ar_args)
 

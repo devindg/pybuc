@@ -464,29 +464,14 @@ Damping can be applied to level, trend, and periodic-lag seasonality state compo
 for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
 
 $$
-\phi \sim N(0, \frac{\kappa}{n^* } \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j})
+\phi \sim N(0, \frac{\kappa}{n} \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j})
 $$
 
 where $\phi$ represents some autoregressive coefficient, $\kappa = 0.000001$ is the number of "prior observations" given 
-to the mean prior of 0, $n^\*$ is the number of observations present in state variable $\mathbf{a}$, $j$ 
-is the lag structure associated with the state variable, and $s$ is the $s$-th posterior sample.
+to the mean prior of 0, $n$ is the number of response observations, $j$ is the lag structure associated with the state 
+variable, and $s$ is the $s$-th posterior sample. There are a few things to note.
 
-There are a few things to note here. First, given the diffuse initialization of the Kalman filter, $n^\*$ will not equal 
-the number of response observations, $n$. The first few observations will be ignored to account for burn-in as a result 
-of diffuse initialization. The number of first observations ignored is
-
-$$ n_{\mathrm{ignore}} = \max [1 + \max[\textrm{Seasonal periodicity}], \textrm{Number of state equations}] $$
-
-Thus,
-
-$$
-\begin{align}
-    n^* &= n - n_{\mathrm{ignore}} \\
-    \mathbf a_ {s,-j} &= a_ {s, t - j} \textrm{ for } t > n_{\mathrm{ignore}}
-\end{align} 
-$$
-
-Second, the precision prior $\frac{\kappa}{n^* } \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j}$ is dynamic in that it 
+First, the precision prior $\frac{\kappa}{n} \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j}$ is dynamic in that it 
 depends on the $s$-th posterior sample. This is unlike a regression component where the design matrix is known *a priori*. 
 With regression, in particular, Zellner's g-prior is fixed. In contrast, the values of the state variables have to be 
 estimated using the posterior values of the parameters (e.g., the posterior values of the state variances). Thus, the 
@@ -494,12 +479,12 @@ estimated using the posterior values of the parameters (e.g., the posterior valu
 on the mean prior, i.e., $\frac{\kappa}{n^* }$. Ultimately, if a dynamic precision prior is not desired, a static prior 
 on $\phi$ can be placed, such as $N(0, 1)$.
 
-Third, it is possible to change the number of prior observations for the precision prior. For example, if $\kappa = 1$ 
+Second, it is possible to change the number of prior observations for the precision prior. For example, if $\kappa = 1$ 
 is desired for a damped level components, the argument `damped_level_coeff_zellner_prior_obs = 1` can be passed to the 
 `sample()` method in `pybuc`. Note, however, that if a precision prior is also passed to `sample()`, e.g., 
 `damped_level_coeff_prec_prior = [0.5]`, then `damped_level_coeff_zellner_prior_obs = 1` will be ignored.
 
-Finally, note that $j$ will depend on the type of state variable. If the state variable represents the level of the 
+Third, note that $j$ will depend on the type of state variable. If the state variable represents the level of the 
 time series, then $j = 1$ since $\mathrm{level}_ t = \phi \mathrm{level}_ {t-1} + \eta_{\mathrm{level}, t}$. However, if 
 the state variable respresents periodic-lag seasonality with periodicity $S$, then $j = S$ since 
 $\mathrm{seasonal}_ t = \phi \mathrm{seasonal}_ {t-S} + \eta_{\mathrm{seasonal}, t}$.
