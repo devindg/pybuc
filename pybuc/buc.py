@@ -3569,8 +3569,8 @@ class BayesianUnobservedComponents:
         fig.set_size_inches(12, 10)
         row = 0
         for p in parameters:
-            histplot(post_dict[p][burn:], ax=ax[row, 0])
-            lineplot(post_dict[p][burn:], ax=ax[row, 1])
+            histplot(post_dict[p], ax=ax[row, 0])
+            lineplot(post_dict[p], ax=ax[row, 1])
             ax[row, 0].title.set_text(p)
             row += 1
 
