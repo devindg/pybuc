@@ -13,6 +13,31 @@ from .model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
 
 
+class MaxIterSamplingError(Exception):
+    """Exception raised for errors in the input salary.
+
+    Attributes:
+        salary -- input salary which caused the error
+        message -- explanation of the error
+    """
+
+    def __init__(self,
+                 upper_var_limit,
+                 max_samp_iter):
+        self.upper_var_limit = upper_var_limit
+        self.max_samp_iter = max_samp_iter
+        self.message = f"""Maximum number of sampling iterations ({max_samp_iter}) exceeded based on
+                       upper acceptable value for model variances ({upper_var_limit}). Consider a
+                       combination of the following: (1) scaling your data (e.g., scaling the
+                       response by its standard deviation), (2) redefining the specification of
+                       the model in terms of components and priors, (3) increasing the upper
+                       acceptable value for model variances governed by upper_var_limit, and/or 
+                       (4) increasing the maximum number of sampling iterations governed by 
+                       max_iter_samp_factor.
+                       """
+        super().__init__(self.message)
+
+
 class Posterior(NamedTuple):
     num_samp: int
     smoothed_state: np.ndarray
@@ -63,6 +88,7 @@ class ModelSetup(NamedTuple):
     damped_trend_coeff_zellner_prior_obs: Union[int, float]
     damped_lag_season_coeff_zellner_prior_obs: tuple[Union[int, float], ...]
     gibbs_iter0_reg_coeff: np.ndarray
+
 
 class Forecast(NamedTuple):
     response_forecast: np.ndarray
@@ -141,6 +167,7 @@ def _ar_state_post_upd(smoothed_state: np.ndarray,
     ar_coeff_post = dist.vec_norm(ar_coeff_mean_post, np.sqrt(cov_post))
 
     return ar_coeff_post
+
 
 def _simulate_posterior_predictive_response(posterior: Posterior,
                                             burn: int = 0,
@@ -278,6 +305,7 @@ def _simulate_posterior_predictive_response(posterior: Posterior,
         i += 1
 
     return y_post
+
 
 @njit(cache=True)
 def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
@@ -650,6 +678,7 @@ class BayesianUnobservedComponents:
         self.posterior = None
         self.parameters = []
         self.num_sampling_iterations = None
+        self.high_posterior_variance = None
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -741,7 +770,7 @@ class BayesianUnobservedComponents:
                             pred = pred.sort_index()
 
                     if not (pred.index == response.index).all():
-                            raise ValueError('The response and predictors indexes must match.')
+                        raise ValueError('The response and predictors indexes must match.')
 
                     if isinstance(pred, pd.Series):
                         self.predictors_names = [pred.name]
@@ -1122,7 +1151,6 @@ class BayesianUnobservedComponents:
                           'is at least as large as the number of observations in the response '
                           'array. Predictions from the model may be significantly compromised.')
 
-
     @property
     def num_lag_season_state_eqs(self) -> int:
         if len(self.lag_seasonal) == 0:
@@ -1240,9 +1268,9 @@ class BayesianUnobservedComponents:
     @property
     def num_first_obs_ignore(self) -> int:
         p = 1 + max((0,)
-             + self.lag_seasonal
-             + self.dummy_seasonal
-             + tuple(j[0] for j in self.trig_seasonal))
+                    + self.lag_seasonal
+                    + self.dummy_seasonal
+                    + tuple(j[0] for j in self.trig_seasonal))
         return max(p, self.num_state_eqs)
 
     @staticmethod
@@ -2109,7 +2137,8 @@ class BayesianUnobservedComponents:
                                                         + gibbs_iter0_reg_coeff_prec_prior)
             gibbs_iter0_reg_coeff_mean_prior = np.vstack(([0], reg_coeff_mean_prior))
             gibbs_iter0_reg_coeff = (gibbs_iter0_reg_coeff_cov_post @ (X_add_const.T @ y
-                                     + gibbs_iter0_reg_coeff_prec_prior @ gibbs_iter0_reg_coeff_mean_prior))[1:]
+                                                                       + gibbs_iter0_reg_coeff_prec_prior
+                                                                       @ gibbs_iter0_reg_coeff_mean_prior))[1:]
 
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
@@ -2123,7 +2152,6 @@ class BayesianUnobservedComponents:
         # Get list of all parameters
         for c in components:
             self.parameters += components[c]['params']
-
 
         self.model_setup = ModelSetup(components,
                                       response_var_scale_prior,
@@ -2230,6 +2258,21 @@ class BayesianUnobservedComponents:
 
         return post_dict
 
+    def _high_variance(self, burn: int = 0) -> dict:
+        post_dict = self.posterior_dict(burn=burn)
+        high_var = np.nanvar(self.response, ddof=1)
+
+        if self.num_stoch_states > 0:
+            hv = {}
+            for k, v in post_dict.items():
+                if ".Var" in k:
+                    high_var_index = np.argwhere((v > high_var))
+                    pct_high_var = high_var_index.size / v.size
+                    hv[k] = dict(high_var_index=high_var_index,
+                                 pct_high_var=pct_high_var)
+
+            return hv
+
     def sample(self,
                num_samp: int,
                response_var_shape_prior: Union[int, float] = None,
@@ -2255,7 +2298,9 @@ class BayesianUnobservedComponents:
                zellner_prior_obs: Union[int, float] = None,
                damped_level_coeff_zellner_prior_obs: Union[int, float] = None,
                damped_trend_coeff_zellner_prior_obs: Union[int, float] = None,
-               damped_lag_season_coeff_zellner_prior_obs: tuple[Union[int, float], ...] = None) -> Posterior:
+               damped_lag_season_coeff_zellner_prior_obs: tuple[Union[int, float], ...] = None,
+               upper_var_limit: Union[int, float] = None,
+               max_samp_iter_factor: Union[int, float] = None) -> Posterior:
 
         """
         Posterior distributions for all parameters and states.
@@ -2360,6 +2405,23 @@ class BayesianUnobservedComponents:
         are provided for the autoregressive coefficients in a damped lag seasonal specification. Default value is 1e-6
         for damped periodicities, which gives little weight to the corresponding damped lag seasonal mean priors.
 
+        :param upper_var_limit: int of float > 0. This sets an acceptable upper bound on sampled variances (i.e.,
+        response error variance and stochastic state error variances). By default, this value is set to the sample
+        variance of the response variable.
+
+        :param max_samp_iter_factor: int or float > 0. This factor is multiplied with num_samp to define an
+        acceptable maximum number of sampling iterations before the sampling routine raises an exception.
+        The maximum number of sampling iterations interacts with the acceptable upper bound on sampled variances.
+        For example, suppose num_samp = 5000, max_samp_iter_factor = 3, and upper_var_limit = SampleVariance(response).
+        If any of the model variances exceed upper_var_limit, a new draw will be made for the set of variances. It
+        is possible, however, that the sampler will stay in a region of the parameter space that does not satisfy
+        the upper bound on variances. Thus, after max_samp_iter = max_samp_iter_factor * num_samp = 15000 iterations,
+        the sampler will raise an exception. Setting the upper bound on variances to a very high number, such as
+        100 * SampleVariance(response), will likely result in the sampler not raising an exception, but caution should
+        be taken if parametric inference matters. See the class attribute 'high_posterior_variance' for a summary
+        of each of the model's stochastic variances in terms of "high" variance, where high is anything that exceeds
+        the sample variance of the response. Default value is 2.
+
         :return: NamedTuple with the following:
 
                     num_samp: Number of posterior samples drawn
@@ -2442,7 +2504,7 @@ class BayesianUnobservedComponents:
 
                     if isinstance(damped_level_coeff_mean_prior, (list, tuple)):
                         damped_level_coeff_mean_prior = (np.asarray(damped_level_coeff_mean_prior,
-                                                                   dtype=np.float64))
+                                                                    dtype=np.float64))
                     else:
                         damped_level_coeff_mean_prior = damped_level_coeff_mean_prior.astype(float)
 
@@ -2471,7 +2533,7 @@ class BayesianUnobservedComponents:
 
                     if isinstance(damped_level_coeff_prec_prior, (list, tuple)):
                         damped_level_coeff_prec_prior = (np.asarray(damped_level_coeff_prec_prior,
-                                                                   dtype=np.float64))
+                                                                    dtype=np.float64))
                     else:
                         damped_level_coeff_prec_prior = damped_level_coeff_prec_prior.astype(float)
 
@@ -2531,7 +2593,7 @@ class BayesianUnobservedComponents:
 
                     if isinstance(damped_trend_coeff_mean_prior, (list, tuple)):
                         damped_trend_coeff_mean_prior = (np.asarray(damped_trend_coeff_mean_prior,
-                                                                   dtype=np.float64))
+                                                                    dtype=np.float64))
                     else:
                         damped_trend_coeff_mean_prior = damped_trend_coeff_mean_prior.astype(float)
 
@@ -2845,6 +2907,24 @@ class BayesianUnobservedComponents:
                 else:
                     raise ValueError('zellner_prior_obs must be strictly positive.')
 
+        # Set upper limits on variance draws and number of sampling iterations
+        var_y = np.nanvar(self.response, ddof=1)
+        if upper_var_limit is None:
+            upper_var_limit = var_y
+        else:
+            if isinstance(upper_var_limit, (int, float)) and upper_var_limit > 0:
+                pass
+            else:
+                raise ValueError('upper_var_limit must be strictly positive.')
+
+        if max_samp_iter_factor is None:
+            max_samp_iter = 2 * num_samp
+        else:
+            if isinstance(max_samp_iter_factor, (int, float)) and max_samp_iter_factor > 1:
+                max_samp_iter = int(max_samp_iter_factor * num_samp)
+            else:
+                raise ValueError('max_samp_iter_factor must be greater than 1.')
+
         # Define variables
         y = self.response
         n = self.num_obs
@@ -2856,7 +2936,6 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
         H = self.state_sse_transformation_matrix
         X = self.predictors
-        var_y = np.nanvar(self.response, ddof=1)
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(response_var_shape_prior, response_var_scale_prior,
@@ -2940,7 +3019,7 @@ class BayesianUnobservedComponents:
                 season_stoch_idx.append(components[f'Lag-Seasonal.{j}']['stochastic_index'])
                 season_state_eqn_idx.append(components[f'Lag-Seasonal.{j}']['start_state_eqn_index'])
                 if components[f'Lag-Seasonal.{j}']['damped']:
-                    ar_season_tran_idx += (components[f'Lag-Seasonal.{j}']['damped_transition_index'], )
+                    ar_season_tran_idx += (components[f'Lag-Seasonal.{j}']['damped_transition_index'],)
                 else:
                     pass
         else:
@@ -3085,73 +3164,72 @@ class BayesianUnobservedComponents:
                                                    smooth_one_step_ahead_prediction_resid))
             _response_error_variance = dist.vec_ig(response_var_shape_post, response_var_scale_post)
 
-            if np.all(_response_error_variance < var_y):
-                # Get new draws for state variances
-                if q > 0:
-                    state_resid = _smoothed_errors[:, 1:, 0]
-                    state_sse = dot(state_resid.T ** 2, n_ones)
-                    state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
-                    state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
+            if q > 0:
+                state_resid = _smoothed_errors[:, 1:, 0]
+                state_sse = dot(state_resid.T ** 2, n_ones)
+                state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
+                state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
 
-                    if np.all(state_err_var_post < var_y):
-                        filtered_state[s] = _filtered_state
-                        state_covariance[s] = _state_covariance
-                        filtered_prediction[s] = _filtered_prediction
-                        response_variance[s] = _response_variance
-                        smoothed_errors[s] = _smoothed_errors
-                        smoothed_state[s] = _smoothed_state
-                        smoothed_prediction[s] = _smoothed_prediction
-                        response_error_variance[s] = _response_error_variance
-                        state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
+                if np.all(np.concatenate((_response_error_variance, state_err_var_post)) < upper_var_limit):
+                    filtered_state[s] = _filtered_state
+                    state_covariance[s] = _state_covariance
+                    filtered_prediction[s] = _filtered_prediction
+                    response_variance[s] = _response_variance
+                    smoothed_errors[s] = _smoothed_errors
+                    smoothed_state[s] = _smoothed_state
+                    smoothed_prediction[s] = _smoothed_prediction
+                    response_error_variance[s] = _response_error_variance
+                    state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
-                        # Get new draw for the level's AR(1) coefficient, if applicable
-                        if self.level and self.damped_level:
-                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                           lag=(1,),
-                                           mean_prior=damped_level_coeff_mean_prior,
-                                           precision_prior=damped_level_coeff_prec_prior,
-                                           state_err_var_post=state_err_var_post,
-                                           state_eqn_index=level_state_eqn_idx,
-                                           state_err_var_post_index=level_stoch_idx,
-                                           damped_coeff_zellner_prior_obs=(damped_level_coeff_zellner_prior_obs,))
-                            damped_level_coefficient[s] = _ar_state_post_upd(**ar_args)
+                    # Get new draw for the level's AR(1) coefficient, if applicable
+                    if self.level and self.damped_level:
+                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
+                                       lag=(1,),
+                                       mean_prior=damped_level_coeff_mean_prior,
+                                       precision_prior=damped_level_coeff_prec_prior,
+                                       state_err_var_post=state_err_var_post,
+                                       state_eqn_index=level_state_eqn_idx,
+                                       state_err_var_post_index=level_stoch_idx,
+                                       damped_coeff_zellner_prior_obs=(damped_level_coeff_zellner_prior_obs,))
+                        damped_level_coefficient[s] = _ar_state_post_upd(**ar_args)
 
-                        # Get new draw for the trend's AR(1) coefficient, if applicable
-                        if self.trend and self.damped_trend:
-                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                           lag=(1,),
-                                           mean_prior=damped_trend_coeff_mean_prior,
-                                           precision_prior=damped_trend_coeff_prec_prior,
-                                           state_err_var_post=state_err_var_post,
-                                           state_eqn_index=trend_state_eqn_idx,
-                                           state_err_var_post_index=trend_stoch_idx,
-                                           damped_coeff_zellner_prior_obs=(damped_trend_coeff_zellner_prior_obs,))
-                            damped_trend_coefficient[s] = _ar_state_post_upd(**ar_args)
+                    # Get new draw for the trend's AR(1) coefficient, if applicable
+                    if self.trend and self.damped_trend:
+                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
+                                       lag=(1,),
+                                       mean_prior=damped_trend_coeff_mean_prior,
+                                       precision_prior=damped_trend_coeff_prec_prior,
+                                       state_err_var_post=state_err_var_post,
+                                       state_eqn_index=trend_state_eqn_idx,
+                                       state_err_var_post_index=trend_stoch_idx,
+                                       damped_coeff_zellner_prior_obs=(damped_trend_coeff_zellner_prior_obs,))
+                        damped_trend_coefficient[s] = _ar_state_post_upd(**ar_args)
 
-                        # Get new draw for lag_seasonal AR(1) coefficients, if applicable
-                        if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                            ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                           lag=self.lag_season_damped_lags,
-                                           mean_prior=damped_lag_season_coeff_mean_prior,
-                                           precision_prior=damped_lag_season_coeff_prec_prior,
-                                           state_err_var_post=state_err_var_post,
-                                           state_eqn_index=season_state_eqn_idx,
-                                           state_err_var_post_index=season_stoch_idx,
-                                           damped_coeff_zellner_prior_obs=damped_lag_season_coeff_zellner_prior_obs)
-                            damped_season_coefficients[s] = _ar_state_post_upd(**ar_args)
+                    # Get new draw for lag_seasonal AR(1) coefficients, if applicable
+                    if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
+                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
+                                       lag=self.lag_season_damped_lags,
+                                       mean_prior=damped_lag_season_coeff_mean_prior,
+                                       precision_prior=damped_lag_season_coeff_prec_prior,
+                                       state_err_var_post=state_err_var_post,
+                                       state_eqn_index=season_state_eqn_idx,
+                                       state_err_var_post_index=season_stoch_idx,
+                                       damped_coeff_zellner_prior_obs=damped_lag_season_coeff_zellner_prior_obs)
+                        damped_season_coefficients[s] = _ar_state_post_upd(**ar_args)
 
-                        # Get new draw for regression coefficients
-                        if self.has_predictors:
-                            smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
-                            y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
-                            reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
-                            cov_post = response_error_variance[s][0, 0] * W
-                            regression_coefficients[s] = (Vt.T @ np.random
-                                                          .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
-                                                                               cov=cov_post).reshape(-1, 1))
+                    # Get new draw for regression coefficients
+                    if self.has_predictors:
+                        smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
+                        y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
+                        reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                        cov_post = response_error_variance[s][0, 0] * W
+                        regression_coefficients[s] = (Vt.T @ np.random
+                                                      .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
+                                                                           cov=cov_post).reshape(-1, 1))
 
-                        s += 1
-                else:
+                    s += 1
+            else:
+                if np.all(_response_error_variance < upper_var_limit):
                     filtered_state[s] = _filtered_state
                     state_covariance[s] = _state_covariance
                     filtered_prediction[s] = _filtered_prediction
@@ -3173,15 +3251,10 @@ class BayesianUnobservedComponents:
                     s += 1
 
             num_iter += 1
-            if num_iter > 2 * num_samp:
-                warnings.warn("Number of sampling iterations exceeds twice the amount of "
-                              "desired posterior samples, which may indicate an issue with "
-                              "convergence of the sampler. Consider killing the kernel and: (1) "
-                              "scaling your data (e.g., scaling the response by its standard "
-                              "deviation) and/or (2) redefining the specification of the model.")
+            if num_iter > max_samp_iter:
+                raise MaxIterSamplingError(upper_var_limit, max_samp_iter)
 
         self.num_sampling_iterations = num_iter
-
         self.posterior = Posterior(num_samp, smoothed_state,
                                    smoothed_errors, smoothed_prediction,
                                    filtered_state, filtered_prediction,
@@ -3189,6 +3262,7 @@ class BayesianUnobservedComponents:
                                    response_error_variance, state_error_covariance,
                                    damped_level_coefficient, damped_trend_coefficient,
                                    damped_season_coefficients, regression_coefficients)
+        self.high_posterior_variance = self._high_variance()
 
         return self.posterior
 
@@ -3340,7 +3414,7 @@ class BayesianUnobservedComponents:
         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
             for c in components:
                 if 'Lag-Seasonal' in c and components[c]['damped']:
-                        damped_season_transition_index += (components[c]['damped_transition_index'], )
+                    damped_season_transition_index += (components[c]['damped_transition_index'],)
 
         response_forecast, state_forecast = _forecast(posterior=posterior,
                                                       num_periods=num_periods,
@@ -3355,7 +3429,6 @@ class BayesianUnobservedComponents:
                                                       damped_season_transition_index=damped_season_transition_index)
 
         return Forecast(response_forecast, state_forecast)
-
 
     def posterior_predictive_distribution(self,
                                           burn: int = None,
@@ -3382,7 +3455,7 @@ class BayesianUnobservedComponents:
 
         return post_pred_dist
 
-    def waic(self, burn: int  = None) -> WAIC:
+    def waic(self, burn: int = None) -> WAIC:
         self._posterior_exists_check()
 
         if burn is None:
@@ -3397,7 +3470,6 @@ class BayesianUnobservedComponents:
         return watanabe_akaike(response=response.T,
                                post_resp_mean=post_resp_mean,
                                post_err_var=post_resp_var)
-
 
     def plot_components(self,
                         burn: int = 0,
