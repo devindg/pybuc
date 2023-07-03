@@ -801,8 +801,8 @@ class BayesianUnobservedComponents:
                                      'the number of observations in the response array.')
 
                 # -- check if design matrix has a constant
-                var_pred = np.var(pred, axis=0)
-                if np.any(var_pred == 0):
+                sd_pred = np.std(pred, axis=0)
+                if np.any(sd_pred <= 1e-6):
                     raise ValueError('The predictors array cannot have a column with a constant value. Note that '
                                      'the inclusion of a constant/intercept in the predictors array will confound '
                                      'with the level if specified. If a constant level without trend or seasonality '
