@@ -9,5 +9,5 @@ def vec_norm(mean, sd):
 
 @vectorize([float64(float64, float64)])
 def vec_ig(shape, scale):
-    ig = 1. / gamma(shape=shape, scale=1. / scale)
+    ig = 1. / gamma(shape, 1. / scale)
     return ig
