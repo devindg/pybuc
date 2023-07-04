@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.statespace.structural import UnobservedComponents
+import time
 
 
 # Convenience function for computing root mean squared error
@@ -92,8 +93,11 @@ if __name__ == '__main__':
                                                 trend=True, stochastic_trend=True,
                                                 trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
                                                 seed=123)
+    start = time.time()
     post = bayes_uc.sample(5000)
+    end = time.time()
     mcmc_burn = 100
+    print(end - start)
 
     # Print summary of estimated parameters
     for key, value in bayes_uc.summary(burn=mcmc_burn).items():
