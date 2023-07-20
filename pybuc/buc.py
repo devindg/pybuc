@@ -593,7 +593,7 @@ def _forecast(posterior: Posterior,
 class BayesianUnobservedComponents:
     def __init__(self,
                  response: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame],
-                 predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = np.array([[]]),
+                 predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None,
                  level: bool = False,
                  stochastic_level: bool = True,
                  damped_level: bool = False,
@@ -738,19 +738,19 @@ class BayesianUnobservedComponents:
                              'may be removed in the future.')
 
         # CHECK AND PREPARE PREDICTORS DATA, IF APPLICABLE
-        # -- check if correct data type
-        if not isinstance(predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
-            raise TypeError("The predictors array must be a Numpy array, list, tuple, Pandas Series, "
-                            "or Pandas DataFrame.")
-        else:
-            if isinstance(predictors, (list, tuple)):
-                pred = np.asarray(predictors, dtype=np.float64)
+        if predictors is not None:
+            # -- check if correct data type
+            if not isinstance(predictors, (np.ndarray, list, tuple, pd.Series, pd.DataFrame)):
+                raise TypeError("The predictors array must be a Numpy array, list, tuple, Pandas Series, "
+                                "or Pandas DataFrame.")
             else:
-                pred = predictors.copy()
+                if isinstance(predictors, (list, tuple)):
+                    pred = np.asarray(predictors, dtype=np.float64)
+                else:
+                    pred = predictors.copy()
 
-            self.predictors_type = type(pred)
+                self.predictors_type = type(pred)
 
-            if pred.size > 0:
                 # -- check if response and predictors are same date type.
                 if isinstance(response, np.ndarray) and not isinstance(pred, np.ndarray):
                     raise TypeError('The response array provided is a NumPy array, list, or tuple, '
@@ -824,6 +824,8 @@ class BayesianUnobservedComponents:
                     X_SVD_S = np.zeros((n, k))
                     X_SVD_S[:n, :n] = np.diag(s)
                     self.X_SVD_StS = X_SVD_S.T @ X_SVD_S
+        else:
+            pred = np.array([[]])
 
         # CHECK AND PREPARE LAG SEASONAL
         if not isinstance(lag_seasonal, tuple):
