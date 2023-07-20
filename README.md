@@ -270,7 +270,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 17.389692065902654
+BAYES-UC RMSE: 17.28267808862597
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
@@ -432,18 +432,23 @@ the following defaults are used:
 $$
 \begin{align}
     \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, 10 * (0.01 * \mathrm{Std.Dev}(y))^2) \\
     \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(1, 0.1 * (0.01 * \mathrm{Std.Dev}(y))^2) \\
 \end{align}
 $$
 
-The level and seasonal priors match the default priors in R's `bsts` package. However, the default trend prior is 
-different. Whereas the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
+The level prior matches the default level prior in R's `bsts` package. However, the default seasonal and trend priors
+are different. While the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
 more conservative assumption about the variance associated with trend. This is reflected by the higher shape parameter 
-value of 1 (i.e., more weight is given to this prior than the others), and a scale parameter value that is one tenth the 
-size of the scale priors for level and seasonality. In other words, this prior assumes that variation in trend is small 
-relative to variation in level and seasonality. The idea is to guard against noise in the data that could result in 
-overly aggressive future trend.
+value of 1 (i.e., more weight is given to this prior than the others), and a scale parameter value that is one-tenth
+(one-hundredth) the size of the level (seasonal) scale prior. In other words, this prior assumes that variation in trend 
+is small relative to variation in level and seasonality. The idea is to guard against noise in the data that could 
+result in overly aggressive future trend.
+
+In a similar line of thought, the default seasonal prior is different from `bsts`'s in that it allows for more 
+flexibility in scale, while keeping the shape parameter the same. Specifically, the scale for seasonal variance is 
+ten (one-hundred) times larger than the scale for level (trend). The expectation is that this will help accommodate 
+potentially large seasonal/periodic fluctuations.
 
 The default prior for irregular variance is:
 
@@ -457,30 +462,13 @@ Damping can be applied to level, trend, and periodic-lag seasonality state compo
 for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
 
 $$
-\phi \sim N(0, \frac{\kappa}{n} \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j})
+\phi \sim N(1, 1)
 $$
 
-where $\phi$ represents some autoregressive coefficient, $\kappa = 0.000001$ is the number of "prior observations" given 
-to the mean prior of 0, $n$ is the number of response observations, $j$ is the lag structure associated with the state 
-variable, and $s$ is the $s$-th posterior sample. There are a few things to note.
+where $\phi$ represents some autoregressive coefficient. Thus, the prior encodes the belief that the process (level, 
+trend, seasonality) is a random walk. A unit variance is assumed to accommodate different types of dynamics, including 
+stationary or explosive processes that may oscillate, grow, or decay.
 
-First, the precision prior $\frac{\kappa}{n} \mathbf a ^\prime_ {s,-j} \mathbf a_ {s,-j}$ is dynamic in that it 
-depends on the $s$-th posterior sample. This is unlike a regression component where the design matrix is known *a priori*. 
-With regression, in particular, Zellner's g-prior is fixed. In contrast, the values of the state variables have to be 
-estimated using the posterior values of the parameters (e.g., the posterior values of the state variances). Thus, the 
-"state design matrix" changes with each posterior sample. What is not dynamic is the number of prior observations placed 
-on the mean prior, i.e., $\frac{\kappa}{n^* }$. Ultimately, if a dynamic precision prior is not desired, a static prior 
-on $\phi$ can be placed, such as $N(0, 1)$.
-
-Second, it is possible to change the number of prior observations for the precision prior. For example, if $\kappa = 1$ 
-is desired for a damped level components, the argument `damped_level_coeff_zellner_prior_obs = 1` can be passed to the 
-`sample()` method in `pybuc`. Note, however, that if a precision prior is also passed to `sample()`, e.g., 
-`damped_level_coeff_prec_prior = [0.5]`, then `damped_level_coeff_zellner_prior_obs = 1` will be ignored.
-
-Third, note that $j$ will depend on the type of state variable. If the state variable represents the level of the 
-time series, then $j = 1$ since $\mathrm{level}_ t = \phi \mathrm{level}_ {t-1} + \eta_{\mathrm{level}, t}$. However, if 
-the state variable respresents periodic-lag seasonality with periodicity $S$, then $j = S$ since 
-$\mathrm{seasonal}_ t = \phi \mathrm{seasonal}_ {t-S} + \eta_{\mathrm{seasonal}, t}$.
 
 ### Regression coefficients
 
