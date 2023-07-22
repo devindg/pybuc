@@ -1639,7 +1639,7 @@ class BayesianUnobservedComponents:
         q = self.num_stoch_states
         var_y = np.nanvar(self.response, ddof=1)
         default_shape_prior = 0.01
-        default_scale_prior = (0.01 * np.sqrt(var_y)) ** 2
+        default_root_scale = 0.01 * np.sqrt(var_y)
 
         # Initialize outputs
         if q > 0:
@@ -1696,7 +1696,7 @@ class BayesianUnobservedComponents:
         if response_var_shape_prior is None:
             response_var_shape_prior = default_shape_prior
         if response_var_scale_prior is None:
-            response_var_scale_prior = default_scale_prior
+            response_var_scale_prior = default_root_scale ** 2
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
         gibbs_iter0_response_error_variance = np.array([[response_var_scale_prior]])
@@ -1714,7 +1714,7 @@ class BayesianUnobservedComponents:
                     level_var_shape_prior = default_shape_prior
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = default_scale_prior
+                    level_var_scale_prior = default_root_scale ** 2
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1782,10 +1782,10 @@ class BayesianUnobservedComponents:
                 trend_params.append("Trend.Var")
 
                 if trend_var_shape_prior is None:
-                    trend_var_shape_prior = 1.
+                    trend_var_shape_prior = default_shape_prior
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = 0.1 * default_scale_prior
+                    trend_var_scale_prior = (0.1 * default_root_scale) ** 2
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1874,7 +1874,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        scale_prior = 10. * default_scale_prior
+                        scale_prior = (10. * default_root_scale) ** 2
                     else:
                         scale_prior = lag_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
@@ -1956,7 +1956,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        scale_prior = 10. * default_scale_prior
+                        scale_prior = (10. * default_root_scale) ** 2
                     else:
                         scale_prior = dum_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
@@ -2017,7 +2017,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = 10. * default_scale_prior
+                        scale_prior = (10. * default_root_scale) ** 2
                     else:
                         scale_prior = trig_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
