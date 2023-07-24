@@ -97,205 +97,6 @@ def _set_seed(value):
     np.random.seed(value)
 
 
-def _ar_state_post_upd(smoothed_state: np.ndarray,
-                       lag: tuple[int, ...],
-                       mean_prior: np.ndarray,
-                       precision_prior: np.ndarray,
-                       state_err_var_post: np.ndarray,
-                       state_eqn_index: list,
-                       state_err_var_post_index: list):
-    """
-    This is a generic function for updating an AR(p) coefficient for a state variable that
-    has an autoregressive structure. For example, if trend is specified with damping, then the
-    trend state equation will take the form trend(t) = alpha * trend(t-1) + error(t), and the
-    coefficient alpha will be updated in the same way coefficients would be updated in a
-    standard regression context. The smoothed Kalman values of a state variable are required
-    for posterior updating.
-
-    :param smoothed_state: ndarray, float64. Array that represents that smoothed values for each state
-    in an unobserved components model.
-
-    :param lag: tuple of positive integers. An integer represents an autoregressive lag of the
-    state variable.
-
-    :param mean_prior: ndarray, float64. An element represents the mean of a Gaussian
-    random variable. Row length must match the number of lags.
-
-    :param precision_prior: ndarray, float64. An element represents the precision of a Gaussian
-    random variable. Row length must match the number of lags.
-
-    :param state_err_var_post: ndarray, float64. An element represents the posterior variance
-    of a state variable's error.
-
-    :param state_eqn_index: list of non-negative integers. An integer represents the row index of a
-    state within an unobserved components model.
-
-    :param state_err_var_post_index: list of non-negative integers. An integer represents the row index
-    of a state's posterior error variance (i.e., a row index for state_err_var_post).
-
-
-    :return: ndarray of dimension (L, 1), where L is the number of lags in the lag tuple. An
-    element represents the posterior autoregressive coefficient for an autoregressive process of the
-    form y(t) = rho * y(t - l) + error(t), where l is some lag.
-    """
-
-    ar_coeff_mean_post = np.empty((len(lag), 1))
-    cov_post = np.empty((len(lag), 1))
-
-    c = 0
-    for i in lag:
-        y = smoothed_state[:, state_eqn_index[c]][i:]
-        y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
-        prec_prior = precision_prior[c]
-
-        ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
-        ar_coeff_mean_post[c] = ar_coeff_cov_post @ (y_lag.T @ y + prec_prior @ mean_prior[c])
-        cov_post[c] = state_err_var_post[state_err_var_post_index[c], 0] * ar_coeff_cov_post
-        c += 1
-
-    ar_coeff_post = dist.vec_norm(ar_coeff_mean_post, np.sqrt(cov_post))
-
-    return ar_coeff_post
-
-
-def _simulate_posterior_predictive_response(posterior: Posterior,
-                                            burn: int = 0,
-                                            smoothed: bool = True,
-                                            num_first_obs_ignore: int = 0,
-                                            random_sample_size_prop: float = 1.) -> np.ndarray:
-    """
-    Generates the posterior predictive density of the response variable. Either the filtered
-    or the smoothed state can be used. The observation equation for the response is
-
-    y(t) = Z(t).a(t) + response_error(t),
-
-    where Z(t) is the known observation matrix,
-
-        a(t) = E[a(t) | t-1] if filtered,
-        a(t) = E[a(t) | t = 1,...,n] if smoothed
-
-    and response_error(t) is the error at time t, respectively.
-
-    Filtered Case:
-    -------------
-    Note: The algorithm for computing the posterior distribution of the parameters is conditional
-    on the whole response vector, i.e., on all time periods in the sample t=1,...,n.
-    That is, the posterior distribution of the smoothed state vector a(t|y(1), y(2), ..., y(n))
-    is given, but the posterior distribution of the filtered state vector a(t|y(t-1)) is not.
-    Thus, variance of response_error(t), for any t, is not enough to capture all the variance
-    in y(t) | y(t-1); the systematic variance of Z(t).a(t|t-1) also has to be accounted for.
-    See below.
-
-    The posterior predictive distribution for the response at any time t, conditional on t-1,
-    is obtained by sampling from
-
-    y(t) | t-1, Z(t), ResponseErrVar ~ N(Z(t).a(t|t-1) | a(t|t-1), Z(t).P(t|t-1).Z(t)' + ResponseErrVar),
-
-    where P(t|t-1) = Var[a(t) | t-1] is the state covariance matrix captured by the Kalman filter, and
-    ResponseErrVar = Var[error(t) | t-j] = Var[error(t) | t-k] for all j, k, j !=k,
-    is the homoskedastic variance of the response error.
-
-    Since y(t) | t-1 is conditionally independent of y(t-1) for all t, the posterior
-    predictive distribution of y(t), t=1,...,n, can be sampled by independently
-    sampling for each y(t).
-
-    y(1) | t=0, Z(1), ResponseErrVar ~ N(Z(1).a(1|t=0) | a(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
-    y(2) | t=1, Z(2), ResponseErrVar ~ N(Z(2).a(2|t=1) | a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
-    ...
-    y(n) | t=n-1, Z(n), ResponseErrVar ~ N(Z(n).a(n|t=n-1) | a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
-
-    Smoothed Case:
-    -------------
-
-    The posterior predictive distribution for the response at any time t, conditional on t=1,...,n,
-    is obtained by sampling from
-
-    y(t) | t=1,...,n, Z(t), a(t|t=1,...,n), ResponseErrVar ~ N(Z(t).a(t|t=1,...,n), ResponseErrVar),
-
-    Since y(t) | t=1,...,n is conditionally independent of y(t-1) for all t, the posterior
-    predictive distribution of y(t), t=1,...,n, can be sampled by independently sampling for each y(t).
-
-    y(1) | t=1,...,n, Z(1), a(1|t=1,...,n), ResponseErrVar ~ N(Z(1).a(1|t=1,...,n), ResponseErrVar)
-    y(1) | t=1,...,n, Z(2), a(2|t=1,...,n), ResponseErrVar ~ N(Z(2).a(2|t=1,...,n), ResponseErrVar)
-    ...
-    y(n) | t=1,...,n, Z(n), a(n|t=1,...,n), ResponseErrVar ~ N(Z(n).a(n|t=1,...,n), ResponseErrVar)
-
-    Note that conditioning on Z(t) is necessary if a regression component is specified because Z(t,s)
-    includes X(t).dot(regression_coefficients(s)) by construction. Otherwise, conditioning on Z(t) is
-    not necessary since Z(t,s) = Z for all t, s.
-
-    :param posterior: NamedTuple with attributes:
-
-    num_samp: int
-    smoothed_state: np.ndarray
-    smoothed_errors: np.ndarray
-    smoothed_prediction: np.ndarray
-    filtered_state: np.ndarray
-    filtered_prediction: np.ndarray
-    response_variance: np.ndarray
-    state_covariance: np.ndarray
-    response_error_variance: np.ndarray
-    state_error_covariance: np.ndarray
-    damped_trend_coefficient: np.ndarray
-    damped_season_coefficients: np.ndarray
-    regression_coefficients: np.ndarray
-
-    :param burn: non-negative integer. Represents how many of the first posterior samples to
-    ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
-
-    :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
-    of a response variable to ignore for computing the posterior predictive distribution of the
-    response. The number of observations to ignore depends on the state specification of the unobserved
-    components model. Some observations are ignored because diffuse initialization is used for the
-    state vector in the Kalman filter. Default value is 0.
-
-    :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
-    posterior samples to take for constructing the posterior predictive distribution. Sampling is
-    done without replacement. Default value is 1.
-
-    :return: ndarray of dimension (S, n), where S is the number of posterior samples and
-    n is the number of observations used for constructing the posterior predictive distribution.
-    Note that S = random_sample_size_prop * S_total, where S_total is total number of
-    posterior samples, and n = n_tot - num_first_obs_ignore, where n_tot is the total number
-    of observations for the response.
-    """
-
-    if smoothed:
-        response_mean = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
-        response_variance = posterior.response_error_variance[burn:]
-    else:
-        response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
-        response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
-
-    num_posterior_samp = response_mean.shape[0]
-    n = response_mean.shape[1]
-
-    if int(random_sample_size_prop * num_posterior_samp) > posterior.num_samp:
-        raise ValueError('random_sample_size_prop must be between 0 and 1.')
-
-    if int(random_sample_size_prop * num_posterior_samp) < 1:
-        raise ValueError('random_sample_size_prop implies a sample with less than 1 observation. '
-                         'Provide a random_sample_size_prop such that the number of samples '
-                         'is at least 1 but no larger than the number of posterior samples.')
-
-    if random_sample_size_prop == 1:
-        num_samp = num_posterior_samp
-        S = list(np.arange(num_posterior_samp))
-    else:
-        num_samp = int(random_sample_size_prop * num_posterior_samp)
-        S = list(np.random.choice(num_posterior_samp, num_samp, replace=False))
-
-    y_post = np.empty((num_samp, n), dtype=np.float64)
-
-    i = 0
-    for s in S:
-        y_post[i] = dist.vec_norm(response_mean[s],
-                                  np.sqrt(response_variance[s][:, 0]))
-        i += 1
-
-    return y_post
-
-
 @njit(cache=True)
 def _simulate_posterior_predictive_filtered_state(posterior: Posterior,
                                                   burn: int = 0,
@@ -605,7 +406,7 @@ class BayesianUnobservedComponents:
 
         :param predictors: Numpy array, list, tuple, Pandas Series, or Pandas DataFrame, float64.
         Array that represents the predictors, if any, to be used for predicting the response variable.
-        Default is an empty array.
+        Default is None.
 
         :param level: bool. If true, a level component is added to the model. Default is false.
 
@@ -1622,6 +1423,67 @@ class BayesianUnobservedComponents:
         else:
             return
 
+    @staticmethod
+    def _ar_state_post_upd(smoothed_state: np.ndarray,
+                           lag: tuple[int, ...],
+                           mean_prior: np.ndarray,
+                           precision_prior: np.ndarray,
+                           state_err_var_post: np.ndarray,
+                           state_eqn_index: list,
+                           state_err_var_post_index: list):
+        """
+        This is a generic function for updating an AR(p) coefficient for a state variable that
+        has an autoregressive structure. For example, if trend is specified with damping, then the
+        trend state equation will take the form trend(t) = alpha * trend(t-1) + error(t), and the
+        coefficient alpha will be updated in the same way coefficients would be updated in a
+        standard regression context. The smoothed Kalman values of a state variable are required
+        for posterior updating.
+
+        :param smoothed_state: ndarray, float64. Array that represents that smoothed values for each state
+        in an unobserved components model.
+
+        :param lag: tuple of positive integers. An integer represents an autoregressive lag of the
+        state variable.
+
+        :param mean_prior: ndarray, float64. An element represents the mean of a Gaussian
+        random variable. Row length must match the number of lags.
+
+        :param precision_prior: ndarray, float64. An element represents the precision of a Gaussian
+        random variable. Row length must match the number of lags.
+
+        :param state_err_var_post: ndarray, float64. An element represents the posterior variance
+        of a state variable's error.
+
+        :param state_eqn_index: list of non-negative integers. An integer represents the row index of a
+        state within an unobserved components model.
+
+        :param state_err_var_post_index: list of non-negative integers. An integer represents the row index
+        of a state's posterior error variance (i.e., a row index for state_err_var_post).
+
+
+        :return: ndarray of dimension (L, 1), where L is the number of lags in the lag tuple. An
+        element represents the posterior autoregressive coefficient for an autoregressive process of the
+        form y(t) = rho * y(t - l) + error(t), where l is some lag.
+        """
+
+        ar_coeff_mean_post = np.empty((len(lag), 1))
+        cov_post = np.empty((len(lag), 1))
+
+        c = 0
+        for i in lag:
+            y = smoothed_state[:, state_eqn_index[c]][i:]
+            y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
+            prec_prior = precision_prior[c]
+
+            ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
+            ar_coeff_mean_post[c] = ar_coeff_cov_post @ (y_lag.T @ y + prec_prior @ mean_prior[c])
+            cov_post[c] = state_err_var_post[state_err_var_post_index[c], 0] * ar_coeff_cov_post
+            c += 1
+
+        ar_coeff_post = dist.vec_norm(ar_coeff_mean_post, np.sqrt(cov_post))
+
+        return ar_coeff_post
+
     def _model_setup(self,
                      response_var_shape_prior, response_var_scale_prior,
                      level_var_shape_prior, level_var_scale_prior,
@@ -2293,13 +2155,13 @@ class BayesianUnobservedComponents:
 
         :param damped_level_coeff_prec_prior: Numpy array, list, or tuple. Specifies the prior
         precision matrix for the coefficient governing the level's an AR(1) process without drift.
-        Default is [[1.].
+        Default is [[1.]].
 
         :param trend_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
         trend state equation error variance. Default is 0.01.
 
         :param trend_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is 0.1 * (0.01 * std(response))^2.
+        trend state equation error variance. Default is (0.1 * 0.01 * std(response))^2.
 
         :param damped_trend_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[1.]].
@@ -2314,7 +2176,7 @@ class BayesianUnobservedComponents:
 
         :param lag_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in lag_seasonal.
-        Default is 10 * (0.01 * std(response))^2 for each periodicity.
+        Default is (10 * 0.01 * std(response))^2 for each periodicity.
 
         :param damped_lag_season_coeff_mean_prior: Numpy array, list, or tuple with s elements, where s is the
         number of stochastic periodicities with damping specified. Specifies the prior mean for the coefficient
@@ -2330,7 +2192,7 @@ class BayesianUnobservedComponents:
 
         :param dum_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in dummy_seasonal.
-        Default is 10 * (0.01 * std(response))^2 for each periodicity.
+        Default is (10 * 0.01 * std(response))^2 for each periodicity.
 
         :param trig_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in trig_seasonal.
@@ -2342,7 +2204,7 @@ class BayesianUnobservedComponents:
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only two
         scale priors need to be specified, namely periodicity 12.
-        Default is 10 * (0.01 * std(response))^2 for each periodicity.
+        Default is (10 * 0.01 * std(response))^2 for each periodicity.
 
         :param reg_coeff_mean_prior: Numpy array, list, or tuple with k elements, where k is the number of predictors.
         If predictors are specified without a mean prior, a k-dimensional zero vector will be assumed.
@@ -3111,7 +2973,7 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=level_state_eqn_idx,
                                        state_err_var_post_index=level_stoch_idx)
-                        damped_level_coefficient[s] = _ar_state_post_upd(**ar_args)
+                        damped_level_coefficient[s] = self._ar_state_post_upd(**ar_args)
 
                     # Get new draw for the trend's AR(1) coefficient, if applicable
                     if self.trend and self.damped_trend:
@@ -3122,7 +2984,7 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=trend_state_eqn_idx,
                                        state_err_var_post_index=trend_stoch_idx)
-                        damped_trend_coefficient[s] = _ar_state_post_upd(**ar_args)
+                        damped_trend_coefficient[s] = self._ar_state_post_upd(**ar_args)
 
                     # Get new draw for lag_seasonal AR(1) coefficients, if applicable
                     if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
@@ -3133,7 +2995,7 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=season_state_eqn_idx,
                                        state_err_var_post_index=season_stoch_idx)
-                        damped_season_coefficients[s] = _ar_state_post_upd(**ar_args)
+                        damped_season_coefficients[s] = self._ar_state_post_upd(**ar_args)
 
                     # Get new draw for regression coefficients
                     if self.has_predictors:
@@ -3187,7 +3049,8 @@ class BayesianUnobservedComponents:
     def forecast(self,
                  num_periods: int,
                  burn: int = 0,
-                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None) -> Forecast:
+                 future_predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None
+                 ) -> Forecast:
 
         """
         Posterior forecast distribution for the response and states.
@@ -3198,7 +3061,7 @@ class BayesianUnobservedComponents:
         ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
 
         :param future_predictors: ndarray of dimension (k, 1), where k is the number of predictors.
-        Data type is float64. Default is an empty array.
+        Data type is float64. Default is None.
 
         :return: ndarray of dimension (S, h, 1), where S is the number of posterior samples and
         h is the number of future periods to be forecast. This array represents the posterior
@@ -3348,11 +3211,101 @@ class BayesianUnobservedComponents:
 
         return Forecast(response_forecast, state_forecast)
 
-    def posterior_predictive_distribution(self,
-                                          burn: int = None,
-                                          smoothed: bool = None,
-                                          num_first_obs_ignore: int = None,
-                                          random_sample_size_prop: float = None) -> np.ndarray:
+    def post_pred_dist(self,
+                       predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None,
+                       burn: int = 0,
+                       smoothed: bool = False,
+                       num_first_obs_ignore: int = None,
+                       random_sample_size_prop: float = 1.
+                       ) -> np.ndarray:
+        """
+        Generates the posterior predictive density of the response variable. Either the filtered
+        or the smoothed state can be used. The observation equation for the response is
+
+        y(t) = Z(t).a(t) + response_error(t),
+
+        where Z(t) is the known observation matrix,
+
+            a(t) = E[a(t) | t-1] if filtered,
+            a(t) = E[a(t) | t = 1,...,n] if smoothed
+
+        and response_error(t) is the error at time t, respectively.
+
+        Filtered Case:
+        -------------
+        Note: The algorithm for computing the posterior distribution of the parameters is conditional
+        on the whole response vector, i.e., on all time periods in the sample t=1,...,n.
+        That is, the posterior distribution of the smoothed state vector a(t|y(1), y(2), ..., y(n))
+        is given, but the posterior distribution of the filtered state vector a(t|y(t-1)) is not.
+        Thus, variance of response_error(t), for any t, is not enough to capture all the variance
+        in y(t) | y(t-1); the systematic variance of Z(t).a(t|t-1) also has to be accounted for.
+        See below.
+
+        The posterior predictive distribution for the response at any time t, conditional on t-1,
+        is obtained by sampling from
+
+        y(t) | t-1, Z(t), ResponseErrVar ~ N(Z(t).a(t|t-1) | a(t|t-1), Z(t).P(t|t-1).Z(t)' + ResponseErrVar),
+
+        where P(t|t-1) = Var[a(t) | t-1] is the state covariance matrix captured by the Kalman filter, and
+        ResponseErrVar = Var[error(t) | t-j] = Var[error(t) | t-k] for all j, k, j !=k,
+        is the homoskedastic variance of the response error.
+
+        Since y(t) | t-1 is conditionally independent of y(t-1) for all t, the posterior
+        predictive distribution of y(t), t=1,...,n, can be sampled by independently
+        sampling for each y(t).
+
+        y(1) | t=0, Z(1), ResponseErrVar ~ N(Z(1).a(1|t=0) | a(1|t=0), Z(1).P(1|t=0).Z(1)' + ResponseErrVar)
+        y(2) | t=1, Z(2), ResponseErrVar ~ N(Z(2).a(2|t=1) | a(2|t=1), Z(2).P(2|t=1).Z(2)' + ResponseErrVar)
+        ...
+        y(n) | t=n-1, Z(n), ResponseErrVar ~ N(Z(n).a(n|t=n-1) | a(n|t=n-1), Z(n).P(n|t=n-1).Z(T)' + ResponseErrVar)
+
+        Smoothed Case:
+        -------------
+
+        The posterior predictive distribution for the response at any time t, conditional on t=1,...,n,
+        is obtained by sampling from
+
+        y(t) | t=1,...,n, Z(t), a(t|t=1,...,n), ResponseErrVar ~ N(Z(t).a(t|t=1,...,n), ResponseErrVar),
+
+        Since y(t) | t=1,...,n is conditionally independent of y(t-1) for all t, the posterior
+        predictive distribution of y(t), t=1,...,n, can be sampled by independently sampling for each y(t).
+
+        y(1) | t=1,...,n, Z(1), a(1|t=1,...,n), ResponseErrVar ~ N(Z(1).a(1|t=1,...,n), ResponseErrVar)
+        y(1) | t=1,...,n, Z(2), a(2|t=1,...,n), ResponseErrVar ~ N(Z(2).a(2|t=1,...,n), ResponseErrVar)
+        ...
+        y(n) | t=1,...,n, Z(n), a(n|t=1,...,n), ResponseErrVar ~ N(Z(n).a(n|t=1,...,n), ResponseErrVar)
+
+        Note that conditioning on Z(t) is necessary if a regression component is specified because Z(t,s)
+        includes X(t).dot(regression_coefficients(s)) by construction. Otherwise, conditioning on Z(t) is
+        not necessary since Z(t,s) = Z for all t, s.
+
+        :param predictors: Numpy array, list, tuple, Pandas Series, or Pandas DataFrame, float64.
+        Array that represents a set of predictors different from the ones used for model estimation.
+        The dimension must match the dimension of the predictors used for model estimation.
+
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param smoothed: boolean. If True, the smoothed Kalman values will be plotted (as opposed
+        to the filtered Kalman values).
+
+        :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+        of a response variable to ignore for computing the posterior predictive distribution of the
+        response. The number of observations to ignore depends on the state specification of the unobserved
+        components model. Some observations are ignored because diffuse initialization is used for the
+        state vector in the Kalman filter. Default value is 0.
+
+        :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+        posterior samples to take for constructing the posterior predictive distribution. Sampling is
+        done without replacement. Default value is 1.
+
+        :return: ndarray of dimension (S, n), where S is the number of posterior samples and
+        n is the number of observations used for constructing the posterior predictive distribution.
+        Note that S = random_sample_size_prop * S_total, where S_total is total number of
+        posterior samples, and n = n_tot - num_first_obs_ignore, where n_tot is the total number
+        of observations for the response.
+        """
+
         self._posterior_exists_check()
         posterior = self.posterior
 
@@ -3365,13 +3318,65 @@ class BayesianUnobservedComponents:
         if random_sample_size_prop is None:
             random_sample_size_prop = 1.
 
-        post_pred_dist = _simulate_posterior_predictive_response(posterior=posterior,
-                                                                 burn=burn,
-                                                                 smoothed=smoothed,
-                                                                 num_first_obs_ignore=num_first_obs_ignore,
-                                                                 random_sample_size_prop=random_sample_size_prop)
+        if predictors is not None:
+            if self.has_predictors:
+                X = self.predictors[num_first_obs_ignore:, :]
+                X_new = np.array(predictors)
 
-        return post_pred_dist
+                if X_new.ndim == 1:
+                    X_new = X_new.reshape(-1, 1)
+                X_new = X_new[num_first_obs_ignore:, :]
+
+                if not np.all(X.shape == X_new.shape):
+                    raise AssertionError("\n"
+                                         "The dimension of predictors must match the dimension of the \n"
+                                         "predictors array used for model estimation, i.e., the predictors \n"
+                                         "array used for class instantiation.")
+                else:
+                    reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
+                    reg_comp = X @ reg_coeff
+                    reg_comp_new = X_new @ reg_coeff
+            else:
+                raise AssertionError("Predictors were not used during model estimation, so \n"
+                                     "they are not applicable for computing the posterior \n"
+                                     "predictive distribution of the response.")
+
+        if smoothed:
+            response_mean = posterior.smoothed_prediction[burn:, num_first_obs_ignore:, 0]
+            response_variance = posterior.response_error_variance[burn:]
+        else:
+            response_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
+            response_variance = posterior.response_variance[burn:, num_first_obs_ignore:, 0]
+
+        if predictors is not None:
+            response_mean = response_mean.copy() + (reg_comp_new - reg_comp).T
+
+        num_posterior_samp = response_mean.shape[0]
+        n = response_mean.shape[1]
+
+        if int(random_sample_size_prop * num_posterior_samp) > posterior.num_samp:
+            raise ValueError('random_sample_size_prop must be between 0 and 1.')
+
+        if int(random_sample_size_prop * num_posterior_samp) < 1:
+            raise ValueError('random_sample_size_prop implies a sample with less than 1 observation. '
+                             'Provide a random_sample_size_prop such that the number of samples '
+                             'is at least 1 but no larger than the number of posterior samples.')
+
+        if random_sample_size_prop == 1:
+            num_samp = num_posterior_samp
+            S = list(np.arange(num_posterior_samp))
+        else:
+            num_samp = int(random_sample_size_prop * num_posterior_samp)
+            S = list(np.random.choice(num_posterior_samp, num_samp, replace=False))
+
+        ppd = np.empty((num_samp, n), dtype=np.float64)
+        i = 0
+        for s in S:
+            ppd[i] = dist.vec_norm(response_mean[s],
+                                   np.sqrt(response_variance[s][:, 0]))
+            i += 1
+
+        return ppd
 
     def waic(self, burn: int = None) -> WAIC:
         self._posterior_exists_check()
@@ -3452,10 +3457,11 @@ class BayesianUnobservedComponents:
         cred_int_lb = 0.5 * cred_int_level
         cred_int_ub = 1. - 0.5 * cred_int_level
 
-        ppd = self.posterior_predictive_distribution(burn=burn,
-                                                     smoothed=smoothed,
-                                                     num_first_obs_ignore=num_first_obs_ignore,
-                                                     random_sample_size_prop=random_sample_size_prop)
+        ppd = self.post_pred_dist(burn=burn,
+                                  smoothed=smoothed,
+                                  num_first_obs_ignore=num_first_obs_ignore,
+                                  random_sample_size_prop=random_sample_size_prop
+                                  )
 
         if smoothed:
             state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
@@ -3465,7 +3471,8 @@ class BayesianUnobservedComponents:
                                                                   burn=burn,
                                                                   num_first_obs_ignore=num_first_obs_ignore,
                                                                   random_sample_size_prop=random_sample_size_prop,
-                                                                  has_predictors=self.has_predictors)
+                                                                  has_predictors=self.has_predictors
+                                                                  )
             kalman_type = "Filtered"
 
         fig, ax = plt.subplots(1 + len(components))
