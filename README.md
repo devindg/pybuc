@@ -238,10 +238,8 @@ for key, value in bayes_uc.summary(burn=mcmc_burn).items():
     print(key, ' : ', value)
 
 # Plot in-sample fit against actuals
-yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
-plt.plot(y_train)
-plt.plot(y_train.index, yhat)
-plt.title('Bayesian-UC: In-sample')
+bayes_uc.plot_post_pred_dist(burn=mcmc_burn)
+plt.title('Bayesian UC: In-sample')
 plt.show()
 
 # Plot time series components
@@ -270,7 +268,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 16.686702600845987
+BAYES-UC RMSE: 16.620400857034113
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.

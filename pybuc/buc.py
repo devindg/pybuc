@@ -1495,7 +1495,8 @@ class BayesianUnobservedComponents:
                      dum_season_var_shape_prior, dum_season_var_scale_prior,
                      trig_season_var_shape_prior, trig_season_var_scale_prior,
                      reg_coeff_mean_prior, reg_coeff_prec_prior,
-                     zellner_prior_obs) -> ModelSetup:
+                     zellner_prior_obs
+                     ) -> ModelSetup:
 
         n = self.num_obs
         q = self.num_stoch_states
@@ -2022,7 +2023,9 @@ class BayesianUnobservedComponents:
 
         return self.model_setup
 
-    def posterior_dict(self, burn: int = 0) -> dict:
+    def posterior_dict(self,
+                       burn: int = 0
+                       ) -> dict:
         """
 
         :param burn: non-negative integer. Represents how many of the first posterior samples to
@@ -2131,7 +2134,8 @@ class BayesianUnobservedComponents:
                reg_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
                zellner_prior_obs: Union[int, float] = None,
                upper_var_limit: Union[int, float] = None,
-               max_samp_iter_factor: Union[int, float] = None) -> Posterior:
+               max_samp_iter_factor: Union[int, float] = None
+               ) -> Posterior:
 
         """
         Posterior distributions for all parameters and states.
@@ -3378,7 +3382,93 @@ class BayesianUnobservedComponents:
 
         return ppd
 
-    def waic(self, burn: int = None) -> WAIC:
+    def plot_post_pred_dist(self,
+                            predictors: Union[np.ndarray, list, tuple, pd.Series, pd.DataFrame] = None,
+                            burn: int = 0,
+                            smoothed: bool = False,
+                            cred_int_level: float = 0.05,
+                            num_first_obs_ignore: int = None,
+                            random_sample_size_prop: float = 1.,
+                            ax: plt.axis = None
+                            ):
+        """
+
+        :param predictors: Numpy array, list, tuple, Pandas Series, or Pandas DataFrame, float64.
+        Array that represents a set of predictors different from the ones used for model estimation.
+        The dimension must match the dimension of the predictors used for model estimation.
+
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param smoothed: boolean. If True, the smoothed Kalman values will be plotted (as opposed
+        to the filtered Kalman values).
+
+        :param cred_int_level: float in (0, 1). Defines the width of the predictive distribution.
+        E.g., a value of 0.05 will represent all values of the predicted variable between the
+        2.5% and 97.5% quantiles.
+
+        :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+        of a response variable to ignore for computing the posterior predictive distribution of the
+        response. The number of observations to ignore depends on the state specification of the unobserved
+        components model. Some observations are ignored because diffuse initialization is used for the
+        state vector in the Kalman filter. Default value is 0.
+
+        :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+        posterior samples to take for constructing the posterior predictive distribution. Sampling is
+        done without replacement. Default value is 1.
+
+        :param ax: Matplotlib pyplot axis object. Optional. Default is None.
+
+        :return: Matplotlib pyplot figure
+        """
+
+        self._posterior_exists_check()
+        cred_int_lb = 0.5 * cred_int_level
+        cred_int_ub = 1. - 0.5 * cred_int_level
+
+        if num_first_obs_ignore is None:
+            num_first_obs_ignore = self.num_first_obs_ignore
+
+        y = self.response[num_first_obs_ignore:]
+        ppd = self.post_pred_dist(predictors=predictors,
+                                  burn=burn,
+                                  smoothed=smoothed,
+                                  num_first_obs_ignore=num_first_obs_ignore,
+                                  random_sample_size_prop=random_sample_size_prop)
+        historical_time_index = self.historical_time_index[num_first_obs_ignore:]
+
+        if smoothed:
+            kalman_type = "Smoothed"
+        else:
+            kalman_type = "Filtered"
+
+        if ax is None:
+            fig, ax = plt.subplots(1)
+
+        if predictors is None:
+            ax.plot(historical_time_index, y)
+
+        ax.plot(historical_time_index, np.mean(ppd, axis=0))
+        lb = np.quantile(ppd, cred_int_lb, axis=0)
+        ub = np.quantile(ppd, cred_int_ub, axis=0)
+        ax.fill_between(historical_time_index, lb, ub, alpha=0.2)
+
+        if predictors is None:
+            ax.title.set_text(f"Predicted vs. observed response - {kalman_type}")
+            ax.legend(("Observed", f"{kalman_type} prediction",
+                       f"{100 * (1 - cred_int_level)}% credible interval"),
+                      loc="upper left")
+        else:
+            ax.title.set_text(f"Predicted response - {kalman_type}")
+            ax.legend((f"{kalman_type} prediction",
+                       f"{100 * (1 - cred_int_level)}% credible interval"),
+                      loc="upper left")
+
+        return
+
+    def waic(self,
+             burn: int = None
+             ) -> WAIC:
         self._posterior_exists_check()
 
         if burn is None:
@@ -3398,7 +3488,8 @@ class BayesianUnobservedComponents:
                         burn: int = 0,
                         cred_int_level: float = 0.05,
                         random_sample_size_prop: float = 1.,
-                        smoothed: bool = True):
+                        smoothed: bool = True
+                        ):
 
         """
         Plots the in-sample posterior components and posterior predictive distribution for the response.
@@ -3465,7 +3556,6 @@ class BayesianUnobservedComponents:
 
         if smoothed:
             state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
-            kalman_type = "Smoothed"
         else:
             state = _simulate_posterior_predictive_filtered_state(posterior=posterior,
                                                                   burn=burn,
@@ -3473,19 +3563,16 @@ class BayesianUnobservedComponents:
                                                                   random_sample_size_prop=random_sample_size_prop,
                                                                   has_predictors=self.has_predictors
                                                                   )
-            kalman_type = "Filtered"
 
         fig, ax = plt.subplots(1 + len(components))
         fig.set_size_inches(12, 10)
-        ax[0].plot(historical_time_index, y)
-        ax[0].plot(historical_time_index, np.mean(ppd, axis=0))
-        lb = np.quantile(ppd, cred_int_lb, axis=0)
-        ub = np.quantile(ppd, cred_int_ub, axis=0)
-        ax[0].fill_between(historical_time_index, lb, ub, alpha=0.2)
-        ax[0].title.set_text(f"Predicted vs. observed response - {kalman_type}")
-        ax[0].legend(('Observed', f'{kalman_type} prediction',
-                      f'{100 * (1 - cred_int_level)}% credible interval'),
-                     loc='upper left')
+        self.plot_post_pred_dist(predictors=None,
+                                 burn=burn,
+                                 smoothed=smoothed,
+                                 cred_int_level=cred_int_level,
+                                 num_first_obs_ignore=num_first_obs_ignore,
+                                 random_sample_size_prop=random_sample_size_prop,
+                                 ax=ax[0])
 
         for i, c in enumerate(components):
             if c == 'Irregular':
@@ -3532,7 +3619,8 @@ class BayesianUnobservedComponents:
 
     def plot_trace(self,
                    parameters: list = None,
-                   burn: int = 0):
+                   burn: int = 0
+                   ):
         """
 
         :param parameters: list of parameter names. A histogram and sampling trace will be plotted
@@ -3577,7 +3665,8 @@ class BayesianUnobservedComponents:
 
     def summary(self,
                 burn: int = 0,
-                cred_int_level: float = 0.05) -> dict:
+                cred_int_level: float = 0.05
+                ) -> dict:
 
         """
         Summary of the posterior distribution for each parameter in the model.

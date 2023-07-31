@@ -100,9 +100,7 @@ if __name__ == '__main__':
         print(key, ' : ', value)
 
     # Plot in-sample fit against actuals
-    yhat = np.mean(post.filtered_prediction[mcmc_burn:], axis=0)
-    plt.plot(y_train)
-    plt.plot(y_train.index, yhat)
+    bayes_uc.plot_post_pred_dist(burn=mcmc_burn)
     plt.title('Bayesian UC: In-sample')
     plt.show()
 
@@ -115,7 +113,8 @@ if __name__ == '__main__':
     plt.show()
 
     # Get and plot forecast
-    forecast, _ = bayes_uc.forecast(hold_out_size, mcmc_burn)
+    forecast, _ = bayes_uc.forecast(num_periods=hold_out_size,
+                                    burn=mcmc_burn)
     forecast_mean = np.mean(forecast, axis=0)
     forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
     forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
