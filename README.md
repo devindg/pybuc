@@ -471,7 +471,8 @@ stationary or explosive processes that may oscillate, grow, or decay.
 The default prior for regression coefficients is
 
 $$
-\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{\kappa}{n} \left(\frac{1}{2} \mathbf X^\prime \mathbf X + \frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X \right)\right)
+\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{\kappa}{n} \left(\frac{1}{2} \mathbf X^\prime \mathbf X + 
+\frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
 $$
 
 where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 0.000001$ is the number 

@@ -28,7 +28,7 @@ mu = np.empty(n + 1)
 mu[0] = 1500
 y = np.empty(n)
 for t in range(n):
-    y[t] = mu[t] + x[t].dot(beta) + eps[t]
+    y[t] = mu[t] + x[t].dot(beta)[0] + eps[t]
     mu[t + 1] = mu[t] + eta[t]
 
 y = y.reshape(-1, 1)
