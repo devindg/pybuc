@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="Black">
-    <option name="executionMode" value="BINARY" />
-    <option name="pathToExecutable" value="$USER_HOME$/.local/bin/black" />
-    <option name="sdkUUID" value="b518fe32-85ad-491a-900d-a6839d34ac65" />
-  </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Poetry (pybuc) (7)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Poetry (pybuc) (8)" project-jdk-type="Python SDK" />
 </project>
