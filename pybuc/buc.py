@@ -469,6 +469,7 @@ class BayesianUnobservedComponents:
         self.parameters = []
         self.num_sampling_iterations = None
         self.high_posterior_variance = None
+        self._components_ppd = None
 
         # CHECK AND PREPARE RESPONSE DATA
         # -- data types, name, and index
@@ -3087,6 +3088,7 @@ class BayesianUnobservedComponents:
             raise ValueError('burn must be a non-negative integer.')
 
         if isinstance(self.historical_time_index, pd.DatetimeIndex):
+            # noinspection PyUnresolvedReferences
             freq = self.historical_time_index.freq
             last_historical_date = self.historical_time_index[-1]
             first_future_date = last_historical_date + 1 * freq
@@ -3303,7 +3305,9 @@ class BayesianUnobservedComponents:
         posterior samples to take for constructing the posterior predictive distribution. Sampling is
         done without replacement. Default value is 1.
 
-        :return: ndarray of dimension (S, n), where S is the number of posterior samples and
+        :return:
+
+        ndarray of dimension (S, n), where S is the number of posterior samples and
         n is the number of observations used for constructing the posterior predictive distribution.
         Note that S = random_sample_size_prop * S_total, where S_total is total number of
         posterior samples, and n = n_tot - num_first_obs_ignore, where n_tot is the total number
@@ -3389,8 +3393,9 @@ class BayesianUnobservedComponents:
                             cred_int_level: float = 0.05,
                             num_first_obs_ignore: int = None,
                             random_sample_size_prop: float = 1.,
-                            ax: plt.axis = None
-                            ):
+                            ax: plt.axis = None,
+                            ppd: np.ndarray = None
+                            ) -> plt.figure:
         """
 
         :param predictors: Numpy array, list, tuple, Pandas Series, or Pandas DataFrame, float64.
@@ -3419,6 +3424,8 @@ class BayesianUnobservedComponents:
 
         :param ax: Matplotlib pyplot axis object. Optional. Default is None.
 
+        :param ppd: 2-d NumPy array: Posterior predictive distribution that's already been computed.
+
         :return: Matplotlib pyplot figure
         """
 
@@ -3430,11 +3437,14 @@ class BayesianUnobservedComponents:
             num_first_obs_ignore = self.num_first_obs_ignore
 
         y = self.response[num_first_obs_ignore:]
-        ppd = self.post_pred_dist(predictors=predictors,
-                                  burn=burn,
-                                  smoothed=smoothed,
-                                  num_first_obs_ignore=num_first_obs_ignore,
-                                  random_sample_size_prop=random_sample_size_prop)
+        if ppd is None:
+            ppd = self.post_pred_dist(predictors=predictors,
+                                      burn=burn,
+                                      smoothed=smoothed,
+                                      num_first_obs_ignore=num_first_obs_ignore,
+                                      random_sample_size_prop=random_sample_size_prop
+                                      )
+
         historical_time_index = self.historical_time_index[num_first_obs_ignore:]
 
         if smoothed:
@@ -3484,12 +3494,117 @@ class BayesianUnobservedComponents:
                                post_resp_mean=post_resp_mean,
                                post_err_var=post_resp_var)
 
+    def components(self,
+                   burn: int = 0,
+                   random_sample_size_prop: float = 1.,
+                   smoothed: bool = True,
+                   num_first_obs_ignore: int = None,
+                   ) -> tuple[dict, np.ndarray, dict]:
+
+        """
+        Plots the in-sample posterior components and posterior predictive distribution for the response.
+
+        :param burn: non-negative integer. Represents how many of the first posterior samples to
+        ignore for computing statistics like the mean and variance of a parameter. Default value is 0.
+
+        :param random_sample_size_prop: float in interval (0, 1]. Represents the proportion of the
+        posterior samples to take for constructing the posterior predictive distribution. Sampling is
+        done without replacement. Default value is 1.
+
+        :param smoothed: boolean. If True, the smoothed Kalman values will be plotted (as opposed
+        to the filtered Kalman values).
+
+        :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+        of a response variable to ignore for computing the posterior predictive distribution of the
+        response. The number of observations to ignore depends on the state specification of the unobserved
+        components model. Some observations are ignored because diffuse initialization is used for the
+        state vector in the Kalman filter. Default value is 0.
+
+        :return: tuple
+
+            [1] dictionary: Captures the posterior for each time series component specified
+            [2] 2-d NumPy array: Posterior predictive distribution used for generating the posterior
+                                 of the irregular component
+            [3] dictionary: Captures the arguments passed to post_pred_dist() for creating the posterior
+                            predictive distribution
+        """
+
+        self._posterior_exists_check()
+        posterior = self.posterior
+
+        if isinstance(burn, int) and burn >= 0:
+            pass
+        else:
+            raise ValueError('burn must be a non-negative integer.')
+
+        if isinstance(random_sample_size_prop, float) and (0 < random_sample_size_prop <= 1):
+            pass
+        else:
+            raise ValueError('random_sample_size_prop must be a value in the interval (0, 1].')
+
+        if not isinstance(smoothed, bool):
+            raise TypeError('smoothed must be of type bool.')
+
+        if num_first_obs_ignore is None:
+            num_first_obs_ignore = self.num_first_obs_ignore
+
+        if self.has_predictors:
+            X = self.predictors[num_first_obs_ignore:, :]
+            reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
+
+        y = self.response[num_first_obs_ignore:, 0]
+        n = self.num_obs
+        Z = self.observation_matrix(num_rows=n - num_first_obs_ignore)
+        model = self.model_setup
+        components = model.components
+        self._components_ppd = self.post_pred_dist(burn=burn,
+                                                   smoothed=smoothed,
+                                                   num_first_obs_ignore=num_first_obs_ignore,
+                                                   random_sample_size_prop=random_sample_size_prop
+                                                   )
+
+        if smoothed:
+            state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
+        else:
+            state = _simulate_posterior_predictive_filtered_state(posterior=posterior,
+                                                                  burn=burn,
+                                                                  num_first_obs_ignore=num_first_obs_ignore,
+                                                                  random_sample_size_prop=random_sample_size_prop,
+                                                                  has_predictors=self.has_predictors
+                                                                  )
+
+        comps = {}
+        for i, c in enumerate(components):
+            if c == 'Irregular':
+                resid = y[np.newaxis] - self._components_ppd
+                comps[c] = resid
+
+            if c == 'Trend':
+                state_eqn_index = components['Trend']['start_state_eqn_index']
+                time_component = state[:, :, state_eqn_index, 0]
+                comps[c] = time_component
+
+            if c not in ('Irregular', 'Regression', 'Trend'):
+                v = components[c]
+                start_index, end_index = v['start_state_eqn_index'], v['end_state_eqn_index']
+                A = Z[:, 0, start_index:end_index]
+                B = state[:, :, start_index:end_index, 0]
+                time_component = (A[np.newaxis] * B).sum(axis=2)
+                comps[c] = time_component
+
+            if c == 'Regression':
+                reg_component = X.dot(reg_coeff)
+                comps[c] = reg_component.T
+
+        return comps
+
     def plot_components(self,
                         burn: int = 0,
                         cred_int_level: float = 0.05,
                         random_sample_size_prop: float = 1.,
-                        smoothed: bool = True
-                        ):
+                        smoothed: bool = True,
+                        num_first_obs_ignore: int = None
+                        ) -> plt.figure:
 
         """
         Plots the in-sample posterior components and posterior predictive distribution for the response.
@@ -3508,110 +3623,52 @@ class BayesianUnobservedComponents:
         :param smoothed: boolean. If True, the smoothed Kalman values will be plotted (as opposed
         to the filtered Kalman values).
 
+        :param num_first_obs_ignore: non-negative integer. Represents how many of the first observations
+        of a response variable to ignore for computing the posterior predictive distribution of the
+        response. The number of observations to ignore depends on the state specification of the unobserved
+        components model. Some observations are ignored because diffuse initialization is used for the
+        state vector in the Kalman filter. Default value is 0.
+
         :return: Return a matplotlib.pyplot figure that plots the posterior predictive distribution
         of the response and the posterior of each state component.
         """
-
-        self._posterior_exists_check()
-        posterior = self.posterior
-
-        if isinstance(burn, int) and burn >= 0:
-            pass
-        else:
-            raise ValueError('burn must be a non-negative integer.')
 
         if isinstance(cred_int_level, float) and (0 < cred_int_level < 1):
             pass
         else:
             raise ValueError('cred_int_level must be a value in the interval (0, 1).')
 
-        if isinstance(random_sample_size_prop, float) and (0 < random_sample_size_prop <= 1):
-            pass
-        else:
-            raise ValueError('random_sample_size_prop must be a value in the interval (0, 1].')
+        if num_first_obs_ignore is None:
+            num_first_obs_ignore = self.num_first_obs_ignore
 
-        if not isinstance(smoothed, bool):
-            raise TypeError('smoothed must be of type bool.')
-
-        num_first_obs_ignore = self.num_first_obs_ignore
-
-        if self.has_predictors:
-            X = self.predictors[num_first_obs_ignore:, :]
-            reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
-
-        y = self.response[num_first_obs_ignore:, 0]
-        n = self.num_obs
-        Z = self.observation_matrix(num_rows=n - num_first_obs_ignore)
         historical_time_index = self.historical_time_index[num_first_obs_ignore:]
-        model = self.model_setup
-        components = model.components
+
+        comps = self.components(burn=burn,
+                                random_sample_size_prop=random_sample_size_prop,
+                                smoothed=smoothed,
+                                num_first_obs_ignore=num_first_obs_ignore
+                                )
         cred_int_lb = 0.5 * cred_int_level
         cred_int_ub = 1. - 0.5 * cred_int_level
 
-        ppd = self.post_pred_dist(burn=burn,
-                                  smoothed=smoothed,
-                                  num_first_obs_ignore=num_first_obs_ignore,
-                                  random_sample_size_prop=random_sample_size_prop
-                                  )
-
-        if smoothed:
-            state = posterior.smoothed_state[burn:, num_first_obs_ignore:n, :, :]
-        else:
-            state = _simulate_posterior_predictive_filtered_state(posterior=posterior,
-                                                                  burn=burn,
-                                                                  num_first_obs_ignore=num_first_obs_ignore,
-                                                                  random_sample_size_prop=random_sample_size_prop,
-                                                                  has_predictors=self.has_predictors
-                                                                  )
-
-        fig, ax = plt.subplots(1 + len(components))
+        fig, ax = plt.subplots(1 + len(comps))
         fig.set_size_inches(12, 10)
-        self.plot_post_pred_dist(predictors=None,
+        self.plot_post_pred_dist(ppd=self._components_ppd,
                                  burn=burn,
-                                 smoothed=smoothed,
-                                 cred_int_level=cred_int_level,
-                                 num_first_obs_ignore=num_first_obs_ignore,
                                  random_sample_size_prop=random_sample_size_prop,
-                                 ax=ax[0])
+                                 smoothed=smoothed,
+                                 num_first_obs_ignore=num_first_obs_ignore,
+                                 cred_int_level=cred_int_level,
+                                 ax=ax[0],
+                                 )
 
-        for i, c in enumerate(components):
-            if c == 'Irregular':
-                resid = y[np.newaxis] - ppd
-                ax[i + 1].plot(historical_time_index, np.mean(resid, axis=0))
-                lb = np.quantile(resid, cred_int_lb, axis=0)
-                ub = np.quantile(resid, cred_int_ub, axis=0)
-                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
-                ax[i + 1].title.set_text(c)
-
-            if c == 'Trend':
-                state_eqn_index = components['Trend']['start_state_eqn_index']
-                time_component = state[:, :, state_eqn_index, 0]
-                ax[i + 1].plot(historical_time_index, np.mean(time_component, axis=0))
-                lb = np.quantile(time_component, cred_int_lb, axis=0)
-                ub = np.quantile(time_component, cred_int_ub, axis=0)
-                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
-                ax[i + 1].title.set_text(c)
-
-            if c not in ('Irregular', 'Regression', 'Trend'):
-                v = components[c]
-                start_index, end_index = v['start_state_eqn_index'], v['end_state_eqn_index']
-                A = Z[:, 0, start_index:end_index]
-                B = state[:, :, start_index:end_index, 0]
-                time_component = (A[np.newaxis] * B).sum(axis=2)
-
-                ax[i + 1].plot(historical_time_index, np.mean(time_component, axis=0))
-                lb = np.quantile(time_component, cred_int_lb, axis=0)
-                ub = np.quantile(time_component, cred_int_ub, axis=0)
-                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
-                ax[i + 1].title.set_text(c)
-
-            if c == 'Regression':
-                reg_component = X.dot(reg_coeff)
-                ax[i + 1].plot(historical_time_index, np.mean(reg_component, axis=1))
-                lb = np.quantile(reg_component, cred_int_lb, axis=1)
-                ub = np.quantile(reg_component, cred_int_ub, axis=1)
-                ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
-                ax[i + 1].title.set_text(c)
+        for i, c in enumerate(comps):
+            x = comps[c]
+            ax[i + 1].plot(historical_time_index, np.mean(x, axis=0))
+            lb = np.quantile(x, cred_int_lb, axis=0)
+            ub = np.quantile(x, cred_int_ub, axis=0)
+            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
+            ax[i + 1].title.set_text(c)
 
         fig.tight_layout()
 
@@ -3620,7 +3677,7 @@ class BayesianUnobservedComponents:
     def plot_trace(self,
                    parameters: list = None,
                    burn: int = 0
-                   ):
+                   ) -> plt.figure:
         """
 
         :param parameters: list of parameter names. A histogram and sampling trace will be plotted
