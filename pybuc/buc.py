@@ -3499,7 +3499,7 @@ class BayesianUnobservedComponents:
                    random_sample_size_prop: float = 1.,
                    smoothed: bool = True,
                    num_first_obs_ignore: int = None,
-                   ) -> tuple[dict, np.ndarray, dict]:
+                   ) -> dict:
 
         """
         Plots the in-sample posterior components and posterior predictive distribution for the response.
