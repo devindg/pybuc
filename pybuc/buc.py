@@ -605,16 +605,16 @@ class BayesianUnobservedComponents:
                     warnings.warn('The number of predictors exceeds the number of observations. '
                                   'Results will be sensitive to choice of priors.')
 
-                n, k = pred.shape
-                if n >= k:
-                    _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
-                    X_SVD_S = np.diag(s)
-                    self.X_SVD_StS = X_SVD_S ** 2
-                else:
-                    _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=True)
-                    X_SVD_S = np.zeros((n, k))
-                    X_SVD_S[:n, :n] = np.diag(s)
-                    self.X_SVD_StS = X_SVD_S.T @ X_SVD_S
+                # n, k = pred.shape
+                # if n >= k:
+                #     _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
+                #     X_SVD_S = np.diag(s)
+                #     self.X_SVD_StS = X_SVD_S ** 2
+                # else:
+                #     _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=True)
+                #     X_SVD_S = np.zeros((n, k))
+                #     X_SVD_S[:n, :n] = np.diag(s)
+                #     self.X_SVD_StS = X_SVD_S.T @ X_SVD_S
         else:
             pred = np.array([[]])
 
@@ -1485,6 +1485,21 @@ class BayesianUnobservedComponents:
 
         return ar_coeff_post
 
+    def _design_matrix_svd(self):
+        X = self.predictors
+        n, k = X.shape
+        if n >= k:
+            _, s, X_SVD_Vt = np.linalg.svd(X, full_matrices=False)
+            X_SVD_S = np.diag(s)
+            X_SVD_StS = X_SVD_S ** 2
+        else:
+            _, s, X_SVD_Vt = np.linalg.svd(X, full_matrices=True)
+            X_SVD_S = np.zeros((n, k))
+            X_SVD_S[:n, :n] = np.diag(s)
+            X_SVD_StS = X_SVD_S.T @ X_SVD_S
+
+        return X_SVD_Vt, X_SVD_StS
+
     def _model_setup(self,
                      response_var_shape_prior, response_var_scale_prior,
                      level_var_shape_prior, level_var_scale_prior,
@@ -1931,9 +1946,12 @@ class BayesianUnobservedComponents:
                                             stochastic_index=None,
                                             damped=None,
                                             damped_transition_index=None)
-            StS, Vt = self.X_SVD_StS, self.X_SVD_Vt
-            XtX = Vt.T @ StS @ Vt
+
             X = self.predictors
+            X_SVD_Vt, X_SVD_StS = self._design_matrix_svd()
+            StS, Vt = X_SVD_StS, X_SVD_Vt
+            XtX = Vt.T @ StS @ Vt
+
             y = self.response
             if self.response_has_nan:
                 nan_index = np.isnan(y).any(axis=1)
@@ -2818,7 +2836,7 @@ class BayesianUnobservedComponents:
         n_ones = np.ones((n, 1))
 
         if self.has_predictors:
-            Vt = self.X_SVD_Vt
+            Vt, _ = self._design_matrix_svd()
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
