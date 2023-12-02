@@ -1,4 +1,4 @@
-from pybuc import buc
+from pybuc.buc import BayesianUnobservedComponents
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ from statsmodels.tsa.statespace.structural import UnobservedComponents
 def rmse(actual, prediction):
     act, pred = actual.flatten(), prediction.flatten()
     return np.sqrt(np.mean((act - pred) ** 2))
+
 
 # Import airline passenger data
 url = "https://raw.githubusercontent.com/devindg/pybuc/master/examples/data/airline-passengers.csv"
@@ -87,11 +88,11 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the airline data using Bayesian unobserved components '''
-    bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
-                                                level=True, stochastic_level=True,
-                                                trend=True, stochastic_trend=True,
-                                                trig_seasonal=((12, 0), ), stochastic_trig_seasonal=(True,),
-                                                seed=123)
+    bayes_uc = BayesianUnobservedComponents(response=y_train,
+                                            level=True, stochastic_level=True,
+                                            trend=True, stochastic_trend=True,
+                                            trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
+                                            seed=123)
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 

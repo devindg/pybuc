@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import warnings
 from typing import Union, NamedTuple
 import pandas as pd
-from .statespace.kalman_filter import kalman_filter as kf
-from .statespace.durbin_koopman_smoother import dk_smoother as dks
-from .utils import array_operations as ao
-from .vectorized import distributions as dist
-from .model_assessment.performance import watanabe_akaike, WAIC
+from pybuc.statespace.kalman_filter import kalman_filter as kf
+from pybuc.statespace.durbin_koopman_smoother import dk_smoother as dks
+from pybuc.utils import array_operations as ao
+from pybuc.vectorized import distributions as dist
+from pybuc.model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
 
 
@@ -1988,7 +1988,7 @@ class BayesianUnobservedComponents:
 
             # Set up initial Gibbs values for regression coefficients
 
-            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.nanvar(y)],
+            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.sqrt(var_y)],
                                                                        np.diag(reg_coeff_prec_prior))))
             gibbs_iter0_reg_coeff_cov_post = ao.mat_inv(X_add_const.T @ X_add_const
                                                         + gibbs_iter0_reg_coeff_prec_prior)
