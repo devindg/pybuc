@@ -14,13 +14,6 @@ from seaborn import histplot, lineplot
 
 
 class MaxIterSamplingError(Exception):
-    """Exception raised for errors in the input salary.
-
-    Attributes:
-        salary -- input salary which caused the error
-        message -- explanation of the error
-    """
-
     def __init__(self,
                  upper_var_limit,
                  max_samp_iter):
@@ -604,17 +597,6 @@ class BayesianUnobservedComponents:
                 if pred.shape[1] > pred.shape[0]:
                     warnings.warn('The number of predictors exceeds the number of observations. '
                                   'Results will be sensitive to choice of priors.')
-
-                # n, k = pred.shape
-                # if n >= k:
-                #     _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=False)
-                #     X_SVD_S = np.diag(s)
-                #     self.X_SVD_StS = X_SVD_S ** 2
-                # else:
-                #     _, s, self.X_SVD_Vt = np.linalg.svd(pred, full_matrices=True)
-                #     X_SVD_S = np.zeros((n, k))
-                #     X_SVD_S[:n, :n] = np.diag(s)
-                #     self.X_SVD_StS = X_SVD_S.T @ X_SVD_S
         else:
             pred = np.array([[]])
 
@@ -3479,7 +3461,7 @@ class BayesianUnobservedComponents:
         ax.plot(historical_time_index, np.mean(ppd, axis=0))
         lb = np.quantile(ppd, cred_int_lb, axis=0)
         ub = np.quantile(ppd, cred_int_ub, axis=0)
-        ax.fill_between(historical_time_index, lb, ub, alpha=0.2)
+        ax.fill_between(historical_time_index, lb, ub, alpha=0.4)
 
         if predictors is None:
             ax.title.set_text(f"Predicted vs. observed response - {kalman_type}")
@@ -3685,7 +3667,7 @@ class BayesianUnobservedComponents:
             ax[i + 1].plot(historical_time_index, np.mean(x, axis=0))
             lb = np.quantile(x, cred_int_lb, axis=0)
             ub = np.quantile(x, cred_int_ub, axis=0)
-            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
+            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.4)
             ax[i + 1].title.set_text(c)
 
         fig.tight_layout()
