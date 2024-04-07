@@ -2045,6 +2045,37 @@ class BayesianUnobservedComponents:
             Vt, StS = self._design_matrix_svd()
             XtX = Vt.T @ StS @ Vt
 
+            # If seasonality or trend is specified, augment the design matrix
+            # with seasonal and trend predictors to get an initial
+            # vector of coefficient values for the Gibbs sampler.
+            X = np.c_[X, np.ones((num_obs, 1))]
+
+            # Get a record of all periodicities and harmonics
+            season_specs = []
+            if len(self.dummy_seasonal) > 0:
+                for j in self.dummy_seasonal:
+                    season_specs.append((j, int(j / 2)))
+            if len(self.trig_seasonal) > 0:
+                for j in self.trig_seasonal:
+                    p, h = j
+                    if h == 0:
+                        h = int(j / 2)
+                    season_specs.append((p, h))
+            if len(self.lag_seasonal) > 0:
+                for j in self.lag_seasonal:
+                    season_specs.append((j, int(j / 2)))
+
+            # Append Fourier seasonal design matrices to original design matrix
+            if len(season_specs) > 0:
+                for j in season_specs:
+                    p, h = j
+                    f = fourier_transform(time_index, p, h)
+                    X = np.c_[X, f]
+
+            # If trend is specified, create linear time trend and append to original design matrix
+            if self.trend:
+                X = np.c_[X, time_index]
+
             y = self.response
             if self.response_has_nan:
                 nan_index = np.isnan(y).any(axis=1)
@@ -2083,41 +2114,8 @@ class BayesianUnobservedComponents:
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
 
             # Set up initial Gibbs values for regression coefficients
-            # If seasonality or trend is specified, augment the design matrix
-            # with seasonal and trend predictors to get an initial
-            # vector of coefficient values for the Gibbs sampler.
-
-            X = np.c_[X, np.ones((num_obs, 1))]
-
-            # Get a record of all periodicities and harmonics
-            season_specs = []
-            if len(self.dummy_seasonal) > 0:
-                for j in self.dummy_seasonal:
-                    season_specs.append((j, int(j / 2)))
-            if len(self.trig_seasonal) > 0:
-                for j in self.trig_seasonal:
-                    p, h = j
-                    if h == 0:
-                        h = int(j / 2)
-                    season_specs.append((p, h))
-            if len(self.lag_seasonal) > 0:
-                for j in self.lag_seasonal:
-                    season_specs.append((j, int(j / 2)))
-
-            # Append Fourier seasonal design matrices to original design matrix
-            if len(season_specs) > 0:
-                for j in season_specs:
-                    p, h = j
-                    f = fourier_transform(time_index, p, h)
-                    X = np.c_[X, f]
-
-            # If trend is specified, create linear time trend and append to original design matrix
-            if self.trend:
-                X = np.c_[X, time_index]
-
-            # Get initial regression coefficient values (MLE estimate)
             _reg_coeff_mean_prior = np.zeros((X.shape[1], 1))
-            _reg_coeff_prec_prior = (1e-6 / n
+            _reg_coeff_prec_prior = (1e-6 / num_obs
                                      * (0.5 * X.T @ X
                                         + 0.5 * np.diag(np.diag(X.T @ X)))
                                      )
