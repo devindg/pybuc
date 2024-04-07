@@ -11,6 +11,7 @@ from pybuc.utils import array_operations as ao
 from pybuc.vectorized import distributions as dist
 from pybuc.model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
+from pybuc.utils.data_transforms import fourier_transform
 
 
 class MaxIterSamplingError(Exception):
@@ -2038,9 +2039,10 @@ class BayesianUnobservedComponents:
                 damped_transition_index=None
             )
 
-            X = self.predictors
-            X_SVD_Vt, X_SVD_StS = self._design_matrix_svd()
-            StS, Vt = X_SVD_StS, X_SVD_Vt
+            X = self.predictors.copy()
+            num_obs, num_pred = X.shape
+            time_index = np.arange(num_obs)
+            Vt, StS = self._design_matrix_svd()
             XtX = Vt.T @ StS @ Vt
 
             y = self.response
@@ -2048,7 +2050,7 @@ class BayesianUnobservedComponents:
                 nan_index = np.isnan(y).any(axis=1)
                 y = y[~nan_index]
                 X = X[~nan_index]
-            X_add_const = np.c_[np.ones((y.shape[0], 1)), X]
+                num_obs = X.shape[1]
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -2065,11 +2067,14 @@ class BayesianUnobservedComponents:
                 zellner_prior_obs = 1e-6
 
             if reg_coeff_mean_prior is None:
-                reg_coeff_mean_prior = np.zeros((self.num_predictors, 1))
+                reg_coeff_mean_prior = np.zeros((num_pred, 1))
 
             if reg_coeff_prec_prior is None:
-                reg_coeff_prec_prior = zellner_prior_obs / n * (0.5 * XtX
-                                                                + 0.5 * np.diag(np.diag(XtX)))
+                reg_coeff_prec_prior = (zellner_prior_obs / n
+                                        * (0.5 * XtX
+                                           + 0.5 * np.diag(np.diag(XtX))
+                                           )
+                                        )
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             else:
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
@@ -2078,15 +2083,51 @@ class BayesianUnobservedComponents:
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
 
             # Set up initial Gibbs values for regression coefficients
+            # If seasonality or trend is specified, augment the design matrix
+            # with seasonal and trend predictors to get an initial
+            # vector of coefficient values for the Gibbs sampler.
 
-            gibbs_iter0_reg_coeff_prec_prior = np.diag(np.concatenate(([1 / np.sqrt(var_y)],
-                                                                       np.diag(reg_coeff_prec_prior))))
-            gibbs_iter0_reg_coeff_cov_post = ao.mat_inv(X_add_const.T @ X_add_const
-                                                        + gibbs_iter0_reg_coeff_prec_prior)
-            gibbs_iter0_reg_coeff_mean_prior = np.vstack(([0], reg_coeff_mean_prior))
-            gibbs_iter0_reg_coeff = (gibbs_iter0_reg_coeff_cov_post @ (X_add_const.T @ y
-                                                                       + gibbs_iter0_reg_coeff_prec_prior
-                                                                       @ gibbs_iter0_reg_coeff_mean_prior))[1:]
+            X = np.c_[X, np.ones((num_obs, 1))]
+
+            # Get a record of all periodicities and harmonics
+            season_specs = []
+            if len(self.dummy_seasonal) > 0:
+                for j in self.dummy_seasonal:
+                    season_specs.append((j, int(j / 2)))
+            if len(self.trig_seasonal) > 0:
+                for j in self.trig_seasonal:
+                    p, h = j
+                    if h == 0:
+                        h = int(j / 2)
+                    season_specs.append((p, h))
+            if len(self.lag_seasonal) > 0:
+                for j in self.lag_seasonal:
+                    season_specs.append((j, int(j / 2)))
+
+            # Append Fourier seasonal design matrices to original design matrix
+            if len(season_specs) > 0:
+                for j in season_specs:
+                    p, h = j
+                    f = fourier_transform(time_index, p, h)
+                    X = np.c_[X, f]
+
+            # If trend is specified, create linear time trend and append to original design matrix
+            if self.trend:
+                X = np.c_[X, time_index]
+
+            # Get initial regression coefficient values (MLE estimate)
+            _reg_coeff_mean_prior = np.zeros((X.shape[1], 1))
+            _reg_coeff_prec_prior = (1e-6 / n
+                                     * (0.5 * X.T @ X
+                                        + 0.5 * np.diag(np.diag(X.T @ X)))
+                                     )
+            _reg_coeff_cov_prior = ao.mat_inv(_reg_coeff_prec_prior)
+            _reg_coeff_cov_post = ao.mat_inv(X.T @ X + _reg_coeff_prec_prior)
+            gibbs_iter0_reg_coeff = (_reg_coeff_cov_post
+                                     @ (X.T @ y
+                                        + _reg_coeff_prec_prior
+                                        @ _reg_coeff_mean_prior)
+                                     )[:num_pred]
 
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
@@ -3945,7 +3986,7 @@ class BayesianUnobservedComponents:
         fig.set_dpi(dpi)
         row = 0
         for p in parameters:
-            histplot(post_dict[p], ax=ax[row, 0])
+            histplot(post_dict[p], ax=ax[row, 0], kde=True)
             lineplot(post_dict[p], ax=ax[row, 1])
             ax[row, 0].title.set_text(p)
             yticks = ax[row, 0].get_yticks()
