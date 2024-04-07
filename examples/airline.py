@@ -57,7 +57,8 @@ if __name__ == '__main__':
                                   level=True, stochastic_level=True,
                                   trend=True, stochastic_trend=True,
                                   freq_seasonal=[{'period': 12, 'harmonics': 6}],
-                                  stochastic_freq_seasonal=[True])
+                                  stochastic_freq_seasonal=[True],
+                                  use_exact_diffuse=True)
 
     # Fit the model via maximum likelihood
     mle_uc_res = mle_uc.fit(disp=False)

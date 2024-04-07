@@ -68,7 +68,8 @@ if __name__ == '__main__':
 
     ''' Fit the simulated data using MLE unobserved components '''
     mle_uc = UnobservedComponents(y_train, exog=x_train, irregular=True,
-                                  level=True, stochastic_level=True)
+                                  level=True, stochastic_level=True,
+                                  use_exact_diffuse=True)
 
     # Fit the model via maximum likelihood
     mle_uc_res = mle_uc.fit(disp=False)
