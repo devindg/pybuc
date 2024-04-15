@@ -27,7 +27,8 @@ if __name__ == '__main__':
     ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
     sarima = SARIMAX(y_train, order=(0, 1, 1),
                      seasonal_order=(0, 1, 1, 12),
-                     trend=[0])
+                     trend=[0],
+                     use_exact_diffuse=True)
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())
 
@@ -87,15 +88,25 @@ if __name__ == '__main__':
 
     # Print RMSE
     print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
-
     ''' Fit the airline data using Bayesian unobserved components '''
     bayes_uc = BayesianUnobservedComponents(response=y_train,
                                             level=True, stochastic_level=True,
                                             trend=True, stochastic_trend=True,
                                             trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
                                             seed=123)
-    post = bayes_uc.sample(5000)
-    mcmc_burn = 100
+    sd_y = np.nanstd(bayes_uc.response, ddof=1)
+    a = (5e-3 * sd_y) ** 2
+    post = bayes_uc.sample(5000,
+                           # response_var_shape_prior=1e-2,
+                           # response_var_scale_prior=a,
+                           # trend_var_shape_prior=1e-2,
+                           # trend_var_scale_prior=0.01 * a,
+                           # level_var_shape_prior=1e-2,
+                           # level_var_scale_prior=a,
+                           # trig_season_var_shape_prior=(1e-2,),
+                           # trig_season_var_scale_prior=(100 * a,),
+                           )
+    mcmc_burn = 1000
 
     # Print summary of estimated parameters
     for key, value in bayes_uc.summary(burn=mcmc_burn).items():
