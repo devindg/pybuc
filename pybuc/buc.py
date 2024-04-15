@@ -2115,11 +2115,7 @@ class BayesianUnobservedComponents:
 
             # Set up initial Gibbs values for regression coefficients
             _reg_coeff_mean_prior = np.zeros((X.shape[1], 1))
-            _reg_coeff_prec_prior = (1e-6 / num_obs
-                                     * (0.5 * X.T @ X
-                                        + 0.5 * np.diag(np.diag(X.T @ X)))
-                                     )
-            _reg_coeff_cov_prior = ao.mat_inv(_reg_coeff_prec_prior)
+            _reg_coeff_prec_prior = np.diag(np.ones(X.shape[1]) * 1e-6)
             _reg_coeff_cov_post = ao.mat_inv(X.T @ X + _reg_coeff_prec_prior)
             gibbs_iter0_reg_coeff = (_reg_coeff_cov_post
                                      @ (X.T @ y
