@@ -10,15 +10,15 @@ keywords = ["structural", "time series", "unobserved components",
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.12"
-pandas = "^2.0.3"
+pandas = ">=1.5.3"
 numpy = ">=1.26.1"
-matplotlib = "^3.7.1"
-twine = "^4.0.2"
+matplotlib = ">=3.7.1"
+twine = ">=4.0.2"
 scipy = ">=1.11.1"
-seaborn = "^0.13.0"
+seaborn = ">=0.13.0"
 setuptools = ">=68.0.0"
 numba = ">=0.56.4"
-mpld3 = "^0.5.9"
+mpld3 = ">=0.5.9"
 
 [tool.poetry.dev-dependencies]
 statsmodels = "^0.14.0"
