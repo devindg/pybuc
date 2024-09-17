@@ -42,7 +42,12 @@ x_test = x[-hold_out_size:, :]
 
 if __name__ == '__main__':
     ''' Fit the simulated data using SARIMA(0,1,1) without drift'''
-    sarima = SARIMAX(y_train, exog=x_train, order=(0, 1, 1), trend=[0])
+    sarima = SARIMAX(
+        y_train,
+        exog=x_train,
+        order=(0, 1, 1),
+        trend=[0]
+    )
     sarima_res = sarima.fit(disp=False)
     print(sarima_res.summary())
 
@@ -67,9 +72,13 @@ if __name__ == '__main__':
     print(f"SARIMA RMSE: {rmse(y_test.flatten(), sarima_forecast['mean'].to_numpy())}")
 
     ''' Fit the simulated data using MLE unobserved components '''
-    mle_uc = UnobservedComponents(y_train, exog=x_train, irregular=True,
-                                  level=True, stochastic_level=True,
-                                  use_exact_diffuse=True)
+    mle_uc = UnobservedComponents(
+        y_train,
+        exog=x_train,
+        irregular=True,
+        level=True,
+        stochastic_level=True
+    )
 
     # Fit the model via maximum likelihood
     mle_uc_res = mle_uc.fit(disp=False)
@@ -100,10 +109,13 @@ if __name__ == '__main__':
     print(f"MLE UC RMSE: {rmse(y_test.flatten(), mle_uc_forecast['mean'].to_numpy())}")
 
     ''' Fit the simulated data using Bayesian unobserved components '''
-    bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
-                                                level=True, stochastic_level=True,
-                                                predictors=x_train,
-                                                seed=123)
+    bayes_uc = buc.BayesianUnobservedComponents(
+        response=y_train,
+        level=True,
+        stochastic_level=True,
+        predictors=x_train,
+        seed=123
+    )
     post = bayes_uc.sample(5000)
     mcmc_burn = 100
 
@@ -125,9 +137,11 @@ if __name__ == '__main__':
     plt.show()
 
     # Get and plot forecast
-    forecast, _ = bayes_uc.forecast(num_periods=hold_out_size,
-                                    burn=mcmc_burn,
-                                    future_predictors=x_test)
+    forecast, _ = bayes_uc.forecast(
+        num_periods=hold_out_size,
+        burn=mcmc_burn,
+        future_predictors=x_test
+    )
     forecast_mean = np.mean(forecast, axis=0)
     forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
     forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()

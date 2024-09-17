@@ -11,7 +11,7 @@ from pybuc.utils import array_operations as ao
 from pybuc.vectorized import distributions as dist
 from pybuc.model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
-from pybuc.utils.data_transforms import fourier_transform
+from statsmodels.tsa.statespace.structural import UnobservedComponents as UC
 
 
 class MaxIterSamplingError(Exception):
@@ -2039,49 +2039,73 @@ class BayesianUnobservedComponents:
                 damped_transition_index=None
             )
 
-            X = self.predictors.copy()
+            y = self.response
+            X = self.predictors
             num_obs, num_pred = X.shape
-            time_index = np.arange(num_obs)
             Vt, StS = self._design_matrix_svd()
             XtX = Vt.T @ StS @ Vt
-
-            # If seasonality or trend is specified, augment the design matrix
-            # with seasonal and trend predictors to get an initial
-            # vector of coefficient values for the Gibbs sampler.
-            X = np.c_[X, np.ones((num_obs, 1))]
 
             # Get a record of all periodicities and harmonics
             season_specs = []
             if len(self.dummy_seasonal) > 0:
-                for j in self.dummy_seasonal:
-                    season_specs.append((j, int(j / 2)))
+                for c, j in enumerate(self.dummy_seasonal):
+                    season_specs.append(((j, int(j / 2)),
+                                         self.stochastic_dummy_seasonal[c]))
             if len(self.trig_seasonal) > 0:
-                for j in self.trig_seasonal:
+                for c, j in enumerate(self.trig_seasonal):
                     p, h = j
                     if h == 0:
                         h = int(j / 2)
-                    season_specs.append((p, h))
+                    season_specs.append(((p, h),
+                                         self.stochastic_trig_seasonal[c]))
             if len(self.lag_seasonal) > 0:
-                for j in self.lag_seasonal:
-                    season_specs.append((j, int(j / 2)))
+                for c, j in enumerate(self.lag_seasonal):
+                    season_specs.append(((j, int(j / 2)),
+                                         self.stochastic_lag_seasonal[c]))
 
-            # Append Fourier seasonal design matrices to original design matrix
+            # Convert seasonal specs to appropriate arguments
+            # for statsmodels UnobservedComponents module.
             if len(season_specs) > 0:
+                uc_season_spec_args = []
+                uc_season_stoch_args = []
                 for j in season_specs:
-                    p, h = j
-                    f = fourier_transform(time_index, p, h)
-                    X = np.c_[X, f]
+                    p, h = j[0]
+                    stoch = j[1]
+                    uc_season_spec_args.append({'period': p, 'harmonics': h})
+                    uc_season_stoch_args.append(stoch)
+            else:
+                uc_season_spec_args = None
+                uc_season_stoch_args = None
 
-            # If trend is specified, create linear time trend and append to original design matrix
-            if self.trend:
-                X = np.c_[X, time_index]
-
-            y = self.response
-            if self.response_has_nan:
-                nan_index = np.isnan(y).any(axis=1)
-                y = y[~nan_index]
-                X = X[~nan_index]
-                num_obs = X.shape[1]
+            # Get initial Gibbs regression coefficient values using
+            # statsmodels UnobservedComponents module.
+            try:
+                uc_mod = UC(
+                    endog=y,
+                    exog=X,
+                    level=self.level,
+                    stochastic_level=self.stochastic_level,
+                    trend=self.trend,
+                    stochastic_trend=self.stochastic_trend,
+                    freq_seasonal=uc_season_spec_args,
+                    stochastic_freq_seasonal=uc_season_stoch_args,
+                    irregular=True
+                )
+                uc_fit = uc_mod.fit(disp=False, method='powell', maxiter=10)
+                uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
+                params = pd.Series(uc_fit.params, index=uc_fit.param_names)
+                gibbs_iter0_reg_coeff = (
+                    np.array(params[[j for j in params.index if j.split('.')[0] == 'beta']])
+                    .reshape(-1, 1)
+                )
+            except Exception as e:
+                print(e.args[0])
+                print("An attempt was made to establish initial Gibbs regression "
+                      "coefficient values using statsmodels' UnobservedComponents "
+                      "module, but failed. The prior for the mean regression "
+                      "coefficients will be used instead."
+                      )
+                gibbs_iter0_reg_coeff = None
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -2113,16 +2137,6 @@ class BayesianUnobservedComponents:
             reg_ninvg_coeff_prec_post = Vt.T @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
 
-            # Set up initial Gibbs values for regression coefficients
-            _reg_coeff_mean_prior = np.zeros((X.shape[1], 1))
-            _reg_coeff_prec_prior = np.diag(np.ones(X.shape[1]) * 1e-6)
-            _reg_coeff_cov_post = ao.mat_inv(X.T @ X + _reg_coeff_prec_prior)
-            gibbs_iter0_reg_coeff = (_reg_coeff_cov_post
-                                     @ (X.T @ y
-                                        + _reg_coeff_prec_prior
-                                        @ _reg_coeff_mean_prior)
-                                     )[:num_pred]
-
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
             state_var_scale_prior = np.vstack(state_var_scale_prior)
@@ -2136,35 +2150,37 @@ class BayesianUnobservedComponents:
         for c in components:
             self.parameters += components[c]['params']
 
-        self.model_setup = ModelSetup(components,
-                                      response_var_scale_prior,
-                                      response_var_shape_post,
-                                      state_var_scale_prior,
-                                      state_var_shape_post,
-                                      gibbs_iter0_init_state,
-                                      gibbs_iter0_response_error_variance,
-                                      gibbs_iter0_state_error_covariance,
-                                      init_state_plus_values,
-                                      init_state_covariance,
-                                      damped_level_coeff_mean_prior,
-                                      damped_level_coeff_prec_prior,
-                                      damped_level_coeff_cov_prior,
-                                      gibbs_iter0_damped_level_coeff,
-                                      damped_trend_coeff_mean_prior,
-                                      damped_trend_coeff_prec_prior,
-                                      damped_trend_coeff_cov_prior,
-                                      gibbs_iter0_damped_trend_coeff,
-                                      damped_lag_season_coeff_mean_prior,
-                                      damped_lag_season_coeff_prec_prior,
-                                      damped_lag_season_coeff_cov_prior,
-                                      gibbs_iter0_damped_season_coeff,
-                                      reg_coeff_mean_prior,
-                                      reg_coeff_prec_prior,
-                                      reg_coeff_cov_prior,
-                                      reg_ninvg_coeff_cov_post,
-                                      reg_ninvg_coeff_prec_post,
-                                      zellner_prior_obs,
-                                      gibbs_iter0_reg_coeff)
+        self.model_setup = ModelSetup(
+            components,
+            response_var_scale_prior,
+            response_var_shape_post,
+            state_var_scale_prior,
+            state_var_shape_post,
+            gibbs_iter0_init_state,
+            gibbs_iter0_response_error_variance,
+            gibbs_iter0_state_error_covariance,
+            init_state_plus_values,
+            init_state_covariance,
+            damped_level_coeff_mean_prior,
+            damped_level_coeff_prec_prior,
+            damped_level_coeff_cov_prior,
+            gibbs_iter0_damped_level_coeff,
+            damped_trend_coeff_mean_prior,
+            damped_trend_coeff_prec_prior,
+            damped_trend_coeff_cov_prior,
+            gibbs_iter0_damped_trend_coeff,
+            damped_lag_season_coeff_mean_prior,
+            damped_lag_season_coeff_prec_prior,
+            damped_lag_season_coeff_cov_prior,
+            gibbs_iter0_damped_season_coeff,
+            reg_coeff_mean_prior,
+            reg_coeff_prec_prior,
+            reg_coeff_cov_prior,
+            reg_ninvg_coeff_cov_post,
+            reg_ninvg_coeff_prec_post,
+            zellner_prior_obs,
+            gibbs_iter0_reg_coeff
+        )
 
         return self.model_setup
 
@@ -2758,7 +2774,7 @@ class BayesianUnobservedComponents:
                     raise TypeError(
                         'dum_seasonal_var_scale_prior must be a tuple '
                         'to accommodate potentially multiple seasonality.')
-                if len(dum_season_var_shape_prior) != sum(self.stochastic_dummy_seasonal):
+                if len(dum_season_var_scale_prior) != sum(self.stochastic_dummy_seasonal):
                     raise ValueError(
                         'The number of elements in dum_season_var_scale_prior must match the '
                         'number of stochastic periodicities in dummy_seasonal. That is, for each '
@@ -3014,6 +3030,10 @@ class BayesianUnobservedComponents:
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
             gibbs_iter0_reg_coeff = model.gibbs_iter0_reg_coeff
+
+            if gibbs_iter0_reg_coeff is None:
+                gibbs_iter0_reg_coeff = reg_coeff_mean_prior
+
             regression_coefficients = np.empty((num_samp, self.num_predictors, 1))
 
             # Compute the Normal-Inverse-Gamma posterior covariance matrix and

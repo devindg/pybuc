@@ -128,9 +128,12 @@ y_test = air.iloc[-hold_out_size:]
 
 ```
 ''' Fit the airline data using SARIMA(0,1,1)(0,1,1) '''
-sarima = SARIMAX(y_train, order=(0, 1, 1),
-                 seasonal_order=(0, 1, 1, 12),
-                 trend=[0])
+sarima = SARIMAX(
+    y_train,
+    order=(0, 1, 1),
+    seasonal_order=(0, 1, 1, 12),
+    trend=[0]
+)
 sarima_res = sarima.fit(disp=False)
 print(sarima_res.summary())
 
@@ -147,7 +150,7 @@ plt.plot(y_test)
 plt.plot(sarima_forecast['mean'])
 plt.fill_between(sarima_forecast.index,
                  sarima_forecast['mean_ci_lower'],
-                 sarima_forecast['mean_ci_upper'], alpha=0.2)
+                 sarima_forecast['mean_ci_upper'], alpha=0.4)
 plt.title('SARIMA: Forecast')
 plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
 plt.show()
@@ -168,11 +171,17 @@ The SARIMA(0, 1, 1)(0, 1, 1) forecast plot.
 
 ```
 ''' Fit the airline data using MLE unobserved components '''
-mle_uc = UnobservedComponents(y_train, exog=None, irregular=True,
-                              level=True, stochastic_level=True,
-                              trend=True, stochastic_trend=True,
-                              freq_seasonal=[{'period': 12, 'harmonics': 6}],
-                              stochastic_freq_seasonal=[True])
+mle_uc = UnobservedComponents(
+    y_train,
+    exog=None,
+    irregular=True,
+    level=True,
+    stochastic_level=True,
+    trend=True,
+    stochastic_trend=True,
+    freq_seasonal=[{'period': 12, 'harmonics': 6}],
+    stochastic_freq_seasonal=[True]
+)
 
 # Fit the model via maximum likelihood
 mle_uc_res = mle_uc.fit(disp=False)
@@ -194,7 +203,7 @@ plt.plot(y_test)
 plt.plot(mle_uc_forecast['mean'])
 plt.fill_between(mle_uc_forecast.index,
                  mle_uc_forecast['mean_ci_lower'],
-                 mle_uc_forecast['mean_ci_upper'], alpha=0.2)
+                 mle_uc_forecast['mean_ci_upper'], alpha=0.4)
 plt.title('MLE UC: Forecast')
 plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
 plt.show()
@@ -225,40 +234,48 @@ Subsequent runs (assuming the Python kernel isn't restarted) should execute cons
 ### Bayesian Unobserved Components
 ```
 ''' Fit the airline data using Bayesian unobserved components '''
-bayes_uc = buc.BayesianUnobservedComponents(response=y_train,
-                                            level=True, stochastic_level=True,
-                                            trend=True, stochastic_trend=True,
-                                            trig_seasonal=((12, 0),), stochastic_trig_seasonal=(True,),
-                                            seed=123)
+bayes_uc = BayesianUnobservedComponents(
+    response=y_train,
+    level=True,
+    stochastic_level=True,
+    trend=True,
+    stochastic_trend=True,
+    trig_seasonal=((12, 0),),
+    stochastic_trig_seasonal=(True,),
+    seed=123
+)
 post = bayes_uc.sample(5000)
-mcmc_burn = 100
+burn = 1000
 
 # Print summary of estimated parameters
-for key, value in bayes_uc.summary(burn=mcmc_burn).items():
+for key, value in bayes_uc.summary(burn=burn).items():
     print(key, ' : ', value)
 
 # Plot in-sample fit against actuals
-bayes_uc.plot_post_pred_dist(burn=mcmc_burn)
+bayes_uc.plot_post_pred_dist(burn=burn)
 plt.title('Bayesian UC: In-sample')
 plt.show()
 
 # Plot time series components
-bayes_uc.plot_components(burn=mcmc_burn, smoothed=True)
+bayes_uc.plot_components(burn=burn, smoothed=False)
 plt.show()
 
 # Plot trace of posterior
-bayes_uc.plot_trace(burn=mcmc_burn)
+bayes_uc.plot_trace(burn=burn)
 plt.show()
 
 # Get and plot forecast
-forecast, _ = bayes_uc.forecast(hold_out_size, mcmc_burn)
+forecast, _ = bayes_uc.forecast(
+    num_periods=hold_out_size,
+    burn=burn
+)
 forecast_mean = np.mean(forecast, axis=0)
 forecast_l95 = np.quantile(forecast, 0.025, axis=0).flatten()
 forecast_u95 = np.quantile(forecast, 0.975, axis=0).flatten()
 
 plt.plot(y_test)
 plt.plot(bayes_uc.future_time_index, forecast_mean)
-plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.2)
+plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.4)
 plt.title('Bayesian UC: Forecast')
 plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
 plt.show()
@@ -268,7 +285,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 16.620400857034113
+BAYES-UC RMSE: 16.638839255129284
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
