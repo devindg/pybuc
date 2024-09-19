@@ -47,7 +47,7 @@ if __name__ == '__main__':
     plt.plot(sarima_forecast['mean'])
     plt.fill_between(sarima_forecast.index,
                      sarima_forecast['mean_ci_lower'],
-                     sarima_forecast['mean_ci_upper'], alpha=0.4)
+                     sarima_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('SARIMA: Forecast')
     plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     plt.plot(mle_uc_forecast['mean'])
     plt.fill_between(mle_uc_forecast.index,
                      mle_uc_forecast['mean_ci_lower'],
-                     mle_uc_forecast['mean_ci_upper'], alpha=0.4)
+                     mle_uc_forecast['mean_ci_upper'], alpha=0.2)
     plt.title('MLE UC: Forecast')
     plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()
@@ -137,7 +137,7 @@ if __name__ == '__main__':
 
     plt.plot(y_test)
     plt.plot(bayes_uc.future_time_index, forecast_mean)
-    plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.4)
+    plt.fill_between(bayes_uc.future_time_index, forecast_l95, forecast_u95, alpha=0.2)
     plt.title('Bayesian UC: Forecast')
     plt.legend(['Actual', 'Mean', '95% Prediction Interval'])
     plt.show()

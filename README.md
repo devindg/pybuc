@@ -285,7 +285,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 16.638839255129284
+BAYES-UC RMSE: 17.2846106007728
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
@@ -441,33 +441,41 @@ $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(
 
 ### Irregular and state variances
 
-If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
-the following defaults are used:
-
-$$
-\begin{align}
-    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (10 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(0.01, (0.1 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
-\end{align}
-$$
-
-The level prior matches the default level prior in R's `bsts` package. However, the default seasonal and trend priors
-are different. While the default trend prior in `bsts` is the same as the level and seasonal priors, `pybuc` makes a 
-more conservative assumption about the variance associated with trend. This is reflected by a standard deviation 
-that is one-tenth (one-hundredth) the magnitude of the level (seasonal) standard deviation. In other words, 
-this prior assumes that variation in trend is small relative to variation in level and seasonality. The objective is to 
-mitigate the impact that noise in the data could have on producing an overly aggressive trend.
-
-In a similar vein, the default seasonal prior is different from `bsts`'s in that it allows for more flexibility in scale. 
-Specifically, the seasonal standard deviation is ten (one-hundred) times larger than the standard deviation for level 
-(trend). Intuitively, changes from one cycle to another, as opposed to one period to the next, are likely to be larger.
-
 The default prior for irregular variance is:
 
 $$
 \sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2)
 $$
+
+If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
+the following defaults are used:
+
+$$
+\begin{align}
+    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (5 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (10 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(0.01, (0.25 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
+\end{align}
+$$
+
+The irregular prior matches the default irregular prior in R's `bsts` package. However, the default level, seasonal, 
+and trend priors are different. `pybuc` makes a more conservative assumption about the variance associated with trend. 
+This is reflected by a standard deviation that is one-twentieth the magnitude of the level standard deviation. The 
+purpose is to mitigate the impact that noise in the data could have on producing an overly aggressive trend.
+
+In contrast, `pybuc` grants more flexibility to the level and seasonal priors compared to `bsts`. The seasonal standard 
+deviation is two (ten) times larger than the standard deviation for level (irregular), and the level standard deviation 
+is five times larger than the irregular standard deviation. The rationale for a higher level standard deviation is to 
+accommodate potentially rapid and large changes in the level of the series that are unaccounted for by the other 
+components in the model. Likewise, a default larger standard deviation for the seasonal component is to accommodate 
+relatively large, periodic swings in the series, even after level and trend are accounted for.
+
+**Note that the scale prior for trigonometric seasonality is automatically scaled by the number of state 
+equations implied by the period and number of harmonics. For example, if the trigonometric seasonality scale prior 
+passed to `pybuc` is 10 and the period and number of harmonics is 12 and 6, respectively, then the scale prior will be 
+converted to $\frac{\mathrm{scale_prior}}{\mathrm{num_state_equations}} = \frac{10}{(2 * 6 - 1)} = \frac{10}{11}$. 
+The reason for this is that trigonometric seasonality is the sum of conditionally independent random harmonics, so 
+the sum of harmonic variances must match the total variance reflected by the scale prior.**
 
 ### Damped/autoregressive state coefficients
 

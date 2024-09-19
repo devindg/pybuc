@@ -1673,7 +1673,7 @@ class BayesianUnobservedComponents:
                     level_var_shape_prior = default_shape_prior
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = default_root_scale ** 2
+                    level_var_scale_prior = (5. * default_root_scale) ** 2
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1746,7 +1746,7 @@ class BayesianUnobservedComponents:
                     trend_var_shape_prior = default_shape_prior
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = (0.1 * default_root_scale) ** 2
+                    trend_var_scale_prior = (0.25 * default_root_scale) ** 2
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1984,9 +1984,9 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = (10. * default_root_scale) ** 2 / num_eqs
                     else:
-                        scale_prior = trig_season_var_scale_prior[c]
+                        scale_prior = trig_season_var_scale_prior[c] / num_eqs
                     state_var_scale_prior.append(scale_prior)
 
                     for k in range(num_eqs):
@@ -2313,7 +2313,7 @@ class BayesianUnobservedComponents:
         level state equation error variance. Default is 0.01.
 
         :param level_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. (0.01 * std(response))^2.
+        level state equation error variance. (5 * 0.01 * std(response))^2.
 
         :param damped_level_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the level's AR(1) process without drift. Default is [[1.]].
@@ -2326,7 +2326,7 @@ class BayesianUnobservedComponents:
         trend state equation error variance. Default is 0.01.
 
         :param trend_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is (0.1 * 0.01 * std(response))^2.
+        trend state equation error variance. Default is (0.25 * 0.01 * std(response))^2.
 
         :param damped_trend_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[1.]].
@@ -2369,7 +2369,9 @@ class BayesianUnobservedComponents:
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only two
         scale priors need to be specified, namely periodicity 12.
-        Default is (10 * 0.01 * std(response))^2 for each periodicity.
+        Default is (10 * 0.01 * std(response))^2 / # of state equations for each periodicity. Note that whatever
+        value is passed to trig_season_var_scale_prior is automatically scaled by the number of state
+        equations implied by the periodicity and number of harmonics.
 
         :param reg_coeff_mean_prior: Numpy array, list, or tuple with k elements, where k is the number of predictors.
         If predictors are specified without a mean prior, a k-dimensional zero vector will be assumed.
@@ -3717,7 +3719,7 @@ class BayesianUnobservedComponents:
         ax.plot(historical_time_index, np.mean(ppd, axis=0))
         lb = np.quantile(ppd, cred_int_lb, axis=0)
         ub = np.quantile(ppd, cred_int_ub, axis=0)
-        ax.fill_between(historical_time_index, lb, ub, alpha=0.4)
+        ax.fill_between(historical_time_index, lb, ub, alpha=0.2)
 
         if predictors is None:
             ax.title.set_text(f"Predicted vs. observed response - {kalman_type}")
@@ -3942,7 +3944,7 @@ class BayesianUnobservedComponents:
             ax[i + 1].plot(historical_time_index, np.mean(x, axis=0))
             lb = np.quantile(x, cred_int_lb, axis=0)
             ub = np.quantile(x, cred_int_ub, axis=0)
-            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.4)
+            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
             ax[i + 1].title.set_text(c)
             yticks = ax[i + 1].get_yticks()
             ax[i + 1].set_yticks(yticks[::max(1, len(yticks) // 5)])
