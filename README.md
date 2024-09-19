@@ -473,7 +473,7 @@ relatively large, periodic swings in the series, even after level and trend are 
 **Note that the scale prior for trigonometric seasonality is automatically scaled by the number of state 
 equations implied by the period and number of harmonics. For example, if the trigonometric seasonality scale prior 
 passed to `pybuc` is 10 and the period and number of harmonics is 12 and 6, respectively, then the scale prior will be 
-converted to $\frac{\mathrm{scale_prior}}{\mathrm{num_state_equations}} = \frac{10}{(2 * 6 - 1)} = \frac{10}{11}$. 
+converted to $\frac{\mathrm{ScalePrior}}{\mathrm{NumStateEq}} = \frac{10}{(2 * 6 - 1)} = \frac{10}{11}$. 
 The reason for this is that trigonometric seasonality is the sum of conditionally independent random harmonics, so 
 the sum of harmonic variances must match the total variance reflected by the scale prior.**
 
