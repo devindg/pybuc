@@ -95,6 +95,7 @@ if __name__ == '__main__':
 
     # Print RMSE
     print(f"MLE UC RMSE: {rmse(y_test.to_numpy(), mle_uc_forecast['mean'].to_numpy())}")
+
     ''' Fit the airline data using Bayesian unobserved components '''
     bayes_uc = BayesianUnobservedComponents(
         response=y_train,

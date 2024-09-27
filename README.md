@@ -285,7 +285,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 17.2846106007728
+BAYES-UC RMSE: 17.444303307096366
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
@@ -452,23 +452,16 @@ the following defaults are used:
 
 $$
 \begin{align}
-    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (5 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (10 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(0.01, (0.25 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(0.01, (0.2 * 0.01 * \mathrm{Std.Dev}(y))^2) \\
 \end{align}
 $$
 
-The irregular prior matches the default irregular prior in R's `bsts` package. However, the default level, seasonal, 
-and trend priors are different. `pybuc` makes a more conservative assumption about the variance associated with trend. 
-This is reflected by a standard deviation that is one-twentieth the magnitude of the level standard deviation. The 
-purpose is to mitigate the impact that noise in the data could have on producing an overly aggressive trend.
-
-In contrast, `pybuc` grants more flexibility to the level and seasonal priors compared to `bsts`. The seasonal standard 
-deviation is two (ten) times larger than the standard deviation for level (irregular), and the level standard deviation 
-is five times larger than the irregular standard deviation. The rationale for a higher level standard deviation is to 
-accommodate potentially rapid and large changes in the level of the series that are unaccounted for by the other 
-components in the model. Likewise, a default larger standard deviation for the seasonal component is to accommodate 
-relatively large, periodic swings in the series, even after level and trend are accounted for.
+Priors for irregular, level, and seasonal variances match the defaults in R's `bsts` package. However, the default prior 
+for trend variance is more conservative in `pybuc`. This is reflected by a standard deviation that is one-fifth the 
+magnitude of the level standard deviation. The purpose is to mitigate the impact that noise in the data could have on 
+producing an overly aggressive trend.
 
 **Note that the scale prior for trigonometric seasonality is automatically scaled by the number of state 
 equations implied by the period and number of harmonics. For example, if the trigonometric seasonality scale prior 

@@ -1673,7 +1673,7 @@ class BayesianUnobservedComponents:
                     level_var_shape_prior = default_shape_prior
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = (5. * default_root_scale) ** 2
+                    level_var_scale_prior = default_root_scale ** 2
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1746,7 +1746,7 @@ class BayesianUnobservedComponents:
                     trend_var_shape_prior = default_shape_prior
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = (0.25 * default_root_scale) ** 2
+                    trend_var_scale_prior = (0.2 * default_root_scale) ** 2
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1837,7 +1837,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = default_root_scale ** 2
                     else:
                         scale_prior = lag_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
@@ -1921,7 +1921,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = default_root_scale ** 2
                     else:
                         scale_prior = dum_season_var_scale_prior[c]
                     state_var_scale_prior.append(scale_prior)
@@ -1984,7 +1984,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2 / num_eqs
+                        scale_prior = default_root_scale ** 2 / num_eqs
                     else:
                         scale_prior = trig_season_var_scale_prior[c] / num_eqs
                     state_var_scale_prior.append(scale_prior)
