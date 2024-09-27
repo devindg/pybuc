@@ -120,7 +120,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(burn=burn, smoothed=False)
+    bayes_uc.plot_components(burn=burn, smoothed=True)
     plt.show()
 
     # Plot trace of posterior
