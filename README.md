@@ -244,7 +244,7 @@ bayes_uc = BayesianUnobservedComponents(
     stochastic_trig_seasonal=(True,),
     seed=123
 )
-post = bayes_uc.sample(5000)
+post = bayes_uc.sample(10000)
 burn = 1000
 
 # Print summary of estimated parameters
@@ -285,7 +285,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 17.444303307096366
+BAYES-UC RMSE: 17.659108108915923
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.

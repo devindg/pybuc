@@ -3031,6 +3031,7 @@ class BayesianUnobservedComponents:
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
+            reg_ninvg_coeff_prec_post = model.reg_ninvg_coeff_prec_post
             gibbs_iter0_reg_coeff = model.gibbs_iter0_reg_coeff
 
             if gibbs_iter0_reg_coeff is None:
@@ -3166,20 +3167,13 @@ class BayesianUnobservedComponents:
             if self.response_has_nan:
                 y = self.response_replace_nan + self.response_nan_indicator * _smoothed_prediction
 
-            # Get new draw for observation variance
-            smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
-            response_var_scale_post = (response_var_scale_prior
-                                       + 0.5 * dot(smooth_one_step_ahead_prediction_resid.T,
-                                                   smooth_one_step_ahead_prediction_resid))
-            _response_error_variance = dist.vec_ig(response_var_shape_post, response_var_scale_post)
-
             if q > 0:
                 state_resid = _smoothed_errors[:, 1:, 0]
                 state_sse = dot(state_resid.T ** 2, n_ones)
                 state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
                 state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
 
-                if np.all(np.concatenate((_response_error_variance, state_err_var_post)) < upper_var_limit):
+                if np.all(state_err_var_post < upper_var_limit):
                     filtered_state[s] = _filtered_state
                     state_covariance[s] = _state_covariance
                     filtered_prediction[s] = _filtered_prediction
@@ -3187,7 +3181,6 @@ class BayesianUnobservedComponents:
                     smoothed_errors[s] = _smoothed_errors
                     smoothed_state[s] = _smoothed_state
                     smoothed_prediction[s] = _smoothed_prediction
-                    response_error_variance[s] = _response_error_variance
                     state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
                     # Get new draw for the level's AR(1) coefficient, if applicable
@@ -3228,37 +3221,85 @@ class BayesianUnobservedComponents:
                         smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                         y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
                         reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                        response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * (
+                            y_tilde.T @ y_tilde
+                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                            )
+                        )
+                        response_error_variance[s] = dist.vec_ig(
+                            response_var_shape_post,
+                            response_var_scale_post
+                        )
                         cov_post = response_error_variance[s][0, 0] * W
                         regression_coefficients[s] = (
                                 Vt.T @ np.random
                                 .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
                                                      cov=cov_post).reshape(-1, 1)
+                        )
+                    else:
+                        # Get new draw for observation variance
+                        smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
+                        response_var_scale_post = (
+                                response_var_scale_prior
+                                + 0.5 * dot(
+                            smooth_one_step_ahead_prediction_resid.T,
+                            smooth_one_step_ahead_prediction_resid)
+                        )
+                        response_error_variance[s] = dist.vec_ig(
+                            response_var_shape_post,
+                            response_var_scale_post
                         )
 
                     s += 1
             else:
-                if np.all(_response_error_variance < upper_var_limit):
-                    filtered_state[s] = _filtered_state
-                    state_covariance[s] = _state_covariance
-                    filtered_prediction[s] = _filtered_prediction
-                    response_variance[s] = _response_variance
-                    smoothed_errors[s] = _smoothed_errors
-                    smoothed_state[s] = _smoothed_state
-                    smoothed_prediction[s] = _smoothed_prediction
-                    response_error_variance[s] = _response_error_variance
+                filtered_state[s] = _filtered_state
+                state_covariance[s] = _state_covariance
+                filtered_prediction[s] = _filtered_prediction
+                response_variance[s] = _response_variance
+                smoothed_errors[s] = _smoothed_errors
+                smoothed_state[s] = _smoothed_state
+                smoothed_prediction[s] = _smoothed_prediction
 
-                    if self.has_predictors:
-                        smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
-                        y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
-                        reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
-                        cov_post = response_error_variance[s][0, 0] * W
-                        regression_coefficients[s] = (
-                                Vt.T @ np.random
-                                .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
-                                                     cov=cov_post).reshape(-1, 1)
-                        )
+                if self.has_predictors:
+                    smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
+                    y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
+                    reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                    response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * (
+                            y_tilde.T @ y_tilde
+                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                            )
+                    )
+                    response_error_variance[s] = dist.vec_ig(
+                        response_var_shape_post,
+                        response_var_scale_post
+                    )
+                    cov_post = response_error_variance[s][0, 0] * W
+                    regression_coefficients[s] = (
+                            Vt.T @ np.random
+                            .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
+                                                 cov=cov_post).reshape(-1, 1)
+                    )
+                else:
+                    # Get new draw for observation variance
+                    smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
+                    response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * dot(
+                        smooth_one_step_ahead_prediction_resid.T,
+                        smooth_one_step_ahead_prediction_resid)
+                    )
+                    response_error_variance[s] = dist.vec_ig(
+                        response_var_shape_post,
+                        response_var_scale_post
+                    )
 
-                    s += 1
+                s += 1
 
             num_iter += 1
             if num_iter > max_samp_iter:

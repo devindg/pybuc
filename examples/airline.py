@@ -107,7 +107,7 @@ if __name__ == '__main__':
         stochastic_trig_seasonal=(True,),
         seed=123
     )
-    post = bayes_uc.sample(5000)
+    post = bayes_uc.sample(10000)
     burn = 1000
 
     # Print summary of estimated parameters
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot time series components
-    bayes_uc.plot_components(burn=burn, smoothed=True)
+    bayes_uc.plot_components(burn=burn, smoothed=False)
     plt.show()
 
     # Plot trace of posterior
