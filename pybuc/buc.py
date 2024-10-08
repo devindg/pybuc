@@ -11,7 +11,7 @@ from pybuc.utils import array_operations as ao
 from pybuc.vectorized import distributions as dist
 from pybuc.model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
-from pybuc.utils.data_transforms import fourier_transform
+from statsmodels.tsa.statespace.structural import UnobservedComponents as UC
 
 
 class MaxIterSamplingError(Exception):
@@ -452,6 +452,7 @@ class BayesianUnobservedComponents:
         :param stochastic_trig_seasonal: tuple of bools. Each boolean in the tuple specifies whether the
         corresponding (periodicity, num_harmonics) in trig_seasonal evolve stochastically. Default is an
         empty tuple, which will be converted to true bools if trig_seasonal is not empty.
+
         """
 
         self.model_setup = None
@@ -463,6 +464,8 @@ class BayesianUnobservedComponents:
         self.parameters = []
         self.num_sampling_iterations = None
         self.high_posterior_variance = None
+        self.scale_data = None
+        self.back_transform = None
         self._components_ppd = None
 
         # CHECK AND PREPARE RESPONSE DATA
@@ -951,6 +954,7 @@ class BayesianUnobservedComponents:
                 raise ValueError('dummy_seasonal and trig_seasonal cannot have periodicities in common.')
 
         # ASSIGN CLASS ATTRIBUTES IF ALL VALIDITY CHECKS ARE PASSED
+
         # If the response has NaNs, replace with 0's
         if np.any(np.isnan(resp)):
             self.response_nan_indicator = np.isnan(resp) * 1.
@@ -1101,6 +1105,17 @@ class BayesianUnobservedComponents:
                 num_stoch += 2 * num_harmonics * self.stochastic_trig_seasonal[c]
 
         return num_stoch
+
+    @property
+    def response_scale(self):
+        return np.nanstd(self.response, ddof=1)
+
+    @property
+    def predictors_scale(self):
+        if self.has_predictors:
+            return np.nanstd(self.predictors, ddof=1, axis=0)
+        else:
+            return None
 
     @property
     def has_predictors(self) -> bool:
@@ -1441,8 +1456,13 @@ class BayesianUnobservedComponents:
         Uses the first non-missing value of the response.
         :return: scalar
         """
+        if self.scale_data:
+            resp = self.response / self.response_scale
+        else:
+            resp = self.response
+
         if self.level:
-            first_y = self._first_value(self.response)[0]
+            first_y = self._first_value(resp)[0]
             return first_y
         else:
             return
@@ -1454,10 +1474,15 @@ class BayesianUnobservedComponents:
         compute an initial linear slope.
         :return: scalar
         """
+        if self.scale_data:
+            resp = self.response / self.response_scale
+        else:
+            resp = self.response
+
         if self.trend:
-            first_y = self._first_value(self.response)
-            last_y = self._last_value(self.response)
-            num_steps = (self.response.size - last_y[1][0][0] - 1) - first_y[1][0][0]
+            first_y = self._first_value(resp)
+            last_y = self._last_value(resp)
+            num_steps = (resp.size - last_y[1][0][0] - 1) - first_y[1][0][0]
             if num_steps == 0:
                 trend = 0.
             else:
@@ -1563,8 +1588,9 @@ class BayesianUnobservedComponents:
 
         return ar_coeff_post
 
-    def _design_matrix_svd(self):
-        X = self.predictors
+    @staticmethod
+    def _design_matrix_svd(design_matrix):
+        X = design_matrix
         n, k = X.shape
         if n >= k:
             _, s, X_SVD_Vt = np.linalg.svd(X, full_matrices=False)
@@ -1594,9 +1620,12 @@ class BayesianUnobservedComponents:
 
         n = self.num_obs
         q = self.num_stoch_states
-        var_y = np.nanvar(self.response, ddof=1)
         default_shape_prior = 0.01
-        default_root_scale = 0.01 * np.sqrt(var_y)
+
+        if self.scale_data:
+            default_root_scale = 0.01
+        else:
+            default_root_scale = 0.01 * self.response_scale
 
         # Initialize outputs
         if q > 0:
@@ -1656,6 +1685,12 @@ class BayesianUnobservedComponents:
             response_var_shape_prior = default_shape_prior
         if response_var_scale_prior is None:
             response_var_scale_prior = default_root_scale ** 2
+        else:
+            if self.scale_data:
+                response_var_scale_prior = (
+                        response_var_scale_prior
+                        / self.response_scale ** 2
+                )
 
         response_var_shape_post = np.array([[response_var_shape_prior + 0.5 * n]])
         gibbs_iter0_response_error_variance = np.array([[response_var_scale_prior]])
@@ -1674,6 +1709,12 @@ class BayesianUnobservedComponents:
 
                 if level_var_scale_prior is None:
                     level_var_scale_prior = default_root_scale ** 2
+                else:
+                    if self.scale_data:
+                        level_var_scale_prior = (
+                                level_var_scale_prior
+                                / self.response_scale ** 2
+                        )
 
                 state_var_shape_post.append(level_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(level_var_scale_prior)
@@ -1714,10 +1755,14 @@ class BayesianUnobservedComponents:
                 if abs(damped_level_coeff_mean_prior[0, 0]) >= 1:
                     init_state_variances.append(1e6)
                 else:
-                    init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
-                                                (1. - gibbs_iter0_damped_level_coeff[0, 0] ** 2))
+                    init_state_variances.append(
+                        gibbs_iter0_state_error_var[stochastic_index]
+                        / (1. - gibbs_iter0_damped_level_coeff[0, 0] ** 2)
+                    )
 
-                init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
+                init_state_plus_values.append(
+                    dist.vec_norm(0., np.sqrt(init_state_variances[j]))
+                )
                 damped_index = (j, j)
             else:
                 damped_index = ()
@@ -1746,7 +1791,13 @@ class BayesianUnobservedComponents:
                     trend_var_shape_prior = default_shape_prior
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = (0.1 * default_root_scale) ** 2
+                    trend_var_scale_prior = (0.2 * default_root_scale) ** 2
+                else:
+                    if self.scale_data:
+                        trend_var_scale_prior = (
+                                trend_var_scale_prior /
+                                self.response_scale ** 2
+                        )
 
                 state_var_shape_post.append(trend_var_shape_prior + 0.5 * n)
                 state_var_scale_prior.append(trend_var_scale_prior)
@@ -1788,10 +1839,14 @@ class BayesianUnobservedComponents:
                 if abs(damped_trend_coeff_mean_prior[0, 0]) >= 1:
                     init_state_variances.append(1e6)
                 else:
-                    init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
-                                                (1. - gibbs_iter0_damped_trend_coeff[0, 0] ** 2))
+                    init_state_variances.append(
+                        gibbs_iter0_state_error_var[stochastic_index]
+                        / (1. - gibbs_iter0_damped_trend_coeff[0, 0] ** 2)
+                    )
 
-                init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
+                init_state_plus_values.append(
+                    dist.vec_norm(0., np.sqrt(init_state_variances[j]))
+                )
                 damped_index = (j, j)
             else:
                 damped_index = ()
@@ -1834,12 +1889,20 @@ class BayesianUnobservedComponents:
                         shape_prior = default_shape_prior
                     else:
                         shape_prior = lag_season_var_shape_prior[c]
+
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = default_root_scale ** 2
                     else:
-                        scale_prior = lag_season_var_scale_prior[c]
+                        if self.scale_data:
+                            scale_prior = (
+                                    lag_season_var_scale_prior[c]
+                                    / self.response_scale ** 2
+                            )
+                        else:
+                            scale_prior = lag_season_var_scale_prior[c]
+
                     state_var_scale_prior.append(scale_prior)
 
                     gibbs_iter0_state_error_var.append(scale_prior)
@@ -1871,10 +1934,14 @@ class BayesianUnobservedComponents:
                     if abs(damped_lag_season_coeff_mean_prior[d, 0]) >= 1:
                         init_state_variances.append(1e6)
                     else:
-                        init_state_variances.append(gibbs_iter0_state_error_var[stochastic_index] /
-                                                    (1. - gibbs_iter0_damped_season_coeff[d, 0] ** 2))
+                        init_state_variances.append(
+                            gibbs_iter0_state_error_var[stochastic_index]
+                            / (1. - gibbs_iter0_damped_season_coeff[d, 0] ** 2)
+                        )
 
-                    init_state_plus_values.append(dist.vec_norm(0., np.sqrt(init_state_variances[j])))
+                    init_state_plus_values.append(
+                        dist.vec_norm(0., np.sqrt(init_state_variances[j]))
+                    )
                     damped_index = (i, i + v - 1)
                     damped_ar_coeff_col_index = d
                     d += 1
@@ -1918,12 +1985,20 @@ class BayesianUnobservedComponents:
                         shape_prior = default_shape_prior
                     else:
                         shape_prior = dum_season_var_shape_prior[c]
+
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = default_root_scale ** 2
                     else:
-                        scale_prior = dum_season_var_scale_prior[c]
+                        if self.scale_data:
+                            scale_prior = (
+                                    dum_season_var_scale_prior[c]
+                                    / self.response_scale ** 2
+                            )
+                        else:
+                            scale_prior = dum_season_var_scale_prior[c]
+
                     state_var_scale_prior.append(scale_prior)
 
                     gibbs_iter0_state_error_var.append(scale_prior)
@@ -1981,12 +2056,21 @@ class BayesianUnobservedComponents:
                         shape_prior = default_shape_prior
                     else:
                         shape_prior = trig_season_var_shape_prior[c]
+
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = (10. * default_root_scale) ** 2
+                        scale_prior = default_root_scale ** 2 / num_eqs
                     else:
-                        scale_prior = trig_season_var_scale_prior[c]
+                        if self.scale_data:
+                            scale_prior = (
+                                    trig_season_var_scale_prior[c]
+                                    / self.response_scale ** 2
+                                    / num_eqs
+                            )
+                        else:
+                            scale_prior = trig_season_var_scale_prior[c] / num_eqs
+
                     state_var_scale_prior.append(scale_prior)
 
                     for k in range(num_eqs):
@@ -2039,49 +2123,78 @@ class BayesianUnobservedComponents:
                 damped_transition_index=None
             )
 
-            X = self.predictors.copy()
-            num_obs, num_pred = X.shape
-            time_index = np.arange(num_obs)
-            Vt, StS = self._design_matrix_svd()
-            XtX = Vt.T @ StS @ Vt
+            if self.scale_data:
+                y = self.response / self.response_scale
+                X = self.predictors / self.predictors_scale[np.newaxis, :]
+            else:
+                y = self.response
+                X = self.predictors
 
-            # If seasonality or trend is specified, augment the design matrix
-            # with seasonal and trend predictors to get an initial
-            # vector of coefficient values for the Gibbs sampler.
-            X = np.c_[X, np.ones((num_obs, 1))]
+            num_obs, num_pred = X.shape
+            Vt, StS = self._design_matrix_svd(X)
+            XtX = Vt.T @ StS @ Vt
 
             # Get a record of all periodicities and harmonics
             season_specs = []
             if len(self.dummy_seasonal) > 0:
-                for j in self.dummy_seasonal:
-                    season_specs.append((j, int(j / 2)))
+                for c, j in enumerate(self.dummy_seasonal):
+                    season_specs.append(((j, int(j / 2)),
+                                         self.stochastic_dummy_seasonal[c]))
             if len(self.trig_seasonal) > 0:
-                for j in self.trig_seasonal:
+                for c, j in enumerate(self.trig_seasonal):
                     p, h = j
                     if h == 0:
                         h = int(j / 2)
-                    season_specs.append((p, h))
+                    season_specs.append(((p, h),
+                                         self.stochastic_trig_seasonal[c]))
             if len(self.lag_seasonal) > 0:
-                for j in self.lag_seasonal:
-                    season_specs.append((j, int(j / 2)))
+                for c, j in enumerate(self.lag_seasonal):
+                    season_specs.append(((j, int(j / 2)),
+                                         self.stochastic_lag_seasonal[c]))
 
-            # Append Fourier seasonal design matrices to original design matrix
+            # Convert seasonal specs to appropriate arguments
+            # for statsmodels UnobservedComponents module.
             if len(season_specs) > 0:
+                uc_season_spec_args = []
+                uc_season_stoch_args = []
                 for j in season_specs:
-                    p, h = j
-                    f = fourier_transform(time_index, p, h)
-                    X = np.c_[X, f]
+                    p, h = j[0]
+                    stoch = j[1]
+                    uc_season_spec_args.append({'period': p, 'harmonics': h})
+                    uc_season_stoch_args.append(stoch)
+            else:
+                uc_season_spec_args = None
+                uc_season_stoch_args = None
 
-            # If trend is specified, create linear time trend and append to original design matrix
-            if self.trend:
-                X = np.c_[X, time_index]
-
-            y = self.response
-            if self.response_has_nan:
-                nan_index = np.isnan(y).any(axis=1)
-                y = y[~nan_index]
-                X = X[~nan_index]
-                num_obs = X.shape[1]
+            # Get initial Gibbs regression coefficient values using
+            # statsmodels UnobservedComponents module.
+            try:
+                uc_mod = UC(
+                    endog=y,
+                    exog=X,
+                    level=self.level,
+                    stochastic_level=self.stochastic_level,
+                    trend=self.trend,
+                    stochastic_trend=self.stochastic_trend,
+                    freq_seasonal=uc_season_spec_args,
+                    stochastic_freq_seasonal=uc_season_stoch_args,
+                    irregular=True
+                )
+                uc_fit = uc_mod.fit(disp=False, method='powell', maxiter=10)
+                uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
+                params = pd.Series(uc_fit.params, index=uc_fit.param_names)
+                gibbs_iter0_reg_coeff = (
+                    np.array(params[[j for j in params.index if j.split('.')[0] == 'beta']])
+                    .reshape(-1, 1)
+                )
+            except Exception as e:
+                print(e.args[0])
+                print("An attempt was made to establish initial Gibbs regression "
+                      "coefficient values using statsmodels' UnobservedComponents "
+                      "module, but failed. The prior for the mean regression "
+                      "coefficients will be used instead."
+                      )
+                gibbs_iter0_reg_coeff = None
 
             # Static regression coefficients are modeled
             # by appending X*beta to the observation matrix,
@@ -2099,6 +2212,13 @@ class BayesianUnobservedComponents:
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))
+            else:
+                if self.scale_data:
+                    reg_coeff_mean_prior = (
+                            reg_coeff_mean_prior
+                            * self.predictors_scale[:, np.newaxis]
+                            / self.response_scale
+                    )
 
             if reg_coeff_prec_prior is None:
                 reg_coeff_prec_prior = (zellner_prior_obs / n
@@ -2108,20 +2228,18 @@ class BayesianUnobservedComponents:
                                         )
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             else:
-                reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
+                if self.scale_data:
+                    pred_scale_diag = np.diag(self.predictors_scale)
+                    reg_coeff_prec_prior = (
+                        pred_scale_diag @ reg_coeff_prec_prior @ pred_scale_diag
+                        / self.response_scale ** 2
+                    )
+                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
+                else:
+                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
 
             reg_ninvg_coeff_prec_post = Vt.T @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
             reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
-
-            # Set up initial Gibbs values for regression coefficients
-            _reg_coeff_mean_prior = np.zeros((X.shape[1], 1))
-            _reg_coeff_prec_prior = np.diag(np.ones(X.shape[1]) * 1e-6)
-            _reg_coeff_cov_post = ao.mat_inv(X.T @ X + _reg_coeff_prec_prior)
-            gibbs_iter0_reg_coeff = (_reg_coeff_cov_post
-                                     @ (X.T @ y
-                                        + _reg_coeff_prec_prior
-                                        @ _reg_coeff_mean_prior)
-                                     )[:num_pred]
 
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
@@ -2136,35 +2254,37 @@ class BayesianUnobservedComponents:
         for c in components:
             self.parameters += components[c]['params']
 
-        self.model_setup = ModelSetup(components,
-                                      response_var_scale_prior,
-                                      response_var_shape_post,
-                                      state_var_scale_prior,
-                                      state_var_shape_post,
-                                      gibbs_iter0_init_state,
-                                      gibbs_iter0_response_error_variance,
-                                      gibbs_iter0_state_error_covariance,
-                                      init_state_plus_values,
-                                      init_state_covariance,
-                                      damped_level_coeff_mean_prior,
-                                      damped_level_coeff_prec_prior,
-                                      damped_level_coeff_cov_prior,
-                                      gibbs_iter0_damped_level_coeff,
-                                      damped_trend_coeff_mean_prior,
-                                      damped_trend_coeff_prec_prior,
-                                      damped_trend_coeff_cov_prior,
-                                      gibbs_iter0_damped_trend_coeff,
-                                      damped_lag_season_coeff_mean_prior,
-                                      damped_lag_season_coeff_prec_prior,
-                                      damped_lag_season_coeff_cov_prior,
-                                      gibbs_iter0_damped_season_coeff,
-                                      reg_coeff_mean_prior,
-                                      reg_coeff_prec_prior,
-                                      reg_coeff_cov_prior,
-                                      reg_ninvg_coeff_cov_post,
-                                      reg_ninvg_coeff_prec_post,
-                                      zellner_prior_obs,
-                                      gibbs_iter0_reg_coeff)
+        self.model_setup = ModelSetup(
+            components,
+            response_var_scale_prior,
+            response_var_shape_post,
+            state_var_scale_prior,
+            state_var_shape_post,
+            gibbs_iter0_init_state,
+            gibbs_iter0_response_error_variance,
+            gibbs_iter0_state_error_covariance,
+            init_state_plus_values,
+            init_state_covariance,
+            damped_level_coeff_mean_prior,
+            damped_level_coeff_prec_prior,
+            damped_level_coeff_cov_prior,
+            gibbs_iter0_damped_level_coeff,
+            damped_trend_coeff_mean_prior,
+            damped_trend_coeff_prec_prior,
+            damped_trend_coeff_cov_prior,
+            gibbs_iter0_damped_trend_coeff,
+            damped_lag_season_coeff_mean_prior,
+            damped_lag_season_coeff_prec_prior,
+            damped_lag_season_coeff_cov_prior,
+            gibbs_iter0_damped_season_coeff,
+            reg_coeff_mean_prior,
+            reg_coeff_prec_prior,
+            reg_coeff_cov_prior,
+            reg_ninvg_coeff_cov_post,
+            reg_ninvg_coeff_prec_post,
+            zellner_prior_obs,
+            gibbs_iter0_reg_coeff
+        )
 
         return self.model_setup
 
@@ -2241,8 +2361,12 @@ class BayesianUnobservedComponents:
         return post_dict
 
     def _high_variance(self, burn: int = 0) -> dict:
+        if self.scale_data:
+            high_var = 1.
+        else:
+            high_var = self.response_scale ** 2
+
         post_dict = self.posterior_dict(burn=burn)
-        high_var = np.nanvar(self.response, ddof=1)
 
         if self.num_stoch_states > 0:
             hv = {}
@@ -2257,6 +2381,8 @@ class BayesianUnobservedComponents:
 
     def sample(self,
                num_samp: int,
+               scale_data: Union[bool, str] = "auto",
+               back_transform: bool = True,
                response_var_shape_prior: Union[int, float] = None,
                response_var_scale_prior: Union[int, float] = None,
                level_var_shape_prior: Union[int, float] = None,
@@ -2287,6 +2413,14 @@ class BayesianUnobservedComponents:
 
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
+        :param scale_data: 'auto', True, or False. If 'auto', the response and the predictors, if any,
+        will be scaled by their respective standard deviations if 0.01 * std(response) > 100 or
+        std(predictor) > 100 for any predictor; otherwise the data is untouched. Default is 'auto'.
+
+        :param back_transform: True or False. This argument is applicable only if scale_data = True.
+        If True and scale_data = True, then the posterior sample values will be converted back to
+        their original scale. Otherwise, the transformed posterior sample values will be returned.
+
         :param response_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
         response error variance. Default is 0.01.
 
@@ -2297,7 +2431,7 @@ class BayesianUnobservedComponents:
         level state equation error variance. Default is 0.01.
 
         :param level_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. (0.01 * std(response))^2.
+        level state equation error variance. (5 * 0.01 * std(response))^2.
 
         :param damped_level_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the level's AR(1) process without drift. Default is [[1.]].
@@ -2310,7 +2444,7 @@ class BayesianUnobservedComponents:
         trend state equation error variance. Default is 0.01.
 
         :param trend_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is (0.1 * 0.01 * std(response))^2.
+        trend state equation error variance. Default is (0.25 * 0.01 * std(response))^2.
 
         :param damped_trend_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[1.]].
@@ -2353,7 +2487,9 @@ class BayesianUnobservedComponents:
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only two
         scale priors need to be specified, namely periodicity 12.
-        Default is (10 * 0.01 * std(response))^2 for each periodicity.
+        Default is (10 * 0.01 * std(response))^2 / # of state equations for each periodicity. Note that whatever
+        value is passed to trig_season_var_scale_prior is automatically scaled by the number of state
+        equations implied by the periodicity and number of harmonics.
 
         :param reg_coeff_mean_prior: Numpy array, list, or tuple with k elements, where k is the number of predictors.
         If predictors are specified without a mean prior, a k-dimensional zero vector will be assumed.
@@ -2406,6 +2542,28 @@ class BayesianUnobservedComponents:
                     damped_trend_coefficient: Posterior AR(1) coefficient for trend
                     damped_lag_season_coefficients: Posterior AR(1) coefficients for lag_seasonal components
         """
+
+        if scale_data not in ("auto", True, False):
+            raise ValueError("scale_data must be 'auto', True, or False.")
+
+        if not isinstance(back_transform, bool):
+            raise ValueError("back_transform must be bool.")
+
+        self.back_transform = back_transform
+
+        if scale_data == "auto":
+            if 0.01 * self.response_scale > 1e2:
+                self.scale_data = True
+            else:
+                self.scale_data = False
+
+            if self.has_predictors:
+                if np.any(self.predictors_scale > 1e2):
+                    self.scale_data = True
+                else:
+                    self.scale_data = False
+        else:
+            self.scale_data = scale_data
 
         if isinstance(num_samp, int) and num_samp > 0:
             pass
@@ -2758,7 +2916,7 @@ class BayesianUnobservedComponents:
                     raise TypeError(
                         'dum_seasonal_var_scale_prior must be a tuple '
                         'to accommodate potentially multiple seasonality.')
-                if len(dum_season_var_shape_prior) != sum(self.stochastic_dummy_seasonal):
+                if len(dum_season_var_scale_prior) != sum(self.stochastic_dummy_seasonal):
                     raise ValueError(
                         'The number of elements in dum_season_var_scale_prior must match the '
                         'number of stochastic periodicities in dummy_seasonal. That is, for each '
@@ -2880,9 +3038,11 @@ class BayesianUnobservedComponents:
                     raise ValueError('zellner_prior_obs must be strictly positive.')
 
         # Set upper limits on variance draws and number of sampling iterations
-        var_y = np.nanvar(self.response, ddof=1)
         if upper_var_limit is None:
-            upper_var_limit = var_y
+            if self.scale_data:
+                upper_var_limit = 1.
+            else:
+                upper_var_limit = self.response_scale ** 2
         else:
             if isinstance(upper_var_limit, (int, float)) and upper_var_limit > 0:
                 pass
@@ -2898,7 +3058,16 @@ class BayesianUnobservedComponents:
                 raise ValueError('max_samp_iter_factor must be greater than 1.')
 
         # Define variables
-        y = self.response
+        if self.scale_data:
+            y = self.response / self.response_scale
+            if self.has_predictors:
+                X = self.predictors / self.predictors_scale[np.newaxis, :]
+            else:
+                X = self.predictors
+        else:
+            y = self.response
+            X = self.predictors
+
         n = self.num_obs
         q = self.num_stoch_states
         m = self.num_state_eqs
@@ -2907,7 +3076,6 @@ class BayesianUnobservedComponents:
         C = self.state_intercept_matrix
         R = self.state_error_transformation_matrix
         H = self.state_sse_transformation_matrix
-        X = self.predictors
 
         # Bring in the model configuration from _model_setup()
         model = self._model_setup(
@@ -3009,11 +3177,16 @@ class BayesianUnobservedComponents:
         n_ones = np.ones((n, 1))
 
         if self.has_predictors:
-            Vt, _ = self._design_matrix_svd()
+            Vt, _ = self._design_matrix_svd(X)
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
             reg_coeff_prec_prior = model.reg_coeff_prec_prior
             reg_ninvg_coeff_cov_post = model.reg_ninvg_coeff_cov_post
+            reg_ninvg_coeff_prec_post = model.reg_ninvg_coeff_prec_post
             gibbs_iter0_reg_coeff = model.gibbs_iter0_reg_coeff
+
+            if gibbs_iter0_reg_coeff is None:
+                gibbs_iter0_reg_coeff = reg_coeff_mean_prior
+
             regression_coefficients = np.empty((num_samp, self.num_predictors, 1))
 
             # Compute the Normal-Inverse-Gamma posterior covariance matrix and
@@ -3144,20 +3317,13 @@ class BayesianUnobservedComponents:
             if self.response_has_nan:
                 y = self.response_replace_nan + self.response_nan_indicator * _smoothed_prediction
 
-            # Get new draw for observation variance
-            smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
-            response_var_scale_post = (response_var_scale_prior
-                                       + 0.5 * dot(smooth_one_step_ahead_prediction_resid.T,
-                                                   smooth_one_step_ahead_prediction_resid))
-            _response_error_variance = dist.vec_ig(response_var_shape_post, response_var_scale_post)
-
             if q > 0:
                 state_resid = _smoothed_errors[:, 1:, 0]
                 state_sse = dot(state_resid.T ** 2, n_ones)
                 state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
                 state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
 
-                if np.all(np.concatenate((_response_error_variance, state_err_var_post)) < upper_var_limit):
+                if np.all(state_err_var_post < upper_var_limit):
                     filtered_state[s] = _filtered_state
                     state_covariance[s] = _state_covariance
                     filtered_prediction[s] = _filtered_prediction
@@ -3165,7 +3331,6 @@ class BayesianUnobservedComponents:
                     smoothed_errors[s] = _smoothed_errors
                     smoothed_state[s] = _smoothed_state
                     smoothed_prediction[s] = _smoothed_prediction
-                    response_error_variance[s] = _response_error_variance
                     state_error_covariance[s] = q_eye * dot(H.T, state_err_var_post)
 
                     # Get new draw for the level's AR(1) coefficient, if applicable
@@ -3206,43 +3371,113 @@ class BayesianUnobservedComponents:
                         smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                         y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
                         reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                        response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * (
+                            y_tilde.T @ y_tilde
+                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                            )
+                        )
+                        response_error_variance[s] = dist.vec_ig(
+                            response_var_shape_post,
+                            response_var_scale_post
+                        )
                         cov_post = response_error_variance[s][0, 0] * W
                         regression_coefficients[s] = (
                                 Vt.T @ np.random
                                 .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
                                                      cov=cov_post).reshape(-1, 1)
+                        )
+                    else:
+                        # Get new draw for observation variance
+                        smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
+                        response_var_scale_post = (
+                                response_var_scale_prior
+                                + 0.5 * dot(
+                            smooth_one_step_ahead_prediction_resid.T,
+                            smooth_one_step_ahead_prediction_resid)
+                        )
+                        response_error_variance[s] = dist.vec_ig(
+                            response_var_shape_post,
+                            response_var_scale_post
                         )
 
                     s += 1
             else:
-                if np.all(_response_error_variance < upper_var_limit):
-                    filtered_state[s] = _filtered_state
-                    state_covariance[s] = _state_covariance
-                    filtered_prediction[s] = _filtered_prediction
-                    response_variance[s] = _response_variance
-                    smoothed_errors[s] = _smoothed_errors
-                    smoothed_state[s] = _smoothed_state
-                    smoothed_prediction[s] = _smoothed_prediction
-                    response_error_variance[s] = _response_error_variance
+                filtered_state[s] = _filtered_state
+                state_covariance[s] = _state_covariance
+                filtered_prediction[s] = _filtered_prediction
+                response_variance[s] = _response_variance
+                smoothed_errors[s] = _smoothed_errors
+                smoothed_state[s] = _smoothed_state
+                smoothed_prediction[s] = _smoothed_prediction
 
-                    if self.has_predictors:
-                        smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
-                        y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
-                        reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
-                        cov_post = response_error_variance[s][0, 0] * W
-                        regression_coefficients[s] = (
-                                Vt.T @ np.random
-                                .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
-                                                     cov=cov_post).reshape(-1, 1)
-                        )
+                if self.has_predictors:
+                    smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
+                    y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
+                    reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+                    response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * (
+                            y_tilde.T @ y_tilde
+                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                            )
+                    )
+                    response_error_variance[s] = dist.vec_ig(
+                        response_var_shape_post,
+                        response_var_scale_post
+                    )
+                    cov_post = response_error_variance[s][0, 0] * W
+                    regression_coefficients[s] = (
+                            Vt.T @ np.random
+                            .multivariate_normal(mean=(Vt @ reg_coeff_mean_post).flatten(),
+                                                 cov=cov_post).reshape(-1, 1)
+                    )
+                else:
+                    # Get new draw for observation variance
+                    smooth_one_step_ahead_prediction_resid = _smoothed_errors[:, 0]
+                    response_var_scale_post = (
+                            response_var_scale_prior
+                            + 0.5 * dot(
+                        smooth_one_step_ahead_prediction_resid.T,
+                        smooth_one_step_ahead_prediction_resid)
+                    )
+                    response_error_variance[s] = dist.vec_ig(
+                        response_var_shape_post,
+                        response_var_scale_post
+                    )
 
-                    s += 1
+                s += 1
 
             num_iter += 1
             if num_iter > max_samp_iter:
                 raise MaxIterSamplingError(upper_var_limit, max_samp_iter)
 
         self.num_sampling_iterations = num_iter
+
+        if self.scale_data:
+            if self.back_transform:
+                smoothed_state = smoothed_state * self.response_scale
+                smoothed_errors = smoothed_errors * self.response_scale
+                smoothed_prediction = smoothed_prediction * self.response_scale
+                filtered_state = filtered_state * self.response_scale
+                filtered_prediction = filtered_prediction * self.response_scale
+                response_variance = response_variance * self.response_scale ** 2
+                state_covariance = state_covariance * self.response_scale ** 2
+                response_error_variance = response_error_variance * self.response_scale ** 2
+                state_error_covariance = state_error_covariance * self.response_scale ** 2
+                if self.has_predictors:
+                    regression_coefficients[:, :, 0] = (
+                            regression_coefficients[:, :, 0]
+                            * self.response_scale / self.predictors_scale[np.newaxis, :]
+                )
+            else:
+                pass
+        else:
+            pass
+
         self.posterior = Posterior(
             num_samp,
             smoothed_state,
@@ -3259,6 +3494,7 @@ class BayesianUnobservedComponents:
             damped_season_coefficients,
             regression_coefficients
         )
+
         self.high_posterior_variance = self._high_variance()
 
         return self.posterior
@@ -3425,6 +3661,10 @@ class BayesianUnobservedComponents:
         damped_trend_transition_index = ()
         damped_season_transition_index = ()
 
+        if self.scale_data:
+            if self.back_transform:
+                fut_pred = fut_pred / self.response_scale
+
         if self.level and self.damped_level:
             damped_level_transition_index = components['Level']['damped_transition_index']
 
@@ -3563,7 +3803,14 @@ class BayesianUnobservedComponents:
 
         if predictors is not None:
             if self.has_predictors:
-                X = self.predictors[num_first_obs_ignore:, :]
+                if self.scale_data:
+                    X = (
+                        self.predictors[num_first_obs_ignore:, :]
+                        / self.predictors_scale[np.newaxis, :]
+                    )
+                else:
+                    X = self.predictors[num_first_obs_ignore:, :]
+
                 X_new = np.array(predictors)
 
                 if X_new.ndim == 1:
@@ -3671,7 +3918,14 @@ class BayesianUnobservedComponents:
         if num_first_obs_ignore is None:
             num_first_obs_ignore = self.num_first_obs_ignore
 
-        y = self.response[num_first_obs_ignore:]
+        if self.scale_data:
+            if self.back_transform:
+                y = self.response[num_first_obs_ignore:]
+            else:
+                y = self.response[num_first_obs_ignore:] / self.response_scale
+        else:
+            y = self.response[num_first_obs_ignore:]
+
         if ppd is None:
             ppd = self.post_pred_dist(
                 predictors=predictors,
@@ -3697,7 +3951,7 @@ class BayesianUnobservedComponents:
         ax.plot(historical_time_index, np.mean(ppd, axis=0))
         lb = np.quantile(ppd, cred_int_lb, axis=0)
         ub = np.quantile(ppd, cred_int_ub, axis=0)
-        ax.fill_between(historical_time_index, lb, ub, alpha=0.4)
+        ax.fill_between(historical_time_index, lb, ub, alpha=0.2)
 
         if predictors is None:
             ax.title.set_text(f"Predicted vs. observed response - {kalman_type}")
@@ -3722,7 +3976,15 @@ class BayesianUnobservedComponents:
 
         posterior = self.posterior
         num_first_obs_ignore = self.num_first_obs_ignore
-        response = self.response[num_first_obs_ignore:]
+
+        if self.scale_data:
+            if self.back_transform:
+                response = self.response[num_first_obs_ignore:]
+            else:
+                response = self.response[num_first_obs_ignore:] / self.response_scale
+        else:
+            response = self.response[num_first_obs_ignore:]
+
         post_resp_mean = posterior.filtered_prediction[burn:, num_first_obs_ignore:, 0]
         post_resp_var = posterior.response_variance[burn:, num_first_obs_ignore:, 0, 0]
 
@@ -3787,10 +4049,27 @@ class BayesianUnobservedComponents:
             num_first_obs_ignore = self.num_first_obs_ignore
 
         if self.has_predictors:
-            X = self.predictors[num_first_obs_ignore:, :]
+            if self.scale_data:
+                if self.back_transform:
+                    X = self.predictors[num_first_obs_ignore:, :]
+                else:
+                    X = (
+                        self.predictors[num_first_obs_ignore:, :]
+                        / self.predictors_scale[np.newaxis, :]
+                    )
+            else:
+                X = self.predictors[num_first_obs_ignore:, :]
+
             reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
 
-        y = self.response[num_first_obs_ignore:, 0]
+        if self.scale_data:
+            if self.back_transform:
+                y = self.response[num_first_obs_ignore:, 0]
+            else:
+                y = self.response[num_first_obs_ignore:, 0] / self.response_scale
+        else:
+            y = self.response[num_first_obs_ignore:, 0]
+
         n = self.num_obs
         Z = self.observation_matrix(num_rows=n - num_first_obs_ignore)
         model = self.model_setup
@@ -3922,7 +4201,7 @@ class BayesianUnobservedComponents:
             ax[i + 1].plot(historical_time_index, np.mean(x, axis=0))
             lb = np.quantile(x, cred_int_lb, axis=0)
             ub = np.quantile(x, cred_int_ub, axis=0)
-            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.4)
+            ax[i + 1].fill_between(historical_time_index, lb, ub, alpha=0.2)
             ax[i + 1].title.set_text(c)
             yticks = ax[i + 1].get_yticks()
             ax[i + 1].set_yticks(yticks[::max(1, len(yticks) // 5)])
