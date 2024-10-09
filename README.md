@@ -582,7 +582,7 @@ model's parameters. Consequently, a Gibbs sampler is used to sample from each pa
 
 To achieve fast sampling, `pybuc` follows `bsts`'s adoption of the Durbin and Koopman (2002) simulation smoother. For 
 any parameter $\theta$, let $\theta(s)$ denote the $s$-th sample of parameter $\theta$. Each sample $s$ is drawn by 
-repeating the following three steps:
+repeating the following four steps:
 
 1. Draw $\boldsymbol{\alpha}(s)$ from 
    $p(\boldsymbol{\alpha} | \mathbf y, \boldsymbol{\sigma}^2_\eta(s-1), \boldsymbol{\beta}(s-1), \sigma^2_\epsilon(s-1))$ 
