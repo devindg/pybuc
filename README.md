@@ -591,13 +591,16 @@ repeating the following three steps:
    and $\boldsymbol{\sigma}^2_\eta(s-1) = \mathrm{diag}(\boldsymbol{\Sigma}_\eta(s-1))$. Note that `pybuc` implements a 
    correction (based on a potential misunderstanding) for drawing $\boldsymbol{\alpha}(s)$ per "A note on implementing 
    the Durbin and Koopman simulation smoother" (Marek Jarocinski, 2015).
-2. Draw $\boldsymbol{\sigma}^2(s) = (\sigma^2_ \epsilon(s), \boldsymbol{\sigma}^2_ \eta(s))^\prime$ from 
-   $p(\boldsymbol{\sigma}^2 | \mathbf y, \boldsymbol{\alpha}(s), \boldsymbol{\beta}(s-1))$ using Durbin and Koopman's 
+2. Draw $\boldsymbol{\sigma}^2_ \eta(s)$ from 
+   $p(\boldsymbol{\sigma}^2 _\eta | \mathbf y, \boldsymbol{\alpha}(s))$ using Durbin and Koopman's 
    simulation disturbance smoother.
-3. Draw $\boldsymbol{\beta}(s)$ from 
+3. Draw $\sigma^2_\epsilon(s)$ from 
+   $p(\sigma^2_\epsilon | \mathbf y^ *, \boldsymbol{\alpha}(s))$, where $\mathbf y^ *$ is defined 
+   above.
+4. Draw $\boldsymbol{\beta}(s)$ from 
    $p(\boldsymbol{\beta} | \mathbf y^ *, \boldsymbol{\alpha}(s), \sigma^2_\epsilon(s))$, where $\mathbf y^ *$ is defined 
    above.
 
-By assumption, the elements in $\boldsymbol{\sigma}^2(s)$ are conditionally independent inverse-Gamma distributed random 
-variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2(s)$ independently from their 
+By assumption, the elements in $\boldsymbol{\sigma}^2_ \eta(s)$ are conditionally independent inverse-Gamma distributed random 
+variables. Thus, Step 2 amounts to sampling each element in $\boldsymbol{\sigma}^2_ \eta(s)$ independently from their 
 posterior inverse-Gamma distributions.
