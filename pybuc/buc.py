@@ -2552,13 +2552,13 @@ class BayesianUnobservedComponents:
         self.back_transform = back_transform
 
         if scale_data == "auto":
-            if 0.01 * self.response_scale > 1e2:
+            if self.response_scale > 1e3:
                 self.scale_data = True
             else:
                 self.scale_data = False
 
             if self.has_predictors:
-                if np.any(self.predictors_scale > 1e2):
+                if np.any(self.predictors_scale > 1e3):
                     self.scale_data = True
                 else:
                     self.scale_data = False
