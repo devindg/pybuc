@@ -2208,7 +2208,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = 1e-6
+                zellner_prior_obs = 1e-3
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))
@@ -2238,8 +2238,16 @@ class BayesianUnobservedComponents:
                 else:
                     reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
 
-            reg_ninvg_coeff_prec_post = Vt.T @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
-            reg_ninvg_coeff_cov_post = Vt.T @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T) @ Vt
+            reg_ninvg_coeff_prec_post = (
+                    Vt.T
+                    @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T)
+                    @ Vt
+            )
+            reg_ninvg_coeff_cov_post = (
+                    Vt.T
+                    @ ao.mat_inv(StS + Vt @ reg_coeff_prec_prior @ Vt.T)
+                    @ Vt
+            )
 
         if q > 0:
             state_var_shape_post = np.vstack(state_var_shape_post)
@@ -2414,8 +2422,8 @@ class BayesianUnobservedComponents:
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
         :param scale_data: 'auto', True, or False. If 'auto', the response and the predictors, if any,
-        will be scaled by their respective standard deviations if 0.01 * std(response) > 100 or
-        std(predictor) > 100 for any predictor; otherwise the data is untouched. Default is 'auto'.
+        will be scaled by their respective standard deviations if std(response) > 1000 or
+        std(predictor) > 1000 for any predictor; otherwise the data is untouched. Default is 'auto'.
 
         :param back_transform: True or False. This argument is applicable only if scale_data = True.
         If True and scale_data = True, then the posterior sample values will be converted back to
