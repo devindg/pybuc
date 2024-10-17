@@ -1108,12 +1108,15 @@ class BayesianUnobservedComponents:
 
     @property
     def response_scale(self):
-        return np.nanstd(self.response, ddof=1)
+        scale = np.nanstd(self.response, ddof=1)
+        if scale <= 1e-6:
+            scale = 1.0
+        return scale
 
     @property
     def predictors_scale(self):
         if self.has_predictors:
-            return np.nanstd(self.predictors, ddof=1, axis=0)
+            return np.std(self.predictors, ddof=1, axis=0)
         else:
             return None
 
