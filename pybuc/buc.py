@@ -3055,10 +3055,12 @@ class BayesianUnobservedComponents:
                 init_state_values = gibbs_iter0_init_state
                 response_err_var = gibbs_iter0_response_error_variance
                 state_err_cov = gibbs_iter0_state_error_covariance
+                init_state_cov = init_state_covariance
             else:
                 init_state_values = smoothed_state[s - 1, 0]
                 response_err_var = response_error_variance[s - 1]
                 state_err_cov = state_error_covariance[s - 1]
+                init_state_cov = state_covariance[s - 1, -1]
 
             if self.has_predictors:
                 if s < 1:
@@ -3081,10 +3083,10 @@ class BayesianUnobservedComponents:
                     init_state_plus_values[level_state_eqn_idx[0]] = (
                         dist.vec_norm(0., np.sqrt(damped_level_var))
                     )
-                    init_state_covariance[level_state_eqn_idx[0], level_state_eqn_idx[0]] = damped_level_var
+                    init_state_cov[level_state_eqn_idx[0], level_state_eqn_idx[0]] = damped_level_var
                 else:
                     init_state_plus_values[level_state_eqn_idx[0]] = 0.
-                    init_state_covariance[level_state_eqn_idx[0], level_state_eqn_idx[0]] = 1e6
+                    init_state_cov[level_state_eqn_idx[0], level_state_eqn_idx[0]] = 1e6
 
                 T[ar_level_tran_idx] = ar_level_coeff
 
@@ -3101,10 +3103,10 @@ class BayesianUnobservedComponents:
                     init_state_plus_values[trend_state_eqn_idx[0]] = (
                         dist.vec_norm(0., np.sqrt(damped_trend_var))
                     )
-                    init_state_covariance[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = damped_trend_var
+                    init_state_cov[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = damped_trend_var
                 else:
                     init_state_plus_values[trend_state_eqn_idx[0]] = 0.
-                    init_state_covariance[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = 1e6
+                    init_state_cov[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = 1e6
 
                 T[ar_trend_tran_idx] = ar_trend_coeff
 
@@ -3122,10 +3124,10 @@ class BayesianUnobservedComponents:
                         init_state_plus_values[season_state_eqn_idx[j]] = (
                             dist.vec_norm(0., np.sqrt(damped_season_var))
                         )
-                        init_state_covariance[season_state_eqn_idx[j], season_state_eqn_idx[j]] = damped_season_var
+                        init_state_cov[season_state_eqn_idx[j], season_state_eqn_idx[j]] = damped_season_var
                     else:
                         init_state_plus_values[season_state_eqn_idx[j]] = 0.
-                        init_state_covariance[season_state_eqn_idx[j], season_state_eqn_idx[j]] = 1e6
+                        init_state_cov[season_state_eqn_idx[j], season_state_eqn_idx[j]] = 1e6
 
                     T[ar_season_tran_idx[j]] = ar_season_coeff
 
@@ -3138,7 +3140,7 @@ class BayesianUnobservedComponents:
                       response_error_variance_matrix=response_err_var,
                       state_error_covariance_matrix=state_err_cov,
                       init_state=init_state_values,
-                      init_state_covariance=init_state_covariance
+                      init_state_covariance=init_state_cov
                       )
 
             _filtered_state = y_kf.filtered_state
@@ -3156,7 +3158,7 @@ class BayesianUnobservedComponents:
                      state_error_covariance_matrix=state_err_cov,
                      init_state_plus=init_state_plus_values,
                      init_state=init_state_values,
-                     init_state_covariance=init_state_covariance
+                     init_state_covariance=init_state_cov
                      )
 
             # Smoothed disturbances and state
