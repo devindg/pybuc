@@ -2089,7 +2089,8 @@ class BayesianUnobservedComponents:
                     stochastic_trend=self.stochastic_trend,
                     freq_seasonal=uc_season_spec_args,
                     stochastic_freq_seasonal=uc_season_stoch_args,
-                    irregular=True
+                    irregular=True,
+                    use_exact_diffuse=True
                 )
                 uc_fit = uc_mod.fit(disp=False, method='powell', maxiter=10)
                 uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
