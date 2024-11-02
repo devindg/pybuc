@@ -437,6 +437,16 @@ $\boldsymbol{\beta}$ can be estimated conditional on $\mathbf y^ * \equiv \left(
 
 `pybuc` uses Method 2 for estimating static coefficients.
 
+## Data transformations
+By default, if a regression component is specified, each predictor will be standardized (z-scored) and the response will 
+be scaled by its sample standard deviation. If no regression component is specified, the response will not be scaled. 
+Data transformation are managed with the `scale_response` and `standardize_predictors` arguments in the`sample()` 
+method. The defaults are `scale_response=None` and `standardize_predictors=True`.
+
+If any data transformation is performed, by default all posterior elements are back-transformed to their original form. 
+Back-transformation can be managed with the `back_transform` argument in the `sample()` method. By default, 
+`back_transform=True`.
+
 ## Default priors
 
 ### Irregular and state variances
