@@ -62,7 +62,7 @@ class ModelSetup(NamedTuple):
     gibbs_iter0_response_error_variance: np.ndarray
     gibbs_iter0_state_error_covariance: np.ndarray
     init_state_plus_values: np.ndarray
-    init_state_covariance: np.ndarray
+    gibbs_iter0_init_state_covariance: np.ndarray
     damped_level_coeff_mean_prior: np.ndarray
     damped_level_coeff_prec_prior: np.ndarray
     damped_level_coeff_cov_prior: np.ndarray
@@ -1617,16 +1617,21 @@ class BayesianUnobservedComponents:
         ar_coeff_mean_post = np.empty((len(lag), 1))
         cov_post = np.empty((len(lag), 1))
 
-        c = 0
-        for i in lag:
-            y = smoothed_state[:, state_eqn_index[c]][i:]
-            y_lag = np.roll(smoothed_state[:, state_eqn_index[c]], i)[i:]
-            prec_prior = precision_prior[c]
+        for c, i in enumerate(lag):
+            y = smoothed_state[:, state_eqn_index[c]]
+            y_lag = np.roll(y, i)[i:, :]
+            y = y[i:, :]
 
+            prec_prior = precision_prior[c]
             ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
-            ar_coeff_mean_post[c] = ar_coeff_cov_post @ (y_lag.T @ y + prec_prior @ mean_prior[c])
-            cov_post[c] = state_err_var_post[state_err_var_post_index[c], 0] * ar_coeff_cov_post
-            c += 1
+            ar_coeff_mean_post[c] = (
+                    ar_coeff_cov_post
+                    @ (y_lag.T @ y + prec_prior @ mean_prior[c])
+            )
+            cov_post[c] = (
+                    state_err_var_post[state_err_var_post_index[c], 0]
+                    * ar_coeff_cov_post
+            )
 
         ar_coeff_post = dist.vec_norm(ar_coeff_mean_post, np.sqrt(cov_post))
 
@@ -1808,6 +1813,12 @@ class BayesianUnobservedComponents:
                 if damped_level_coeff_prec_prior is None:
                     damped_level_coeff_prec_prior = np.array([[1.]])
 
+                if scale_response:
+                    damped_level_coeff_prec_prior = (
+                            damped_level_coeff_prec_prior
+                            / scaler ** 2
+                    )
+
                 damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
                 gibbs_iter0_damped_level_coeff = damped_level_coeff_mean_prior
 
@@ -1891,6 +1902,12 @@ class BayesianUnobservedComponents:
                 if damped_trend_coeff_prec_prior is None:
                     damped_trend_coeff_prec_prior = np.array([[1.]])
 
+                if scale_response:
+                    damped_trend_coeff_prec_prior = (
+                            damped_trend_coeff_prec_prior
+                            / scaler ** 2
+                    )
+
                 damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
                 gibbs_iter0_damped_trend_coeff = damped_trend_coeff_mean_prior
 
@@ -1934,6 +1951,12 @@ class BayesianUnobservedComponents:
 
                 if damped_lag_season_coeff_prec_prior is None:
                     damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
+
+                if scale_response:
+                    damped_lag_season_coeff_prec_prior = (
+                        damped_lag_season_coeff_prec_prior
+                        / scaler ** 2
+                    )
 
                 damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
                 gibbs_iter0_damped_season_coeff = damped_lag_season_coeff_mean_prior
@@ -2330,7 +2353,7 @@ class BayesianUnobservedComponents:
 
         gibbs_iter0_init_state = np.vstack(gibbs_iter0_init_state)
         init_state_plus_values = np.vstack(init_state_plus_values)
-        init_state_covariance = np.diag(init_state_variances)
+        gibbs_iter0_init_state_covariance = np.diag(init_state_variances)
 
         # Get list of all parameters
         for c in components:
@@ -2349,7 +2372,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_response_error_variance,
             gibbs_iter0_state_error_covariance,
             init_state_plus_values,
-            init_state_covariance,
+            gibbs_iter0_init_state_covariance,
             damped_level_coeff_mean_prior,
             damped_level_coeff_prec_prior,
             damped_level_coeff_cov_prior,
@@ -2497,8 +2520,9 @@ class BayesianUnobservedComponents:
 
         :param num_samp: integer > 0. Specifies the number of posterior samples to draw.
 
-        :param scale_response: bool. If True, the response will be divided by its standard deviation.
-        Default is False.
+        :param scale_response: None or bool. If True, the response will be divided by its standard deviation.
+        Default is None, which will set scale_response=True if predictors are specified, but will set
+        scale_response=False if no predictors are specified.
 
         :param standardize_predictors: bool. If True, the predictors will be standardized. Specifically,
         each predictor will have its mean subtracted and, subsequently, its standard deviation divided.
@@ -2518,7 +2542,7 @@ class BayesianUnobservedComponents:
         level state equation error variance. Default is 0.01.
 
         :param level_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. (5 * 0.01 * std(response))^2.
+        level state equation error variance. (0.01 * std(response))^2.
 
         :param damped_level_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the level's AR(1) process without drift. Default is [[1.]].
@@ -2531,7 +2555,7 @@ class BayesianUnobservedComponents:
         trend state equation error variance. Default is 0.01.
 
         :param trend_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is (0.25 * 0.01 * std(response))^2.
+        trend state equation error variance. Default is (0.2 * 0.01 * std(response))^2.
 
         :param damped_trend_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[1.]].
@@ -2546,7 +2570,7 @@ class BayesianUnobservedComponents:
 
         :param lag_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in lag_seasonal.
-        Default is (10 * 0.01 * std(response))^2 for each periodicity.
+        Default is (0.01 * std(response))^2 for each periodicity.
 
         :param damped_lag_season_coeff_mean_prior: Numpy array, list, or tuple with s elements, where s is the
         number of stochastic periodicities with damping specified. Specifies the prior mean for the coefficient
@@ -2554,7 +2578,8 @@ class BayesianUnobservedComponents:
 
         :param damped_lag_season_coeff_prec_prior: Numpy array, list, or tuple with s elements, where s is the
         number of stochastic periodicities with damping specified. Specifies the prior precision matrix for the
-        coefficient governing a lag_seasonal AR(1) process without drift. Default is [[1.]] for each damped periodicity.
+        coefficient governing a lag_seasonal AR(1) process without drift. Default is [[1.]] for each damped
+        periodicity.
 
         :param dum_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in dummy_seasonal.
@@ -2562,7 +2587,7 @@ class BayesianUnobservedComponents:
 
         :param dum_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in dummy_seasonal.
-        Default is (10 * 0.01 * std(response))^2 for each periodicity.
+        Default is (0.01 * std(response))^2 for each periodicity.
 
         :param trig_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in trig_seasonal.
@@ -2574,7 +2599,7 @@ class BayesianUnobservedComponents:
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only two
         scale priors need to be specified, namely periodicity 12.
-        Default is (10 * 0.01 * std(response))^2 / # of state equations for each periodicity. Note that whatever
+        Default is (0.01 * std(response))^2 / # of state equations for each periodicity. Note that whatever
         value is passed to trig_season_var_scale_prior is automatically scaled by the number of state
         equations implied by the periodicity and number of harmonics.
 
@@ -3130,6 +3155,12 @@ class BayesianUnobservedComponents:
         R = self.state_error_transformation_matrix
         H = self.state_sse_transformation_matrix
 
+        if scale_response is None:
+            if self.has_predictors:
+                scale_response = True
+            else:
+                scale_response = False
+
         if scale_response:
             y = self._scale_response(y)
 
@@ -3171,7 +3202,7 @@ class BayesianUnobservedComponents:
         gibbs_iter0_response_error_variance = model.gibbs_iter0_response_error_variance
         gibbs_iter0_state_error_covariance = model.gibbs_iter0_state_error_covariance
         init_state_plus_values = model.init_state_plus_values
-        init_state_covariance = model.init_state_covariance
+        gibbs_iter0_init_state_covariance = model.gibbs_iter0_init_state_covariance
         damped_level_coeff_mean_prior = model.damped_level_coeff_mean_prior
         damped_level_coeff_prec_prior = model.damped_level_coeff_prec_prior
         gibbs_iter0_damped_level_coeff = model.gibbs_iter0_damped_level_coeff
@@ -3271,7 +3302,7 @@ class BayesianUnobservedComponents:
                 init_state_values = gibbs_iter0_init_state
                 response_err_var = gibbs_iter0_response_error_variance
                 state_err_cov = gibbs_iter0_state_error_covariance
-                init_state_cov = init_state_covariance
+                init_state_cov = gibbs_iter0_init_state_covariance
             else:
                 init_state_values = smoothed_state[s - 1, 0]
                 response_err_var = response_error_variance[s - 1]
@@ -3294,15 +3325,18 @@ class BayesianUnobservedComponents:
 
                 ar_level_coeff = damped_level_coeff[0, 0]
                 if abs(ar_level_coeff) < 1:
-                    damped_level_var = (state_err_cov[level_stoch_idx[0], level_stoch_idx[0]]
-                                        / (1. - ar_level_coeff ** 2))
+                    damped_level_var = (
+                            state_err_cov[level_stoch_idx[0], level_stoch_idx[0]]
+                            / (1. - ar_level_coeff ** 2)
+                    )
                     init_state_plus_values[level_state_eqn_idx[0]] = (
                         dist.vec_norm(0., np.sqrt(damped_level_var))
                     )
-                    init_state_cov[level_state_eqn_idx[0], level_state_eqn_idx[0]] = damped_level_var
                 else:
                     init_state_plus_values[level_state_eqn_idx[0]] = 0.
-                    init_state_cov[level_state_eqn_idx[0], level_state_eqn_idx[0]] = 1e6
+                    # Reset initial state covariance matrix to diffuse
+                    # if AR coefficient is explosive.
+                    init_state_cov = gibbs_iter0_init_state_covariance
 
                 T[ar_level_tran_idx] = ar_level_coeff
 
@@ -3314,15 +3348,18 @@ class BayesianUnobservedComponents:
 
                 ar_trend_coeff = damped_trend_coeff[0, 0]
                 if abs(ar_trend_coeff) < 1:
-                    damped_trend_var = (state_err_cov[trend_stoch_idx[0], trend_stoch_idx[0]]
-                                        / (1. - ar_trend_coeff ** 2))
+                    damped_trend_var = (
+                            state_err_cov[trend_stoch_idx[0], trend_stoch_idx[0]]
+                            / (1. - ar_trend_coeff ** 2)
+                    )
                     init_state_plus_values[trend_state_eqn_idx[0]] = (
                         dist.vec_norm(0., np.sqrt(damped_trend_var))
                     )
-                    init_state_cov[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = damped_trend_var
                 else:
                     init_state_plus_values[trend_state_eqn_idx[0]] = 0.
-                    init_state_cov[trend_state_eqn_idx[0], trend_state_eqn_idx[0]] = 1e6
+                    # Reset initial state covariance matrix to diffuse
+                    # if AR coefficient is explosive.
+                    init_state_cov = gibbs_iter0_init_state_covariance
 
                 T[ar_trend_tran_idx] = ar_trend_coeff
 
@@ -3335,15 +3372,18 @@ class BayesianUnobservedComponents:
                 for j in range(self.num_damped_lag_season):
                     ar_season_coeff = damped_season_coeff[j, 0]
                     if abs(ar_season_coeff) < 1:
-                        damped_season_var = (state_err_cov[season_stoch_idx[j], season_stoch_idx[j]]
-                                             / (1. - ar_season_coeff ** 2))
+                        damped_season_var = (
+                                state_err_cov[season_stoch_idx[j], season_stoch_idx[j]]
+                                / (1. - ar_season_coeff ** 2)
+                        )
                         init_state_plus_values[season_state_eqn_idx[j]] = (
                             dist.vec_norm(0., np.sqrt(damped_season_var))
                         )
-                        init_state_cov[season_state_eqn_idx[j], season_state_eqn_idx[j]] = damped_season_var
                     else:
                         init_state_plus_values[season_state_eqn_idx[j]] = 0.
-                        init_state_cov[season_state_eqn_idx[j], season_state_eqn_idx[j]] = 1e6
+                        # Reset initial state covariance matrix to diffuse
+                        # if AR coefficient is explosive.
+                        init_state_cov = gibbs_iter0_init_state_covariance
 
                     T[ar_season_tran_idx[j]] = ar_season_coeff
 
@@ -3932,8 +3972,10 @@ class BayesianUnobservedComponents:
         ppd = np.empty((num_samp, n), dtype=np.float64)
         i = 0
         for s in S:
-            ppd[i] = dist.vec_norm(response_mean[s],
-                                   np.sqrt(response_variance[s][:, 0]))
+            ppd[i] = dist.vec_norm(
+                response_mean[s],
+                np.sqrt(response_variance[s][:, 0])
+            )
             i += 1
 
         return ppd
@@ -4381,6 +4423,15 @@ class BayesianUnobservedComponents:
             smy[f"Posterior.CredInt.UB[{k}]"] = np.quantile(v, ub)
 
             if 'Coeff.' in k:
-                smy[f"Posterior.ProbPositive[{k}]"] = np.sum((v > 0) * 1) / num_post_samp_after_burn
+                smy[f"Posterior.ProbPositive[{k}]"] = (
+                        np.sum((v > 0) * 1)
+                        / num_post_samp_after_burn
+                )
+
+            if '.AR' in k:
+                smy[f"Posterior.ProbExplosive[{k}]"] = (
+                        np.sum((abs(v) > 1) * 1)
+                        / num_post_samp_after_burn
+                )
 
         return smy
