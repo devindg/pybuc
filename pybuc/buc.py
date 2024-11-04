@@ -3737,9 +3737,6 @@ class BayesianUnobservedComponents:
                 elif setup.standardize_predictors and setup.back_transform:
                     fut_pred = self._center_predictors(fut_pred)
 
-                    if setup.scale_response:
-                        fut_pred = fut_pred / self.response_scale
-
         elif self.has_predictors and future_predictors is None:
             raise ValueError(
                 "The instantiated model has predictors, but forecast() was provided none. "
@@ -3754,6 +3751,9 @@ class BayesianUnobservedComponents:
             )
         else:
             fut_pred = np.array([[]])
+
+        if setup.scale_response:
+            fut_pred = fut_pred / self.response_scale
 
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix
