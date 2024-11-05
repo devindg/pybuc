@@ -3731,11 +3731,21 @@ class BayesianUnobservedComponents:
                             f'in future_predictors.'
                         )
 
-                if setup.standardize_predictors and not setup.back_transform:
-                    fut_pred = self._standardize_predictors(fut_pred)
-
-                elif setup.standardize_predictors and setup.back_transform:
-                    fut_pred = self._center_predictors(fut_pred)
+                if setup.standardize_predictors and setup.scale_response:
+                    if setup.back_transform:
+                        fut_pred = self._center_predictors(fut_pred) / self.response_scale
+                    else:
+                        fut_pred = self._standardize_predictors(fut_pred)
+                elif setup.standardize_predictors and not setup.scale_response:
+                    if setup.back_transform:
+                        fut_pred = self._center_predictors(fut_pred)
+                    else:
+                        fut_pred = self._standardize_predictors(fut_pred)
+                elif not setup.standardize_predictors and setup.scale_response:
+                    if setup.back_transform:
+                        fut_pred = fut_pred / self.response_scale
+                    else:
+                        pass
 
         elif self.has_predictors and future_predictors is None:
             raise ValueError(
@@ -3751,9 +3761,6 @@ class BayesianUnobservedComponents:
             )
         else:
             fut_pred = np.array([[]])
-
-        if setup.scale_response:
-            fut_pred = fut_pred / self.response_scale
 
         Z = self.observation_matrix(num_rows=num_periods)
         T = self.state_transition_matrix
