@@ -3157,7 +3157,10 @@ class BayesianUnobservedComponents:
 
         if scale_response is None:
             if self.has_predictors:
-                scale_response = True
+                if standardize_predictors:
+                    scale_response = True
+                else:
+                    scale_response = False
             else:
                 scale_response = False
 
