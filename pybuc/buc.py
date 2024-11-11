@@ -2259,8 +2259,7 @@ class BayesianUnobservedComponents:
                 uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
                 gibbs_iter0_reg_coeff = (
                     uc_fit
-                    .filtered_state
-                    .regression_coefficients[:, -1]
+                    .filtered_state[-num_pred:, -1]
                     .reshape(-1, 1)
                 )
             except Exception as e:
