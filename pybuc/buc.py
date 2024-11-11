@@ -2252,13 +2252,15 @@ class BayesianUnobservedComponents:
                     freq_seasonal=uc_season_spec_args,
                     stochastic_freq_seasonal=uc_season_stoch_args,
                     irregular=True,
-                    use_exact_diffuse=True
+                    mle_regression=False,
+                    use_exact_diffuse=False
                 )
                 uc_fit = uc_mod.fit(disp=False, method='powell', maxiter=100)
                 uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
-                params = pd.Series(uc_fit.params, index=uc_fit.param_names)
                 gibbs_iter0_reg_coeff = (
-                    np.array(params[[j for j in params.index if j.split('.')[0] == 'beta']])
+                    uc_fit
+                    .filtered_state
+                    .regression_coefficients[:, -1]
                     .reshape(-1, 1)
                 )
             except Exception as e:
