@@ -116,7 +116,10 @@ if __name__ == '__main__':
         predictors=x_train,
         seed=123
     )
-    post = bayes_uc.sample(5000)
+    post = bayes_uc.sample(5000,
+                           scale_response=False,
+                           standardize_predictors=True,
+                           back_transform=True)
     mcmc_burn = 100
 
     # Print summary of estimated parameters

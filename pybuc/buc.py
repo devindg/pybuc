@@ -2241,10 +2241,13 @@ class BayesianUnobservedComponents:
 
             # Get initial Gibbs regression coefficient values using
             # statsmodels UnobservedComponents module.
+            # Use scaled response and standardized predictors
+            # for fitting because UC appears to be sensitive to scale
+            # when regression coefficients are part of the state vector.
             try:
                 uc_mod = UC(
-                    endog=y,
-                    exog=X,
+                    endog=self._scale_response(self.response),
+                    exog=self._standardize_predictors(self.predictors),
                     level=self.level,
                     stochastic_level=self.stochastic_level,
                     trend=self.trend,
@@ -2257,11 +2260,23 @@ class BayesianUnobservedComponents:
                 )
                 uc_fit = uc_mod.fit(disp=False, method='powell', maxiter=100)
                 uc_fit = uc_mod.fit(disp=False, start_params=uc_fit.params)
-                gibbs_iter0_reg_coeff = (
+                coeff = (
                     uc_fit
                     .filtered_state[-num_pred:, -1]
                     .reshape(-1, 1)
                 )
+
+                # Transform initial coefficients as needed
+                if scale_response and not standardize_predictors:
+                    coeff = coeff / X_scale[:, np.newaxis]
+                elif not scale_response and standardize_predictors:
+                    coeff = coeff * self.response_scale
+                elif not scale_response and not standardize_predictors:
+                    coeff = coeff / X_scale[:, np.newaxis] * self.response_scale
+                else:
+                    pass
+
+                gibbs_iter0_reg_coeff = coeff
             except Exception as e:
                 print(e.args[0])
                 print("An attempt was made to establish initial Gibbs regression "
