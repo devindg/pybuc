@@ -117,7 +117,7 @@ if __name__ == '__main__':
         seed=123
     )
     post = bayes_uc.sample(5000,
-                           scale_response=False,
+                           scale_response=None,
                            standardize_predictors=True,
                            back_transform=True)
     mcmc_burn = 100

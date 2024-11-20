@@ -1628,7 +1628,7 @@ class BayesianUnobservedComponents:
             y = (y - y_mean) / y_sd
             y_lag = (y_lag - y_lag_mean) / y_lag_sd
             mean_prior = mean_prior[c] * (y_lag_sd / y_sd)
-            prec_prior = precision_prior[c] * (y_lag_sd / y_sd) ** 2
+            prec_prior = precision_prior[c] * (y_sd / y_lag_sd) ** 2
 
             # Posterior mean and variance
             ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
@@ -2324,7 +2324,7 @@ class BayesianUnobservedComponents:
                 reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             else:
                 if standardize_predictors and not scale_response:
-                    pred_scale_diag = np.diag(X_scale)
+                    pred_scale_diag = np.diag(1 / X_scale)
                     reg_coeff_prec_prior = (
                             pred_scale_diag
                             @ reg_coeff_prec_prior
@@ -2332,14 +2332,14 @@ class BayesianUnobservedComponents:
                     )
                     reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
                 elif not standardize_predictors and scale_response:
-                    reg_coeff_prec_prior = reg_coeff_prec_prior / scaler ** 2
+                    reg_coeff_prec_prior = reg_coeff_prec_prior * scaler ** 2
                     reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
                 elif standardize_predictors and scale_response:
-                    pred_scale_diag = np.diag(X_scale)
+                    pred_scale_diag = np.diag(1 / X_scale)
                     reg_coeff_prec_prior = (
                             pred_scale_diag
                             @ reg_coeff_prec_prior
-                            @ pred_scale_diag / scaler ** 2
+                            @ pred_scale_diag * scaler ** 2
                     )
                     reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
                 else:
