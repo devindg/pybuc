@@ -1622,18 +1622,30 @@ class BayesianUnobservedComponents:
             y_lag = np.roll(y, i)[i:, :]
             y = y[i:, :]
 
-            prec_prior = precision_prior[c]
+            # Standardize data and transform priors to ease sampling
+            y_mean, y_sd = np.mean(y), np.std(y, ddof=1)
+            y_lag_mean, y_lag_sd = np.mean(y_lag), np.std(y_lag, ddof=1)
+            y = (y - y_mean) / y_sd
+            y_lag = (y_lag - y_lag_mean) / y_lag_sd
+            mean_prior = mean_prior[c] * (y_lag_sd / y_sd)
+            prec_prior = precision_prior[c] * (y_lag_sd / y_sd) ** 2
+
+            # Posterior mean and variance
             ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
             ar_coeff_mean_post[c] = (
                     ar_coeff_cov_post
-                    @ (y_lag.T @ y + prec_prior @ mean_prior[c])
+                    @ (y_lag.T @ y + prec_prior @ mean_prior)
             )
             cov_post[c] = (
                     state_err_var_post[state_err_var_post_index[c], 0]
                     * ar_coeff_cov_post
             )
 
-        ar_coeff_post = dist.vec_norm(ar_coeff_mean_post, np.sqrt(cov_post))
+        # Get posterior AR coefficients
+        ar_coeff_post = dist.vec_norm(
+            ar_coeff_mean_post,
+            np.sqrt(cov_post)
+        ) * (y_sd / y_lag_sd)
 
         return ar_coeff_post
 
@@ -1813,12 +1825,6 @@ class BayesianUnobservedComponents:
                 if damped_level_coeff_prec_prior is None:
                     damped_level_coeff_prec_prior = np.array([[1.]])
 
-                if scale_response:
-                    damped_level_coeff_prec_prior = (
-                            damped_level_coeff_prec_prior
-                            / scaler ** 2
-                    )
-
                 damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
                 gibbs_iter0_damped_level_coeff = damped_level_coeff_mean_prior
 
@@ -1902,12 +1908,6 @@ class BayesianUnobservedComponents:
                 if damped_trend_coeff_prec_prior is None:
                     damped_trend_coeff_prec_prior = np.array([[1.]])
 
-                if scale_response:
-                    damped_trend_coeff_prec_prior = (
-                            damped_trend_coeff_prec_prior
-                            / scaler ** 2
-                    )
-
                 damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
                 gibbs_iter0_damped_trend_coeff = damped_trend_coeff_mean_prior
 
@@ -1951,12 +1951,6 @@ class BayesianUnobservedComponents:
 
                 if damped_lag_season_coeff_prec_prior is None:
                     damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
-
-                if scale_response:
-                    damped_lag_season_coeff_prec_prior = (
-                        damped_lag_season_coeff_prec_prior
-                        / scaler ** 2
-                    )
 
                 damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
                 gibbs_iter0_damped_season_coeff = damped_lag_season_coeff_mean_prior
