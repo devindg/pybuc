@@ -353,7 +353,7 @@ For a given periodicity $S$, a seasonal component in $\boldsymbol{\gamma}_t$, $\
 ways. One way is based on periodic lags. Formally, the seasonal effect on $y$ is modeled as
 
 $$
-\gamma(S)_t = \omega(S) + \rho(S) \gamma(S)_{t-S} + \eta_{\gamma(S), t},
+\gamma(S)_t = \omega(S) + \rho(S) \gamma (S) _{t-S} + \eta _{\gamma(S), t},
 $$
 
 where $S$ is the number of periods in a seasonal cycle, $\omega(S)$ captures drift, $\rho(S)$ is an autoregressive 
@@ -512,8 +512,8 @@ $$\hat{\phi}
 = \frac{\mathrm{Std.Dev}(\delta_t)}{\mathrm{Std.Dev}(\delta_{t-1})}\hat{\tilde{\phi}}
 $$
 
-$$\hat{\omega}_\delta 
-= \mathrm{Mean}(\delta_t) - \mathrm{Mean}(\delta_{t-1})\hat{\phi}
+$$\hat{\omega} _\delta 
+= \mathrm{Mean}(\delta_t) - \mathrm{Mean}(\delta _{t-1})\hat{\phi}
 $$
 
 ### Regression coefficients
