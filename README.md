@@ -12,7 +12,7 @@ forecasting a structural time series:
 - Stochastic or non-stochastic level
 - Damped level
 - Stochastic or non-stochastic trend
-- Damped trend <sup/>*</sup>
+- Damped trend
 - Multiple stochastic or non-stochastic periodic-lag seasonality
 - Multiple damped periodic-lag seasonality
 - Multiple stochastic or non-stochastic "dummy" seasonality
