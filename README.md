@@ -19,11 +19,6 @@ forecasting a structural time series:
 - Multiple stochastic or non-stochastic trigonometric seasonality
 - Regression with static coefficients<sup/>**</sup>
 
-<sup/>*</sup> `pybuc` dampens trend differently than `bsts`. The former assumes an AR(1) process **without** 
-drift for the trend state equation. The latter assumes an AR(1) **with** drift. In practice this means that the trend, 
-on average, will be zero with `pybuc`, whereas `bsts` allows for the mean trend to be non-zero. The reason for 
-choosing an autoregressive process without drift is to be conservative with long horizon forecasts.
-
 <sup/>**</sup> `pybuc` estimates regression coefficients differently than `bsts`. The former uses a standard Gaussian 
 prior. The latter uses a Bernoulli-Gaussian mixture commonly known as the spike-and-slab prior. The main 
 benefit of using a spike-and-slab prior is its promotion of coefficient-sparse solutions, i.e., variable selection, when 
@@ -327,8 +322,8 @@ The unobserved level evolves according to the following general transition equat
 
 $$
 \begin{align}
-    \mu_{t+1} &= \kappa \mu_t + \delta_t + \eta_{\mu, t} \\ 
-    \delta_{t+1} &= \phi \delta_t + \eta_{\delta, t} 
+    \mu_{t+1} &= \omega_\mu + \kappa \mu_t + \delta_t + \eta_{\mu, t} \\ 
+    \delta_{t+1} &= \omega_\delta + \phi \delta_t + \eta_{\delta, t} 
 \end{align}
 $$ 
 
@@ -343,22 +338,27 @@ the past, which is not a realistic assumption. If an autoregressive level or tre
 (by default) are placed on the bounds of the autoregressive parameters. Instead, the default prior for these parameters 
 is vague (see section on priors below).
 
+The parameters $\omega_\mu$ and $\omega_\delta$ represent autoregressive drift terms for level and trend, respectively, 
+which capture the long-run means of these processes. Specifically, $\omega_\mu / (1 - \kappa)$ and 
+$\omega_\delta / (1 - \phi)$ are the long-run means, respectively, of the level and trend processes. If damping is not 
+specified, then the drift terms are not included in the model.
+
 Note that if $\sigma_{\eta_\mu}^2 = \sigma_{\eta_\delta}^2 = 0$ and $\phi = 1$ and $\kappa = 1$, then the level 
 component in the observation equation, $\mu_t$, collapses to a deterministic intercept and linear time trend.
 
 ## Seasonality
 
 ### Periodic-lag form
-For a given periodicity $S$, a seasonal component in $\boldsymbol{\gamma}_t$, $\gamma^S_t$, can be modeled in three 
+For a given periodicity $S$, a seasonal component in $\boldsymbol{\gamma}_t$, $\gamma(S)_t$, can be modeled in three 
 ways. One way is based on periodic lags. Formally, the seasonal effect on $y$ is modeled as
 
 $$
-\gamma^S_t = \rho(S) \gamma^S_{t-S} + \eta_{\gamma^S, t},
+\gamma(S)_t = \omega(S) + \rho(S) \gamma(S)_{t-S} + \eta_{\gamma(S), t},
 $$
 
-where $S$ is the number of periods in a seasonal cycle, $\rho(S)$ is an autoregressive parameter expected to lie in the 
-unit circle (-1, 1), and $\eta_{\gamma^S, t} \sim N(0, \sigma_{\eta_\gamma^S}^2)$ for all $t$. If damping is not 
-specified for a given periodic lag, $\rho(S) = 1$ and seasonality is treated as a random walk process.
+where $S$ is the number of periods in a seasonal cycle, $\omega(S)$ captures drift, $\rho(S)$ is an autoregressive 
+parameter expected to lie in the unit circle (-1, 1), and $\eta_{\gamma(S), t} \sim N(0, \sigma_{\eta_\gamma(S)}^2)$ 
+for all $t$. If damping is not specified for a given periodic lag, the drift term is not included in the model.
 
 This specification for seasonality is arguably the most robust representation (relative to dummy and trigonometric) 
 because its structural assumption on periodicity is the least complex.
@@ -487,13 +487,34 @@ Damping can be applied to level, trend, and periodic-lag seasonality state compo
 for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
 
 $$
-\phi \sim N(1, 1)
+\phi \sim N(0, 1)
 $$
 
 where $\phi$ represents some autoregressive coefficient. Thus, the prior encodes the belief that the process (level, 
-trend, seasonality) is a random walk. A unit variance is assumed to accommodate different types of dynamics, including 
-stationary or explosive processes that may oscillate, grow, or decay.
+trend, seasonality) is, on average, a constant with noise. A standard deviation of 1 is assumed to promote the belief 
+that the process is stationary, but is not restrictive enough to preclude a non-stationary process. In fact, there are 
+two ways to help prevent non-stationary processes. One can either set a prior on the autoregressive coefficient whose 
+mean is far away from unity in absolute value and has high precision, or set `try_enforce_stationary=True` in the 
+`sample()` method. There is no guarantee that convergence will be reached with these restrictions, however.
 
+Note that no prior is necessary for autoregressive drift parameters (e.g., $\omega_\delta$ above). This is because the 
+left-hand side and right-hand side state variables of a given state equation are standardized to estimate the 
+autoregressive slope coefficients. For example, the trend state equation is transformed into
+
+$$
+\frac{\delta_t - \mathrm{Mean}(\delta_t)}{\mathrm{Std.Dev}(\delta_t)} = 
+\tilde{\phi}\frac{\delta_{t-1} - \mathrm{Mean}(\delta_{t-1})}{\mathrm{Std.Dev}(\delta_{t-1})} + \tilde{\eta}_{\delta, t}
+$$
+
+The estimated drift and slope parameters are then backed into:
+
+$$\hat{\phi}
+= \frac{\mathrm{Std.Dev}(\delta_t)}{\mathrm{Std.Dev}(\delta_{t-1})}\hat{\tilde{\phi}}
+$$
+
+$$\hat{\omega}_\delta 
+= \mathrm{Mean}(\delta_t) - \mathrm{Mean}(\delta_{t-1})\hat{\phi}
+$$
 
 ### Regression coefficients
 
@@ -504,7 +525,7 @@ $$
 \frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
 $$
 
-where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 0.000001$ is the number 
+where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 0.001$ is the number 
 of default prior observations given to the mean prior of $\mathbf 0$. This prior is a slight modification of Zellner's 
 g-prior (to guard against potential singularity of the design matrix). The number of prior observations, $\kappa$, can be 
 changed by passing a value to the argument `zellner_prior_obs` in the `sample()` method. If Zellner's g-prior is not 

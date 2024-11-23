@@ -43,8 +43,8 @@ class Posterior(NamedTuple):
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
-    damped_level_coefficient: np.ndarray
-    damped_trend_coefficient: np.ndarray
+    damped_level_coefficients: np.ndarray
+    damped_trend_coefficients: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
 
@@ -152,8 +152,8 @@ def _simulate_posterior_predictive_filtered_state(
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
-    damped_level_coefficient: np.ndarray
-    damped_trend_coefficient: np.ndarray
+    damped_level_coefficients: np.ndarray
+    damped_trend_coefficients: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
     :param burn: non-negative integer. Represents how many of the first posterior samples to
@@ -255,8 +255,8 @@ def _forecast(posterior: Posterior,
     state_covariance: np.ndarray
     response_error_variance: np.ndarray
     state_error_covariance: np.ndarray
-    damped_level_coefficient: np.ndarray
-    damped_trend_coefficient: np.ndarray
+    damped_level_coefficients: np.ndarray
+    damped_trend_coefficients: np.ndarray
     damped_season_coefficients: np.ndarray
     regression_coefficients: np.ndarray
 
@@ -328,10 +328,10 @@ def _forecast(posterior: Posterior,
         reg_coeff = posterior.regression_coefficients[burn:]
 
     if len(damped_level_transition_index) > 0:
-        damped_level_coeff = posterior.damped_level_coefficient[burn:]
+        damped_level_coeff = posterior.damped_level_coefficients[burn:]
 
     if len(damped_trend_transition_index) > 0:
-        damped_trend_coeff = posterior.damped_trend_coefficient[burn:]
+        damped_trend_coeff = posterior.damped_trend_coefficients[burn:]
 
     if len(damped_season_transition_index) > 0:
         damped_season_coeff = posterior.damped_season_coefficients[burn:]
@@ -357,16 +357,17 @@ def _forecast(posterior: Posterior,
             )
 
         if len(damped_level_transition_index) > 0:
-            T[damped_level_transition_index] = damped_level_coeff[s][0, 0]
+            C[damped_level_transition_index[0], 0] = damped_level_coeff[s][0, 0]
+            T[damped_level_transition_index] = damped_level_coeff[s][1, 0]
 
         if len(damped_trend_transition_index) > 0:
-            T[damped_trend_transition_index] = damped_trend_coeff[s][0, 0]
+            C[damped_trend_transition_index[0], 0] = damped_trend_coeff[s][0, 0]
+            T[damped_trend_transition_index] = damped_trend_coeff[s][1, 0]
 
         if len(damped_season_transition_index) > 0:
-            c = 0
-            for j in damped_season_transition_index:
-                T[j] = damped_season_coeff[s][c, 0]
-                c += 1
+            for c, j in enumerate(damped_season_transition_index):
+                C[j[0], 0] = damped_season_coeff[s][0, c]
+                T[j] = damped_season_coeff[s][1, c]
 
         if X_fut.size > 0:
             Z[:, :, -1] = X_fut.dot(reg_coeff[s])
@@ -1346,9 +1347,7 @@ class BayesianUnobservedComponents:
     def state_intercept_matrix(self) -> np.ndarray:
         """
         The state intercept for the state equations.
-        * Note that this is not currently being used. It
-        * is here as a placeholder for potential future implementation.
-        :return: ndarray of dimension (num_state_eqs, 1)
+        This is used for autoregressive/damped states.
         """
         m = self.num_state_eqs
         C = np.zeros((m, 1))
@@ -1614,9 +1613,10 @@ class BayesianUnobservedComponents:
         form y(t) = rho * y(t - l) + error(t), where l is some lag.
         """
 
-        ar_coeff_mean_post = np.empty((len(lag), 1))
+        ar_slope_mean_post = np.empty((len(lag), 1))
         cov_post = np.empty((len(lag), 1))
-
+        y_means = np.empty((len(lag), 1))
+        y_lag_means = np.empty((len(lag), 1))
         for c, i in enumerate(lag):
             y = smoothed_state[:, state_eqn_index[c]]
             y_lag = np.roll(y, i)[i:, :]
@@ -1625,27 +1625,37 @@ class BayesianUnobservedComponents:
             # Standardize data and transform priors to ease sampling
             y_mean, y_sd = np.mean(y), np.std(y, ddof=1)
             y_lag_mean, y_lag_sd = np.mean(y_lag), np.std(y_lag, ddof=1)
+            y_means[c] = y_mean
+            y_lag_means[c] = y_lag_mean
+
             y = (y - y_mean) / y_sd
             y_lag = (y_lag - y_lag_mean) / y_lag_sd
-            mean_prior = mean_prior[c] * (y_lag_sd / y_sd)
-            prec_prior = precision_prior[c] * (y_sd / y_lag_sd) ** 2
+            mean = mean_prior[c] * (y_lag_sd / y_sd)
+            prec = precision_prior[c] * (y_sd / y_lag_sd) ** 2
 
             # Posterior mean and variance
-            ar_coeff_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec_prior)
-            ar_coeff_mean_post[c] = (
-                    ar_coeff_cov_post
-                    @ (y_lag.T @ y + prec_prior @ mean_prior)
+            ar_slope_cov_post = ao.mat_inv(y_lag.T @ y_lag + prec)
+            ar_slope_mean_post[c] = (
+                    ar_slope_cov_post
+                    @ (y_lag.T @ y + prec @ mean)
             )
             cov_post[c] = (
                     state_err_var_post[state_err_var_post_index[c], 0]
-                    * ar_coeff_cov_post
+                    * ar_slope_cov_post
             )
 
         # Get posterior AR coefficients
-        ar_coeff_post = dist.vec_norm(
-            ar_coeff_mean_post,
+        ar_slope_post = dist.vec_norm(
+            ar_slope_mean_post,
             np.sqrt(cov_post)
         ) * (y_sd / y_lag_sd)
+
+        intercept = y_means - y_lag_means * ar_slope_post
+
+        if len(lag) == 1:
+            ar_coeff_post = np.r_[intercept, ar_slope_post]
+        else:
+            ar_coeff_post = np.c_[intercept, ar_slope_post].T
 
         return ar_coeff_post
 
@@ -1817,25 +1827,25 @@ class BayesianUnobservedComponents:
             # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
             if self.damped_level:
-                level_params.append("Level.AR")
+                level_params.append("Level.AR.Intercept")
+                level_params.append("Level.AR.Slope")
 
                 if damped_level_coeff_mean_prior is None:
-                    damped_level_coeff_mean_prior = np.array([[1.]])
+                    damped_level_coeff_mean_prior = np.array([[0.]])
 
                 if damped_level_coeff_prec_prior is None:
                     damped_level_coeff_prec_prior = np.array([[1.]])
 
                 damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
-                gibbs_iter0_damped_level_coeff = damped_level_coeff_mean_prior
-
-                if abs(damped_level_coeff_mean_prior[0, 0]) >= 1:
-                    init_state_variances.append(1e6)
-                else:
-                    init_state_variances.append(
-                        gibbs_iter0_state_error_var[stochastic_index] /
-                        (1. - gibbs_iter0_damped_level_coeff[0, 0] ** 2)
-                    )
-
+                gibbs_iter0_damped_level_coeff = (
+                    np.r_[
+                        np.atleast_2d(np.mean(y)),
+                        np.array([[0.]])
+                    ]
+                )
+                init_state_variances.append(
+                    gibbs_iter0_state_error_var[stochastic_index]
+                )
                 init_state_plus_values.append(
                     dist.vec_norm(
                         0.,
@@ -1900,24 +1910,27 @@ class BayesianUnobservedComponents:
             # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
             if self.damped_trend:
-                trend_params.append("Trend.AR")
+                trend_params.append("Trend.AR.Intercept")
+                trend_params.append("Trend.AR.Slope")
 
                 if damped_trend_coeff_mean_prior is None:
-                    damped_trend_coeff_mean_prior = np.array([[1.]])
+                    damped_trend_coeff_mean_prior = np.array([[0.]])
 
                 if damped_trend_coeff_prec_prior is None:
                     damped_trend_coeff_prec_prior = np.array([[1.]])
 
-                damped_trend_coeff_cov_prior = ao.mat_inv(damped_trend_coeff_prec_prior)
-                gibbs_iter0_damped_trend_coeff = damped_trend_coeff_mean_prior
-
-                if abs(damped_trend_coeff_mean_prior[0, 0]) >= 1:
-                    init_state_variances.append(1e6)
-                else:
-                    init_state_variances.append(
-                        gibbs_iter0_state_error_var[stochastic_index] /
-                        (1. - gibbs_iter0_damped_trend_coeff[0, 0] ** 2)
-                    )
+                damped_trend_coeff_cov_prior = (
+                    ao.mat_inv(damped_trend_coeff_prec_prior)
+                )
+                gibbs_iter0_damped_trend_coeff = (
+                    np.r_[
+                        np.atleast_2d(self._gibbs_iter0_init_trend(y)),
+                        np.array([[0.]])
+                    ]
+                )
+                init_state_variances.append(
+                    gibbs_iter0_state_error_var[stochastic_index]
+                )
 
                 init_state_plus_values.append(
                     dist.vec_norm(
@@ -1947,13 +1960,21 @@ class BayesianUnobservedComponents:
         if len(self.lag_seasonal) > 0:
             if self.num_damped_lag_season > 0:
                 if damped_lag_season_coeff_mean_prior is None:
-                    damped_lag_season_coeff_mean_prior = np.ones((self.num_damped_lag_season, 1))
+                    damped_lag_season_coeff_mean_prior = (
+                        np.zeros((self.num_damped_lag_season, 1))
+                    )
 
                 if damped_lag_season_coeff_prec_prior is None:
-                    damped_lag_season_coeff_prec_prior = np.ones((self.num_damped_lag_season, 1))
+                    damped_lag_season_coeff_prec_prior = (
+                            np.ones((self.num_damped_lag_season, 1))
+                    )
 
-                damped_lag_season_coeff_cov_prior = damped_lag_season_coeff_prec_prior ** (-1)
-                gibbs_iter0_damped_season_coeff = damped_lag_season_coeff_mean_prior
+                damped_lag_season_coeff_cov_prior = (
+                        damped_lag_season_coeff_prec_prior ** (-1)
+                )
+                gibbs_iter0_damped_season_coeff = (
+                    np.zeros((2, self.num_damped_lag_season,))
+                )
 
             i = j
             d = 0  # indexes damped periodicities
@@ -1976,7 +1997,6 @@ class BayesianUnobservedComponents:
                         scale_prior = lag_season_var_scale_prior[c] / scaler ** 2
 
                     state_var_scale_prior.append(scale_prior)
-
                     gibbs_iter0_state_error_var.append(scale_prior)
 
                     stochastic_index = s
@@ -2001,15 +2021,12 @@ class BayesianUnobservedComponents:
                 # Residual Variance / (1 - [AR(1) Coefficient]^2).
 
                 if self.damped_lag_seasonal[c]:
-                    lag_season_params.append(f"Lag-Seasonal.{v}.AR")
+                    lag_season_params.append(f"Lag-Seasonal.{v}.AR.Intercept")
+                    lag_season_params.append(f"Lag-Seasonal.{v}.AR.Slope")
 
-                    if abs(damped_lag_season_coeff_mean_prior[d, 0]) >= 1:
-                        init_state_variances.append(1e6)
-                    else:
-                        init_state_variances.append(
-                            gibbs_iter0_state_error_var[stochastic_index] /
-                            (1. - gibbs_iter0_damped_season_coeff[d, 0] ** 2)
-                        )
+                    init_state_variances.append(
+                        gibbs_iter0_state_error_var[stochastic_index]
+                    )
 
                     init_state_plus_values.append(
                         dist.vec_norm(
@@ -2069,7 +2086,6 @@ class BayesianUnobservedComponents:
                         scale_prior = dum_season_var_scale_prior[c] / scaler ** 2
 
                     state_var_scale_prior.append(scale_prior)
-
                     gibbs_iter0_state_error_var.append(scale_prior)
 
                     stochastic_index = s
@@ -2444,26 +2460,37 @@ class BayesianUnobservedComponents:
                 idx = c['stochastic_index']
                 post_dict[p] = state_err_cov[:, idx, idx]
 
-            elif p == 'Level.AR':
-                post_dict[p] = self.posterior.damped_level_coefficient[burn:, 0, 0]
+            elif p == 'Level.AR.Intercept':
+                post_dict[p] = self.posterior.damped_level_coefficients[burn:, 0, 0]
+
+            elif p == 'Level.AR.Slope':
+                post_dict[p] = self.posterior.damped_level_coefficients[burn:, 1, 0]
 
             elif p == 'Trend.Var':
                 c = components['Trend']
                 idx = c['stochastic_index']
                 post_dict[p] = state_err_cov[:, idx, idx]
 
-            elif p == 'Trend.AR':
-                post_dict[p] = self.posterior.damped_trend_coefficient[burn:, 0, 0]
+            elif p == 'Trend.AR.Intercept':
+                post_dict[p] = self.posterior.damped_trend_coefficients[burn:, 0, 0]
+
+            elif p == 'Trend.AR.Slope':
+                post_dict[p] = self.posterior.damped_trend_coefficients[burn:, 1, 0]
 
             elif 'Lag-Seasonal' in p and '.Var' in p:
                 c = components[p.replace('.Var', '')]
                 idx = c['stochastic_index']
                 post_dict[p] = state_err_cov[:, idx, idx]
 
-            elif 'Lag-Seasonal' in p and '.AR' in p:
-                c = components[p.replace('.AR', '')]
+            elif 'Lag-Seasonal' in p and '.AR.Intercept' in p:
+                c = components[p.replace('.AR.Intercept', '')]
                 idx = c['damped_ar_coeff_col_index']
-                post_dict[p] = self.posterior.damped_season_coefficients[burn:, idx, 0]
+                post_dict[p] = self.posterior.damped_season_coefficients[burn:, 0, idx]
+
+            elif 'Lag-Seasonal' in p and '.AR.Slope' in p:
+                c = components[p.replace('.AR.Slope', '')]
+                idx = c['damped_ar_coeff_col_index']
+                post_dict[p] = self.posterior.damped_season_coefficients[burn:, 1, idx]
 
             elif 'Dummy-Seasonal' in p and '.Var' in p:
                 c = components[p.replace('.Var', '')]
@@ -2500,6 +2527,7 @@ class BayesianUnobservedComponents:
                scale_response: bool = False,
                standardize_predictors: bool = True,
                back_transform: bool = True,
+               try_enforce_stationarity: bool = False,
                response_var_shape_prior: Union[int, float] = None,
                response_var_scale_prior: Union[int, float] = None,
                level_var_shape_prior: Union[int, float] = None,
@@ -2541,6 +2569,10 @@ class BayesianUnobservedComponents:
         :param back_transform: bool. This argument is applicable only if scale_response=True and/or
         standardize_predictors=True. If True, then the posterior sample values will be converted back to
         their original scale. Otherwise, the transformed posterior sample values will be returned.
+
+        :param try_enforce_stationarity: bool. If True, an attempt will be made to enforce all
+        autoregressive slope coefficients from damped states to lie between (-1, 1). This effectively
+        removes all non-stationary draws from the posterior. Default is False.
 
         :param response_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
         response error variance. Default is 0.01.
@@ -2660,8 +2692,8 @@ class BayesianUnobservedComponents:
                     response_error_variance: Posterior variance of the response equation's error term
                     state_error_covariance: Posterior variance-covariance matrix for the state error vector
                     regression_coefficients: Posterior regression coefficients
-                    damped_level_coefficient: Posterior AR(1) coefficient for level
-                    damped_trend_coefficient: Posterior AR(1) coefficient for trend
+                    damped_level_coefficients: Posterior AR(1) coefficient for level
+                    damped_trend_coefficients: Posterior AR(1) coefficient for trend
                     damped_lag_season_coefficients: Posterior AR(1) coefficients for lag_seasonal components
         """
 
@@ -2734,15 +2766,24 @@ class BayesianUnobservedComponents:
                             'damped_level_coeff_mean_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_level_coeff_mean_prior, (list, tuple)):
-                        damped_level_coeff_mean_prior = (np.asarray(damped_level_coeff_mean_prior,
-                                                                    dtype=np.float64))
+                        damped_level_coeff_mean_prior = (
+                            np.asarray(
+                                damped_level_coeff_mean_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_level_coeff_mean_prior = damped_level_coeff_mean_prior.astype(float)
+                        damped_level_coeff_mean_prior = (
+                            damped_level_coeff_mean_prior
+                            .astype(float)
+                        )
 
                     if damped_level_coeff_mean_prior.ndim not in (1, 2):
                         raise ValueError('damped_level_coeff_mean_prior must have dimension 1 or 2.')
                     elif damped_level_coeff_mean_prior.ndim == 1:
-                        damped_level_coeff_mean_prior = damped_level_coeff_mean_prior.reshape(1, 1)
+                        damped_level_coeff_mean_prior = (
+                            damped_level_coeff_mean_prior
+                            .reshape(1, 1)
+                        )
                     else:
                         pass
 
@@ -2765,15 +2806,24 @@ class BayesianUnobservedComponents:
                             'damped_level_coeff_prec_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_level_coeff_prec_prior, (list, tuple)):
-                        damped_level_coeff_prec_prior = (np.asarray(damped_level_coeff_prec_prior,
-                                                                    dtype=np.float64))
+                        damped_level_coeff_prec_prior = (
+                            np.asarray(
+                                damped_level_coeff_prec_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_level_coeff_prec_prior = damped_level_coeff_prec_prior.astype(float)
+                        damped_level_coeff_prec_prior = (
+                            damped_level_coeff_prec_prior
+                            .astype(float)
+                        )
 
                     if damped_level_coeff_prec_prior.ndim not in (1, 2):
                         raise ValueError('damped_level_coeff_prec_prior must have dimension 1 or 2.')
                     elif damped_level_coeff_prec_prior.ndim == 1:
-                        damped_level_coeff_prec_prior = damped_level_coeff_prec_prior.reshape(1, 1)
+                        damped_level_coeff_prec_prior = (
+                            damped_level_coeff_prec_prior
+                            .reshape(1, 1)
+                        )
                     else:
                         pass
 
@@ -2818,15 +2868,24 @@ class BayesianUnobservedComponents:
                         raise TypeError('damped_trend_coeff_mean_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_trend_coeff_mean_prior, (list, tuple)):
-                        damped_trend_coeff_mean_prior = (np.asarray(damped_trend_coeff_mean_prior,
-                                                                    dtype=np.float64))
+                        damped_trend_coeff_mean_prior = (
+                            np.asarray(
+                                damped_trend_coeff_mean_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_trend_coeff_mean_prior = damped_trend_coeff_mean_prior.astype(float)
+                        damped_trend_coeff_mean_prior = (
+                            damped_trend_coeff_mean_prior
+                            .astype(float)
+                        )
 
                     if damped_trend_coeff_mean_prior.ndim not in (1, 2):
                         raise ValueError('damped_trend_coeff_mean_prior must have dimension 1 or 2.')
                     elif damped_trend_coeff_mean_prior.ndim == 1:
-                        damped_trend_coeff_mean_prior = damped_trend_coeff_mean_prior.reshape(1, 1)
+                        damped_trend_coeff_mean_prior = (
+                            damped_trend_coeff_mean_prior
+                            .reshape(1, 1)
+                        )
                     else:
                         pass
 
@@ -2849,15 +2908,24 @@ class BayesianUnobservedComponents:
                             'damped_trend_coeff_prec_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_trend_coeff_prec_prior, (list, tuple)):
-                        damped_trend_coeff_prec_prior = (np.asarray(damped_trend_coeff_prec_prior,
-                                                                    dtype=np.float64))
+                        damped_trend_coeff_prec_prior = (
+                            np.asarray(
+                                damped_trend_coeff_prec_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_trend_coeff_prec_prior = damped_trend_coeff_prec_prior.astype(float)
+                        damped_trend_coeff_prec_prior = (
+                            damped_trend_coeff_prec_prior
+                            .astype(float)
+                        )
 
                     if damped_trend_coeff_prec_prior.ndim not in (1, 2):
                         raise ValueError('damped_trend_coeff_prec_prior must have dimension 1 or 2.')
                     elif damped_trend_coeff_prec_prior.ndim == 1:
-                        damped_trend_coeff_prec_prior = damped_trend_coeff_prec_prior.reshape(1, 1)
+                        damped_trend_coeff_prec_prior = (
+                            damped_trend_coeff_prec_prior
+                            .reshape(1, 1)
+                        )
                     else:
                         pass
 
@@ -2926,16 +2994,24 @@ class BayesianUnobservedComponents:
                             'damped_lag_season_coeff_mean_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_lag_season_coeff_mean_prior, (list, tuple)):
-                        damped_lag_season_coeff_mean_prior = (np.asarray(damped_lag_season_coeff_mean_prior,
-                                                                         dtype=np.float64))
+                        damped_lag_season_coeff_mean_prior = (
+                            np.asarray(
+                                damped_lag_season_coeff_mean_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_lag_season_coeff_mean_prior = damped_lag_season_coeff_mean_prior.astype(float)
+                        damped_lag_season_coeff_mean_prior = (
+                            damped_lag_season_coeff_mean_prior
+                            .astype(float)
+                        )
 
                     if damped_lag_season_coeff_mean_prior.ndim not in (1, 2):
                         raise ValueError('damped_lag_season_coeff_mean_prior must have dimension 1 or 2.')
                     elif damped_lag_season_coeff_mean_prior.ndim == 1:
-                        damped_lag_season_coeff_mean_prior = (damped_lag_season_coeff_mean_prior
-                                                              .reshape(self.num_damped_lag_season, 1))
+                        damped_lag_season_coeff_mean_prior = (
+                            damped_lag_season_coeff_mean_prior
+                            .reshape(self.num_damped_lag_season, 1)
+                        )
                     else:
                         pass
 
@@ -2962,16 +3038,23 @@ class BayesianUnobservedComponents:
                             'damped_lag_season_coeff_prec_prior must be a Numpy array, list, or tuple.')
 
                     if isinstance(damped_lag_season_coeff_prec_prior, (list, tuple)):
-                        damped_lag_season_coeff_prec_prior = (np.asarray(damped_lag_season_coeff_prec_prior,
-                                                                         dtype=np.float64))
+                        damped_lag_season_coeff_prec_prior = (
+                            np.asarray(
+                                damped_lag_season_coeff_prec_prior,
+                                dtype=np.float64)
+                        )
                     else:
-                        damped_lag_season_coeff_prec_prior = damped_lag_season_coeff_prec_prior.astype(float)
+                        damped_lag_season_coeff_prec_prior = (
+                            damped_lag_season_coeff_prec_prior.astype(float)
+                        )
 
                     if damped_lag_season_coeff_prec_prior.ndim not in (1, 2):
                         raise ValueError('damped_lag_season_coeff_prec_prior must have dimension 1 or 2.')
                     elif damped_lag_season_coeff_prec_prior.ndim == 1:
-                        damped_lag_season_coeff_prec_prior = (damped_lag_season_coeff_prec_prior
-                                                              .reshape(self.num_damped_lag_season, 1))
+                        damped_lag_season_coeff_prec_prior = (
+                            damped_lag_season_coeff_prec_prior
+                            .reshape(self.num_damped_lag_season, 1)
+                        )
                     else:
                         pass
 
@@ -3090,15 +3173,21 @@ class BayesianUnobservedComponents:
                     raise TypeError('reg_coeff_mean_prior must be of type Numpy ndarray, list, or tuple.')
 
                 if isinstance(reg_coeff_mean_prior, (list, tuple)):
-                    reg_coeff_mean_prior = (np.asarray(reg_coeff_mean_prior,
-                                                       dtype=np.float64))
+                    reg_coeff_mean_prior = (
+                        np.asarray(
+                            reg_coeff_mean_prior,
+                            dtype=np.float64)
+                    )
                 else:
                     reg_coeff_mean_prior = reg_coeff_mean_prior.astype(float)
 
                 if reg_coeff_mean_prior.ndim not in (1, 2):
                     raise ValueError('reg_coeff_mean_prior must have dimension 1 or 2.')
                 elif reg_coeff_mean_prior.ndim == 1:
-                    reg_coeff_mean_prior = (reg_coeff_mean_prior.reshape(self.num_predictors, 1))
+                    reg_coeff_mean_prior = (
+                        reg_coeff_mean_prior
+                        .reshape(self.num_predictors, 1)
+                    )
                 else:
                     pass
 
@@ -3114,7 +3203,11 @@ class BayesianUnobservedComponents:
                     raise TypeError('reg_coeff_prec_prior must be of type Numpy ndarray, list, or tuple.')
 
                 if isinstance(reg_coeff_prec_prior, (list, tuple)):
-                    reg_coeff_prec_prior = np.asarray(reg_coeff_prec_prior, dtype=np.float64)
+                    reg_coeff_prec_prior = (
+                        np.asarray(
+                            reg_coeff_prec_prior,
+                            dtype=np.float64)
+                    )
                 else:
                     reg_coeff_prec_prior = reg_coeff_prec_prior.astype(float)
 
@@ -3245,25 +3338,25 @@ class BayesianUnobservedComponents:
 
         # Initialize damped level coefficient output, if applicable
         if self.level and self.damped_level:
-            damped_level_coefficient = np.empty((num_samp, 1, 1))
+            damped_level_coefficients = np.empty((num_samp, 2, 1))
             level_stoch_idx = [components['Level']['stochastic_index']]
             level_state_eqn_idx = [components['Level']['start_state_eqn_index']]
             ar_level_tran_idx = components['Level']['damped_transition_index']
         else:
-            damped_level_coefficient = np.array([[[]]])
+            damped_level_coefficients = np.array([[[]]])
 
         # Initialize damped trend coefficient output, if applicable
         if self.trend and self.damped_trend:
-            damped_trend_coefficient = np.empty((num_samp, 1, 1))
+            damped_trend_coefficients = np.empty((num_samp, 2, 1))
             trend_stoch_idx = [components['Trend']['stochastic_index']]
             trend_state_eqn_idx = [components['Trend']['start_state_eqn_index']]
             ar_trend_tran_idx = components['Trend']['damped_transition_index']
         else:
-            damped_trend_coefficient = np.array([[[]]])
+            damped_trend_coefficients = np.array([[[]]])
 
         # Initialize damped lag_seasonal coefficient output, if applicable
         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-            damped_season_coefficients = np.empty((num_samp, self.num_damped_lag_season, 1))
+            damped_season_coefficients = np.empty((num_samp, 2, self.num_damped_lag_season))
             season_stoch_idx = []
             season_state_eqn_idx = []
             ar_season_tran_idx = ()
@@ -3334,16 +3427,17 @@ class BayesianUnobservedComponents:
                 if s < 1:
                     damped_level_coeff = gibbs_iter0_damped_level_coeff
                 else:
-                    damped_level_coeff = damped_level_coefficient[s - 1]
+                    damped_level_coeff = damped_level_coefficients[s - 1]
 
-                ar_level_coeff = damped_level_coeff[0, 0]
-                if abs(ar_level_coeff) < 1:
+                ar_level_intercept, ar_level_slope = damped_level_coeff[:, 0]
+                if abs(ar_level_slope) < 1:
+                    lr_level_mean = ar_level_intercept / (1 - ar_level_slope)
                     damped_level_var = (
                             state_err_cov[level_stoch_idx[0], level_stoch_idx[0]]
-                            / (1. - ar_level_coeff ** 2)
+                            / (1. - ar_level_slope ** 2)
                     )
                     init_state_plus_values[level_state_eqn_idx[0]] = (
-                        dist.vec_norm(0., np.sqrt(damped_level_var))
+                        dist.vec_norm(lr_level_mean, np.sqrt(damped_level_var))
                     )
                 else:
                     init_state_plus_values[level_state_eqn_idx[0]] = 0.
@@ -3351,22 +3445,24 @@ class BayesianUnobservedComponents:
                     # if AR coefficient is explosive.
                     init_state_cov = gibbs_iter0_init_state_covariance
 
-                T[ar_level_tran_idx] = ar_level_coeff
+                C[ar_level_tran_idx[0], 0] = ar_level_intercept
+                T[ar_level_tran_idx] = ar_level_slope
 
             if self.trend and self.damped_trend:
                 if s < 1:
                     damped_trend_coeff = gibbs_iter0_damped_trend_coeff
                 else:
-                    damped_trend_coeff = damped_trend_coefficient[s - 1]
+                    damped_trend_coeff = damped_trend_coefficients[s - 1]
 
-                ar_trend_coeff = damped_trend_coeff[0, 0]
-                if abs(ar_trend_coeff) < 1:
+                ar_trend_intercept, ar_trend_slope = damped_trend_coeff[:, 0]
+                if abs(ar_trend_slope) < 1:
+                    lr_level_trend = ar_trend_intercept / (1 - ar_trend_slope)
                     damped_trend_var = (
                             state_err_cov[trend_stoch_idx[0], trend_stoch_idx[0]]
-                            / (1. - ar_trend_coeff ** 2)
+                            / (1. - ar_trend_slope ** 2)
                     )
                     init_state_plus_values[trend_state_eqn_idx[0]] = (
-                        dist.vec_norm(0., np.sqrt(damped_trend_var))
+                        dist.vec_norm(lr_level_trend, np.sqrt(damped_trend_var))
                     )
                 else:
                     init_state_plus_values[trend_state_eqn_idx[0]] = 0.
@@ -3374,7 +3470,8 @@ class BayesianUnobservedComponents:
                     # if AR coefficient is explosive.
                     init_state_cov = gibbs_iter0_init_state_covariance
 
-                T[ar_trend_tran_idx] = ar_trend_coeff
+                C[ar_trend_tran_idx[0], 0] = ar_trend_intercept
+                T[ar_trend_tran_idx] = ar_trend_slope
 
             if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
                 if s < 1:
@@ -3383,14 +3480,15 @@ class BayesianUnobservedComponents:
                     damped_season_coeff = damped_season_coefficients[s - 1]
 
                 for j in range(self.num_damped_lag_season):
-                    ar_season_coeff = damped_season_coeff[j, 0]
-                    if abs(ar_season_coeff) < 1:
+                    ar_season_intercept, ar_season_slope = damped_season_coeff[:, j]
+                    if abs(ar_season_slope) < 1:
+                        lr_season_mean = ar_season_intercept / (1 - ar_season_slope)
                         damped_season_var = (
                                 state_err_cov[season_stoch_idx[j], season_stoch_idx[j]]
-                                / (1. - ar_season_coeff ** 2)
+                                / (1. - ar_season_slope ** 2)
                         )
                         init_state_plus_values[season_state_eqn_idx[j]] = (
-                            dist.vec_norm(0., np.sqrt(damped_season_var))
+                            dist.vec_norm(lr_season_mean, np.sqrt(damped_season_var))
                         )
                     else:
                         init_state_plus_values[season_state_eqn_idx[j]] = 0.
@@ -3398,7 +3496,8 @@ class BayesianUnobservedComponents:
                         # if AR coefficient is explosive.
                         init_state_cov = gibbs_iter0_init_state_covariance
 
-                    T[ar_season_tran_idx[j]] = ar_season_coeff
+                    C[ar_season_tran_idx[j][0], 0] = ar_season_intercept
+                    T[ar_season_tran_idx[j]] = ar_season_slope
 
             # Filtered state
             y_kf = kf(y=y,
@@ -3443,6 +3542,7 @@ class BayesianUnobservedComponents:
                 state_sse = dot(state_resid.T ** 2, n_ones)
                 state_var_scale_post = state_var_scale_prior + 0.5 * dot(H, state_sse)
                 state_err_var_post = dist.vec_ig(state_var_shape_post, state_var_scale_post)
+                has_explosive_ar = False
 
                 if np.all(state_err_var_post < upper_var_limit):
                     filtered_state[s] = _filtered_state
@@ -3463,7 +3563,15 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=level_state_eqn_idx,
                                        state_err_var_post_index=level_stoch_idx)
-                        damped_level_coefficient[s] = self._ar_state_post_upd(**ar_args)
+                        ar_level_coeff = self._ar_state_post_upd(**ar_args)
+
+                        if try_enforce_stationarity:
+                            if abs(ar_level_coeff[1, 0]) > 1:
+                                has_explosive_ar = True
+                            else:
+                                damped_level_coefficients[s] = ar_level_coeff
+                        else:
+                            damped_level_coefficients[s] = ar_level_coeff
 
                     # Get new draw for the trend's AR(1) coefficient, if applicable
                     if self.trend and self.damped_trend:
@@ -3474,7 +3582,15 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=trend_state_eqn_idx,
                                        state_err_var_post_index=trend_stoch_idx)
-                        damped_trend_coefficient[s] = self._ar_state_post_upd(**ar_args)
+                        ar_trend_coeff = self._ar_state_post_upd(**ar_args)
+
+                        if try_enforce_stationarity:
+                            if abs(ar_trend_coeff[1, 0]) > 1:
+                                has_explosive_ar = True
+                            else:
+                                damped_trend_coefficients[s] = ar_trend_coeff
+                        else:
+                            damped_trend_coefficients[s] = ar_trend_coeff
 
                     # Get new draw for lag_seasonal AR(1) coefficients, if applicable
                     if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
@@ -3485,7 +3601,15 @@ class BayesianUnobservedComponents:
                                        state_err_var_post=state_err_var_post,
                                        state_eqn_index=season_state_eqn_idx,
                                        state_err_var_post_index=season_stoch_idx)
-                        damped_season_coefficients[s] = self._ar_state_post_upd(**ar_args)
+                        ar_season_coeff = self._ar_state_post_upd(**ar_args)
+
+                        if try_enforce_stationarity:
+                            if np.any(abs(ar_season_coeff[1, :]) > 1):
+                                has_explosive_ar = True
+                            else:
+                                damped_season_coefficients[s] = ar_season_coeff
+                        else:
+                            damped_season_coefficients[s] = ar_season_coeff
 
                     # Get new draw for regression coefficients
                     if self.has_predictors:
@@ -3524,7 +3648,11 @@ class BayesianUnobservedComponents:
                             response_var_scale_post
                         )
 
-                    s += 1
+                    if try_enforce_stationarity:
+                        if not has_explosive_ar:
+                            s += 1
+                    else:
+                        s += 1
             else:
                 filtered_state[s] = _filtered_state
                 state_covariance[s] = _state_covariance
@@ -3584,6 +3712,24 @@ class BayesianUnobservedComponents:
                     * y_back_scaler / X_back_scaler[np.newaxis, :]
             )
 
+        if self.level and self.damped_level:
+            damped_level_coefficients[:, 0, :] = (
+                    damped_level_coefficients[:, 0, :]
+                    * y_back_scaler
+            )
+
+        if self.trend and self.damped_trend:
+            damped_trend_coefficients[:, 0, :] = (
+                    damped_trend_coefficients[:, 0, :]
+                    * y_back_scaler
+            )
+
+        if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
+            damped_season_coefficients[:, 0, :] = (
+                damped_season_coefficients[:, 0, :]
+                * y_back_scaler
+            )
+
         self.posterior = Posterior(
             num_samp,
             smoothed_state * y_back_scaler,
@@ -3595,8 +3741,8 @@ class BayesianUnobservedComponents:
             state_covariance * y_back_scaler ** 2,
             response_error_variance * y_back_scaler ** 2,
             state_error_covariance * y_back_scaler ** 2,
-            damped_level_coefficient,
-            damped_trend_coefficient,
+            damped_level_coefficients,
+            damped_trend_coefficients,
             damped_season_coefficients,
             regression_coefficients
         )
@@ -3784,15 +3930,21 @@ class BayesianUnobservedComponents:
         damped_season_transition_index = ()
 
         if self.level and self.damped_level:
-            damped_level_transition_index = components['Level']['damped_transition_index']
+            damped_level_transition_index = (
+                components['Level']['damped_transition_index']
+            )
 
         if self.trend and self.damped_trend:
-            damped_trend_transition_index = components['Trend']['damped_transition_index']
+            damped_trend_transition_index = (
+                components['Trend']['damped_transition_index']
+            )
 
         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
             for c in components:
                 if 'Lag-Seasonal' in c and components[c]['damped']:
-                    damped_season_transition_index += (components[c]['damped_transition_index'],)
+                    damped_season_transition_index += (
+                        components[c]['damped_transition_index'],
+                    )
 
         response_forecast, state_forecast = _forecast(
             posterior=posterior,
@@ -4448,7 +4600,7 @@ class BayesianUnobservedComponents:
                         / num_post_samp_after_burn
                 )
 
-            if '.AR' in k:
+            if '.AR.Slope' in k:
                 smy[f"Posterior.ProbExplosive[{k}]"] = (
                         np.sum((abs(v) > 1) * 1)
                         / num_post_samp_after_burn
