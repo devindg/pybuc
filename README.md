@@ -487,7 +487,7 @@ Damping can be applied to level, trend, and periodic-lag seasonality state compo
 for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
 
 $$
-\phi \sim N(0.5, 0.5 ** 2)
+\phi \sim N(0.5, 0.5^2)
 $$
 
 where $\phi$ represents some autoregressive coefficient. Thus, the prior encodes the belief that the process (level, 
