@@ -1831,10 +1831,10 @@ class BayesianUnobservedComponents:
                 level_params.append("Level.AR.Slope")
 
                 if damped_level_coeff_mean_prior is None:
-                    damped_level_coeff_mean_prior = np.array([[0.]])
+                    damped_level_coeff_mean_prior = np.array([[0.5]])
 
                 if damped_level_coeff_prec_prior is None:
-                    damped_level_coeff_prec_prior = np.array([[1.]])
+                    damped_level_coeff_prec_prior = np.array([[4.]])
 
                 damped_level_coeff_cov_prior = ao.mat_inv(damped_level_coeff_prec_prior)
                 gibbs_iter0_damped_level_coeff = (
@@ -1914,10 +1914,10 @@ class BayesianUnobservedComponents:
                 trend_params.append("Trend.AR.Slope")
 
                 if damped_trend_coeff_mean_prior is None:
-                    damped_trend_coeff_mean_prior = np.array([[0.]])
+                    damped_trend_coeff_mean_prior = np.array([[0.5]])
 
                 if damped_trend_coeff_prec_prior is None:
-                    damped_trend_coeff_prec_prior = np.array([[1.]])
+                    damped_trend_coeff_prec_prior = np.array([[4.]])
 
                 damped_trend_coeff_cov_prior = (
                     ao.mat_inv(damped_trend_coeff_prec_prior)
@@ -1961,12 +1961,12 @@ class BayesianUnobservedComponents:
             if self.num_damped_lag_season > 0:
                 if damped_lag_season_coeff_mean_prior is None:
                     damped_lag_season_coeff_mean_prior = (
-                        np.zeros((self.num_damped_lag_season, 1))
+                        np.ones((self.num_damped_lag_season, 1)) * 0.5
                     )
 
                 if damped_lag_season_coeff_prec_prior is None:
                     damped_lag_season_coeff_prec_prior = (
-                            np.ones((self.num_damped_lag_season, 1))
+                            np.ones((self.num_damped_lag_season, 1)) * 4.
                     )
 
                 damped_lag_season_coeff_cov_prior = (

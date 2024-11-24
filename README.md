@@ -487,15 +487,17 @@ Damping can be applied to level, trend, and periodic-lag seasonality state compo
 for an autoregressive (i.e., AR(1)) coefficient, the prior takes the form 
 
 $$
-\phi \sim N(0, 1)
+\phi \sim N(0.5, 0.5 ** 2)
 $$
 
 where $\phi$ represents some autoregressive coefficient. Thus, the prior encodes the belief that the process (level, 
-trend, seasonality) is, on average, a constant with noise. A standard deviation of 1 is assumed to promote the belief 
-that the process is stationary, but is not restrictive enough to preclude a non-stationary process. In fact, there are 
-two ways to help prevent non-stationary processes. One can either set a prior on the autoregressive coefficient whose 
-mean is far away from unity in absolute value and has high precision, or set `try_enforce_stationary=True` in the 
-`sample()` method. There is no guarantee that convergence will be reached with these restrictions, however.
+trend, seasonality) is most likely smooth (non-oscillating), with equal weight given to the possibility of a constant 
+or a positive unit root.
+
+There are two ways to help prevent non-stationary processes. One can either set a prior on the autoregressive 
+coefficient whose mean is far away from unity in absolute value and has high precision, or set 
+`try_enforce_stationary=True` in the `sample()` method. There is no guarantee that convergence will be reached with 
+these restrictions, however.
 
 Note that no prior is necessary for autoregressive drift parameters (e.g., $\omega_\delta$ above). This is because the 
 left-hand side and right-hand side state variables of a given state equation are standardized to estimate the 
