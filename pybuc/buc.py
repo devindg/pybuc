@@ -1640,7 +1640,7 @@ class BayesianUnobservedComponents:
                     @ (y_lag.T @ y + prec @ mean)
             )
             cov_post[c] = (
-                    state_err_var_post[state_err_var_post_index[c], 0]
+                    state_err_var_post[state_err_var_post_index[c], 0] / y_sd ** 2
                     * ar_slope_cov_post
             )
 
