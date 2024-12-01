@@ -21,7 +21,6 @@ class SLSS(NamedTuple):
 @njit(cache=True)
 def simulate_fake_linear_state_space(observation_matrix,
                                      state_transition_matrix,
-                                     state_intercept_matrix,
                                      state_error_transformation_matrix,
                                      init_state_plus,
                                      response_error_variance_matrix,
@@ -34,10 +33,6 @@ def simulate_fake_linear_state_space(observation_matrix,
 
     :param state_transition_matrix: ndarray of dimension (m, m). Data type must
     be float64. Matrix that maps previous state values to the current state.
-
-    :param state_intercept_matrix: ndarray of dimension (m, 1). Data type
-    must be float64. An intercept that may be added to the transition state equations.
-    Generally, the intercept is a matrix of zeros and thus has no impact.
 
     :param state_error_transformation_matrix: ndarray of dimension (m, q), where
     q is the number of state equations that evolve stochastically. Data type must
@@ -64,7 +59,6 @@ def simulate_fake_linear_state_space(observation_matrix,
     """
     # Get state and observation transformation matrices
     T = state_transition_matrix
-    C = state_intercept_matrix
     Z = observation_matrix
     R = state_error_transformation_matrix
 
@@ -89,9 +83,9 @@ def simulate_fake_linear_state_space(observation_matrix,
     for t in range(n):
         y[t] = Z[t].dot(alpha[t]) + errors[t, 0, :]
         if q > 0:
-            alpha[t + 1] = C + T.dot(alpha[t]) + R.dot(errors[t, 1:])
+            alpha[t + 1] = T.dot(alpha[t]) + R.dot(errors[t, 1:])
         else:
-            alpha[t + 1] = C + T.dot(alpha[t])
+            alpha[t + 1] = T.dot(alpha[t])
 
     return SLSS(y, alpha, errors)
 
@@ -213,14 +207,15 @@ def dk_smoother(y: np.ndarray,
         raise ValueError('The initial state covariance matrix must have shape (m, m), where m denotes '
                          'the number of state equations.')
 
-    C_plus = C - C
-    sim_fake_lss = simulate_fake_linear_state_space(observation_matrix=Z,
-                                                    state_transition_matrix=T,
-                                                    state_intercept_matrix=C_plus,
-                                                    state_error_transformation_matrix=R,
-                                                    init_state_plus=init_state_plus,
-                                                    response_error_variance_matrix=response_error_variance_matrix,
-                                                    state_error_covariance_matrix=state_error_covariance_matrix)
+    sim_fake_lss = (
+        simulate_fake_linear_state_space(
+            observation_matrix=Z,
+            state_transition_matrix=T,
+            state_error_transformation_matrix=R,
+            init_state_plus=init_state_plus,
+            response_error_variance_matrix=response_error_variance_matrix,
+            state_error_covariance_matrix=state_error_covariance_matrix)
+    )
 
     y_plus = sim_fake_lss.simulated_response
     alpha_plus = sim_fake_lss.simulated_state
