@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import warnings
 from typing import Union, NamedTuple
 import pandas as pd
-from pybuc.statespace.kalman_filter import kalman_filter as kf
 from pybuc.statespace.durbin_koopman_smoother import dk_smoother as dks
 from pybuc.utils import array_operations as ao
 from pybuc.utils.array_operations import diag_2d
@@ -1033,8 +1032,8 @@ class BayesianUnobservedComponents:
 
         if resp.shape[0] <= self.num_state_eqs:
             warnings.warn(
-                'The number of state equations implied by the model specification ' 
-                'is at least as large as the number of observations in the response ' 
+                'The number of state equations implied by the model specification '
+                'is at least as large as the number of observations in the response '
                 'array. Predictions from the model may be significantly compromised.'
             )
 
@@ -1214,7 +1213,6 @@ class BayesianUnobservedComponents:
         real_part = np.array([[np.cos(freq), np.sin(freq)]])
         imaginary_part = np.array([[-np.sin(freq), np.cos(freq)]])
         return np.concatenate((real_part, imaginary_part), axis=0)
-
 
     def observation_matrix(self,
                            num_rows: int = 0) -> np.ndarray:
@@ -1944,7 +1942,7 @@ class BayesianUnobservedComponents:
 
                 if damped_lag_season_coeff_prec_prior is None:
                     damped_lag_season_coeff_prec_prior = (
-                            np.ones((self.num_damped_lag_season, 1))
+                        np.ones((self.num_damped_lag_season, 1))
                     )
 
                 damped_lag_season_coeff_cov_prior = (
@@ -3435,40 +3433,28 @@ class BayesianUnobservedComponents:
                     C[ar_season_tran_idx[j][0], 0] = ar_season_intercept
                     T[ar_season_tran_idx[j]] = ar_season_slope
 
-            # Filtered state
-            y_kf = kf(y=y,
-                      observation_matrix=Z,
-                      state_transition_matrix=T,
-                      state_intercept_matrix=C,
-                      state_error_transformation_matrix=R,
-                      response_error_variance_matrix=response_err_var,
-                      state_error_covariance_matrix=state_err_cov,
-                      init_state=init_state_values,
-                      init_state_covariance=init_state_cov
-                      )
-
-            _filtered_state = y_kf.filtered_state
-            _state_covariance = y_kf.state_covariance
-            _filtered_prediction = y_kf.one_step_ahead_prediction
-            _response_variance = y_kf.response_variance
-
-            # Smoothed state from D-K smoother
-            dk = dks(y=y,
-                     observation_matrix=Z,
-                     state_transition_matrix=T,
-                     state_intercept_matrix=C,
-                     state_error_transformation_matrix=R,
-                     response_error_variance_matrix=response_err_var,
-                     state_error_covariance_matrix=state_err_cov,
-                     init_state_plus=init_state_plus_values,
-                     init_state=init_state_values,
-                     init_state_covariance=init_state_cov
-                     )
+            # Smoothed and filtered state from D-K smoother
+            dk = dks(
+                y=y,
+                observation_matrix=Z,
+                state_transition_matrix=T,
+                state_intercept_matrix=C,
+                state_error_transformation_matrix=R,
+                response_error_variance_matrix=response_err_var,
+                state_error_covariance_matrix=state_err_cov,
+                init_state_plus=init_state_plus_values,
+                init_state=init_state_values,
+                init_state_covariance=init_state_cov
+            )
 
             # Smoothed disturbances and state
-            _smoothed_errors = dk.simulated_smoothed_errors
-            _smoothed_state = dk.simulated_smoothed_state
-            _smoothed_prediction = dk.simulated_smoothed_prediction
+            _smoothed_errors = dk.smoothed_errors
+            _smoothed_state = dk.smoothed_state
+            _smoothed_prediction = dk.smoothed_prediction
+            _filtered_state = dk.filtered_state
+            _state_covariance = dk.filtered_state_covariance
+            _filtered_prediction = dk.filtered_prediction
+            _response_variance = dk.filtered_response_variance
 
             if self.response_has_nan:
                 y = self.response_replace_nan + self.response_nan_indicator * _smoothed_prediction
@@ -3492,13 +3478,15 @@ class BayesianUnobservedComponents:
 
                     # Get new draw for the level's AR(1) coefficient, if applicable
                     if self.level and self.damped_level:
-                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                       lag=(1,),
-                                       mean_prior=damped_level_coeff_mean_prior,
-                                       precision_prior=damped_level_coeff_prec_prior,
-                                       state_err_var_post=state_err_var_post,
-                                       state_eqn_index=level_state_eqn_idx,
-                                       state_err_var_post_index=level_stoch_idx)
+                        ar_args = dict(
+                            smoothed_state=smoothed_state[s][:n],
+                            lag=(1,),
+                            mean_prior=damped_level_coeff_mean_prior,
+                            precision_prior=damped_level_coeff_prec_prior,
+                            state_err_var_post=state_err_var_post,
+                            state_eqn_index=level_state_eqn_idx,
+                            state_err_var_post_index=level_stoch_idx
+                        )
                         ar_level_coeff = self._ar_state_post_upd(**ar_args)
 
                         if try_enforce_stationarity:
@@ -3511,13 +3499,15 @@ class BayesianUnobservedComponents:
 
                     # Get new draw for the trend's AR(1) coefficient, if applicable
                     if self.trend and self.damped_trend:
-                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                       lag=(1,),
-                                       mean_prior=damped_trend_coeff_mean_prior,
-                                       precision_prior=damped_trend_coeff_prec_prior,
-                                       state_err_var_post=state_err_var_post,
-                                       state_eqn_index=trend_state_eqn_idx,
-                                       state_err_var_post_index=trend_stoch_idx)
+                        ar_args = dict(
+                            smoothed_state=smoothed_state[s][:n],
+                            lag=(1,),
+                            mean_prior=damped_trend_coeff_mean_prior,
+                            precision_prior=damped_trend_coeff_prec_prior,
+                            state_err_var_post=state_err_var_post,
+                            state_eqn_index=trend_state_eqn_idx,
+                            state_err_var_post_index=trend_stoch_idx
+                        )
                         ar_trend_coeff = self._ar_state_post_upd(**ar_args)
 
                         if try_enforce_stationarity:
@@ -3530,13 +3520,15 @@ class BayesianUnobservedComponents:
 
                     # Get new draw for lag_seasonal AR(1) coefficients, if applicable
                     if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
-                        ar_args = dict(smoothed_state=smoothed_state[s][:n],
-                                       lag=self.lag_season_damped_lags,
-                                       mean_prior=damped_lag_season_coeff_mean_prior,
-                                       precision_prior=damped_lag_season_coeff_prec_prior,
-                                       state_err_var_post=state_err_var_post,
-                                       state_eqn_index=season_state_eqn_idx,
-                                       state_err_var_post_index=season_stoch_idx)
+                        ar_args = dict(
+                            smoothed_state=smoothed_state[s][:n],
+                            lag=self.lag_season_damped_lags,
+                            mean_prior=damped_lag_season_coeff_mean_prior,
+                            precision_prior=damped_lag_season_coeff_prec_prior,
+                            state_err_var_post=state_err_var_post,
+                            state_eqn_index=season_state_eqn_idx,
+                            state_err_var_post_index=season_stoch_idx
+                        )
                         ar_season_coeff = self._ar_state_post_upd(**ar_args)
 
                         if try_enforce_stationarity:
@@ -3553,12 +3545,12 @@ class BayesianUnobservedComponents:
                         y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
                         reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
                         response_var_scale_post = (
-                            response_var_scale_prior
-                            + 0.5 * (
-                            y_tilde.T @ y_tilde
-                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
-                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
-                            )
+                                response_var_scale_prior
+                                + 0.5 * (
+                                        y_tilde.T @ y_tilde
+                                        + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                                        - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                                )
                         )
                         response_error_variance[s] = dist.vec_ig(
                             response_var_shape_post,
@@ -3604,10 +3596,11 @@ class BayesianUnobservedComponents:
                     reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
                     response_var_scale_post = (
                             response_var_scale_prior
-                            + 0.5 * (
-                            y_tilde.T @ y_tilde
-                            + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
-                            - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
+                            + 0.5 *
+                            (
+                                y_tilde.T @ y_tilde
+                                + reg_coeff_mean_prior.T @ reg_coeff_prec_prior @ reg_coeff_mean_prior
+                                - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
                             )
                     )
                     response_error_variance[s] = dist.vec_ig(
@@ -3662,8 +3655,8 @@ class BayesianUnobservedComponents:
 
         if len(self.lag_seasonal) > 0 and self.num_damped_lag_season > 0:
             damped_season_coefficients[:, 0, :] = (
-                damped_season_coefficients[:, 0, :]
-                * y_back_scaler
+                    damped_season_coefficients[:, 0, :]
+                    * y_back_scaler
             )
 
         self.posterior = Posterior(
@@ -4031,9 +4024,9 @@ class BayesianUnobservedComponents:
 
                 if not np.all(X.shape == X_new.shape):
                     raise AssertionError(
-                        "\n" 
-                        "The dimension of predictors must match the dimension of the \n" 
-                        "predictors array used for model estimation, i.e., the predictors \n" 
+                        "\n"
+                        "The dimension of predictors must match the dimension of the \n"
+                        "predictors array used for model estimation, i.e., the predictors \n"
                         "array used for class instantiation."
                     )
                 else:
@@ -4042,8 +4035,8 @@ class BayesianUnobservedComponents:
                     reg_comp_new = X_new @ reg_coeff
             else:
                 raise AssertionError(
-                    "Predictors were not used during model estimation, so \n" 
-                    "they are not applicable for computing the posterior \n" 
+                    "Predictors were not used during model estimation, so \n"
+                    "they are not applicable for computing the posterior \n"
                     "predictive distribution of the response."
                 )
 
@@ -4065,8 +4058,8 @@ class BayesianUnobservedComponents:
 
         if int(random_sample_size_prop * num_posterior_samp) < 1:
             raise ValueError(
-                'random_sample_size_prop implies a sample with less than 1 observation. ' 
-                'Provide a random_sample_size_prop such that the number of samples ' 
+                'random_sample_size_prop implies a sample with less than 1 observation. '
+                'Provide a random_sample_size_prop such that the number of samples '
                 'is at least 1 but no larger than the number of posterior samples.'
             )
 

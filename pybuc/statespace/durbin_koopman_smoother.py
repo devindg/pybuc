@@ -7,9 +7,13 @@ from ..utils import array_operations as ao
 
 
 class DKSS(NamedTuple):
-    simulated_smoothed_errors: np.ndarray
-    simulated_smoothed_state: np.ndarray
-    simulated_smoothed_prediction: np.ndarray
+    smoothed_errors: np.ndarray
+    smoothed_state: np.ndarray
+    smoothed_prediction: np.ndarray
+    filtered_state: np.ndarray
+    filtered_prediction: np.ndarray
+    filtered_state_covariance: np.ndarray
+    filtered_response_variance: np.ndarray
 
 
 class SLSS(NamedTuple):
@@ -223,15 +227,17 @@ def dk_smoother(y: np.ndarray,
 
     # Run y* = y - y+ through Kalman filter.
     y_star = y - y_plus
-    y_star_kf = kf(y=y_star,
-                   observation_matrix=Z,
-                   state_transition_matrix=T,
-                   state_intercept_matrix=C,
-                   state_error_transformation_matrix=R,
-                   response_error_variance_matrix=response_error_variance_matrix,
-                   state_error_covariance_matrix=state_error_covariance_matrix,
-                   init_state=init_state - init_state_plus,
-                   init_state_covariance=init_state_covariance)
+    y_star_kf = kf(
+        y=y_star,
+        observation_matrix=Z,
+        state_transition_matrix=T,
+        state_intercept_matrix=C,
+        state_error_transformation_matrix=R,
+        response_error_variance_matrix=response_error_variance_matrix,
+        state_error_covariance_matrix=state_error_covariance_matrix,
+        init_state=init_state - init_state_plus,
+        init_state_covariance=init_state_covariance
+    )
 
     v = y_star_kf.one_step_ahead_prediction_resid
     F_inv = y_star_kf.inverse_response_variance
@@ -250,7 +256,6 @@ def dk_smoother(y: np.ndarray,
     # Compute smoothed observation residuals, state residuals, and state vector
     w_hat = np.empty((n, 1 + q, 1), dtype=np.float64)
     alpha_hat = np.empty((n + 1, m, 1), dtype=np.float64)
-
     alpha_hat[0] = init_state - init_state_plus + init_state_covariance.dot(r_init)
     for t in range(n):
         eps_hat = response_error_variance_matrix.dot(F_inv[t].dot(v[t]) - K[t].T.dot(r[t]))
@@ -267,4 +272,29 @@ def dk_smoother(y: np.ndarray,
     smoothed_state = alpha_hat + alpha_plus
     smoothed_prediction = (Z[:, 0, :] * smoothed_state[:n, :, 0]).dot(np.ones((m, 1)))
 
-    return DKSS(smoothed_errors, smoothed_state, smoothed_prediction)
+    # Compute filtered synthetic state using the already-computed
+    # Kalman gain from the filtered `y_star`. This will ultimately be
+    # used to compute the filtered state based on `y`, the actual response.
+    # This is significantly faster than running the Kalman filter on `y`.
+    filtered_alpha_plus = np.empty((n + 1, m, 1), dtype=np.float64)
+    filtered_alpha_plus[0] = init_state_plus
+    for t in range(n):
+        y_plus_pred = Z[t].dot(filtered_alpha_plus[t])
+        v_plus = y_plus[t] - y_plus_pred
+        filtered_alpha_plus[t + 1] = T.dot(filtered_alpha_plus[t]) + K[t].dot(v_plus)
+
+    # Get filtered prediction and state
+    filtered_state = y_star_kf.filtered_state + filtered_alpha_plus
+    filtered_prediction = (Z[:, 0, :] * filtered_state[:n, :, 0]).dot(np.ones((m, 1)))
+    filtered_state_covariance = y_star_kf.state_covariance
+    filtered_response_variance = y_star_kf.response_variance
+
+    return DKSS(
+        smoothed_errors,
+        smoothed_state,
+        smoothed_prediction,
+        filtered_state,
+        filtered_prediction,
+        filtered_state_covariance,
+        filtered_response_variance
+    )
