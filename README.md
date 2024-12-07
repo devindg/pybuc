@@ -280,7 +280,7 @@ print(f"BAYES-UC RMSE: {rmse(y_test.to_numpy(), forecast_mean)}")
 ```
 
 ```
-BAYES-UC RMSE: 17.69810613398663
+BAYES-UC RMSE: 17.620844323566658
 ```
 
 The Bayesian Unobserved Components forecast plot, components plot, and RMSE are shown below.
@@ -455,7 +455,7 @@ Back-transformation can be managed with the `back_transform` argument in the `sa
 The default prior for irregular variance is:
 
 $$
-\sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(3, (0.01 * (3 - 1) * \mathrm{Std.Dev}(y))^2)
+\sigma^2_{\mathrm{irregular}} \sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2 * 1.01)
 $$
 
 If no priors are given for variances corresponding to stochastic states (i.e., level, trend, and seasonality), 
@@ -463,21 +463,20 @@ the following defaults are used:
 
 $$
 \begin{align}
-    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(3, (0.01 * (3 - 1) * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(3, (0.01 * (3 - 1) * \mathrm{Std.Dev}(y))^2) \\
-    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(3, (0.25 * 0.01 * (3 - 1) * \mathrm{Std.Dev}(y))^2) \\
+    \sigma^2_{\mathrm{level}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2 * 1.01) \\
+    \sigma^2_{\mathrm{seasonal}} &\sim \mathrm{IG}(0.01, (0.01 * \mathrm{Std.Dev}(y))^2 * 1.01) \\
+    \sigma^2_{\mathrm{trend}} &\sim \mathrm{IG}(0.5, (0.25 * 0.01 * \mathrm{Std.Dev}(y))^2 * 1.5) \\
 \end{align}
 $$
 
-These priors differ from the defaults in R's `bsts` package. Each shape value is 3 instead of 0.01 like in `bsts`. This 
-guarantees the existence of a mean and variance for the inverse-gamma distribution, which helps to regularize these 
-parameters. The scale priors for level and seasonality mirror the default scale priors in `bsts` in spirit
-(($0.01 * \mathrm{Std.Dev}(y))^2$). The difference is the factor $(3 - 1)$, which forces the mean of the variance to be 
-$(0.01 * \mathrm{Std.Dev}(y))^2$.
+These priors differ from the defaults in R's `bsts` package. The scale priors for response, level and seasonality 
+variances mirror the default scale priors in `bsts` in spirit (($0.01 * \mathrm{Std.Dev}(y))^2$). The difference is the 
+factor $1.01$, which forces the mode of the prior variance to be $(0.01 * \mathrm{Std.Dev}(y))^2$.
 
 The default prior for trend variance is also more conservative in `pybuc`. This is reflected by a standard deviation 
-that is one-fourth the size (in standard deviation) of the rest of the scale priors. The purpose is to mitigate the 
-impact that noise in the data could have on producing an overly aggressive and/or volatile trend.
+that is one-fourth the size (in standard deviation) of the rest of the scale priors, and a shape prior equal to 0.5. 
+This implies that the mode of the prior trend variance is (0.0025 * \mathrm{Std.Dev}(y))^2. The purpose is to mitigate 
+the impact that noise in the data could have on producing an overly aggressive and/or volatile trend.
 
 **Note that the scale prior for trigonometric seasonality is automatically scaled by the number of state 
 equations implied by the period and number of harmonics. For example, if the trigonometric seasonality scale prior 

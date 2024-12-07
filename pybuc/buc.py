@@ -1705,11 +1705,11 @@ class BayesianUnobservedComponents:
         n = self.num_obs
         q = self.num_stoch_states
         m = self.num_state_eqs
-        default_shape_prior = 3.0
+        default_shape_prior = 0.01
 
         if scale_response:
             y = self._scale_response(self.response)
-            default_root_scale = 0.01 * (default_shape_prior - 1.0)
+            default_root_scale = 0.01
             scaler = self.response_scale
             if back_transform:
                 back_tform_resp_scaler = self.response_scale
@@ -1717,7 +1717,7 @@ class BayesianUnobservedComponents:
                 back_tform_resp_scaler = 1.0
         else:
             y = self.response
-            default_root_scale = 0.01 * (default_shape_prior - 1.0) * self.response_scale
+            default_root_scale = 0.01 * self.response_scale
             scaler, back_tform_resp_scaler = 1.0, 1.0
 
         back_tform_pred_scaler = None
@@ -1777,7 +1777,10 @@ class BayesianUnobservedComponents:
         if response_var_shape_prior is None:
             response_var_shape_prior = default_shape_prior
         if response_var_scale_prior is None:
-            response_var_scale_prior = default_root_scale ** 2
+            response_var_scale_prior = (
+                    default_root_scale ** 2
+                    * (1 + default_shape_prior)
+            )
         else:
             response_var_scale_prior = response_var_scale_prior / scaler ** 2
 
@@ -1797,7 +1800,10 @@ class BayesianUnobservedComponents:
                     level_var_shape_prior = default_shape_prior
 
                 if level_var_scale_prior is None:
-                    level_var_scale_prior = default_root_scale ** 2
+                    level_var_scale_prior = (
+                            default_root_scale ** 2
+                            * (1 + default_shape_prior)
+                    )
                 else:
                     level_var_scale_prior = level_var_scale_prior / scaler ** 2
 
@@ -1865,10 +1871,13 @@ class BayesianUnobservedComponents:
                 trend_params.append("Trend.Var")
 
                 if trend_var_shape_prior is None:
-                    trend_var_shape_prior = default_shape_prior
+                    trend_var_shape_prior = default_shape_prior * 50.
 
                 if trend_var_scale_prior is None:
-                    trend_var_scale_prior = (0.25 * default_root_scale) ** 2
+                    trend_var_scale_prior = (
+                            (0.25 * default_root_scale) ** 2
+                            * (1 + default_shape_prior * 50.)
+                    )
                 else:
                     trend_var_scale_prior = trend_var_scale_prior / scaler ** 2
 
@@ -1968,7 +1977,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if lag_season_var_scale_prior is None:
-                        scale_prior = default_root_scale ** 2
+                        scale_prior = default_root_scale ** 2 * (1 + default_shape_prior)
                     else:
                         scale_prior = lag_season_var_scale_prior[c] / scaler ** 2
 
@@ -2040,7 +2049,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n)
 
                     if dum_season_var_scale_prior is None:
-                        scale_prior = default_root_scale ** 2
+                        scale_prior = default_root_scale ** 2 * (1 + default_shape_prior)
                     else:
                         scale_prior = dum_season_var_scale_prior[c] / scaler ** 2
 
@@ -2100,7 +2109,7 @@ class BayesianUnobservedComponents:
                     state_var_shape_post.append(shape_prior + 0.5 * n * num_eqs)
 
                     if trig_season_var_scale_prior is None:
-                        scale_prior = default_root_scale ** 2 / num_eqs
+                        scale_prior = default_root_scale ** 2 * (1 + default_shape_prior) / num_eqs
                     else:
                         scale_prior = trig_season_var_scale_prior[c] / scaler ** 2 / num_eqs
 
@@ -2529,16 +2538,16 @@ class BayesianUnobservedComponents:
         removes all non-stationary draws from the posterior. Default is False.
 
         :param response_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
-        response error variance. Default is 3.
+        response error variance. Default is 0.01.
 
         :param response_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        response error variance. Default is (0.01 * (3 - 1) * std(response))^2.
+        response error variance. Default is (0.01 * std(response))^2 * 1.01.
 
         :param level_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
-        level state equation error variance. Default is 3.
+        level state equation error variance. Default is 0.01.
 
         :param level_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        level state equation error variance. (0.01 * (3 - 1) * std(response))^2.
+        level state equation error variance. (0.01 * std(response))^2 * 1.01.
 
         :param damped_level_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the level's AR(1) process without drift. Default is [[1.]].
@@ -2548,10 +2557,10 @@ class BayesianUnobservedComponents:
         Default is [[1.]].
 
         :param trend_var_shape_prior: int, float > 0. Specifies the inverse-Gamma shape prior for the
-        trend state equation error variance. Default is 3.
+        trend state equation error variance. Default is 0.5.
 
         :param trend_var_scale_prior: int, float > 0. Specifies the inverse-Gamma scale prior for the
-        trend state equation error variance. Default is (0.25 * 0.01 * (3 - 1) * std(response))^2.
+        trend state equation error variance. Default is (0.25 * 0.01 * std(response))^2 * 1.5.
 
         :param damped_trend_coeff_mean_prior: Numpy array, list, or tuple. Specifies the prior
         mean for the coefficient governing the trend's AR(1) process without drift. Default is [[1.]].
@@ -2562,11 +2571,11 @@ class BayesianUnobservedComponents:
 
         :param lag_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in lag_seasonal.
-        Default is 3 for each periodicity.
+        Default is 0.01 for each periodicity.
 
         :param lag_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in lag_seasonal.
-        Default is (0.01 * (3 - 1) * std(response))^2 for each periodicity.
+        Default is (0.01 * std(response))^2 * 1.01 for each periodicity.
 
         :param damped_lag_season_coeff_mean_prior: Numpy array, list, or tuple with s elements, where s is the
         number of stochastic periodicities with damping specified. Specifies the prior mean for the coefficient
@@ -2579,23 +2588,23 @@ class BayesianUnobservedComponents:
 
         :param dum_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in dummy_seasonal.
-        Default is 3 for each periodicity.
+        Default is 0.01 for each periodicity.
 
         :param dum_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in dummy_seasonal.
-        Default is (0.01 * (3 - 1) * std(response))^2 for each periodicity.
+        Default is (0.01 * std(response))^2 * 1.01 for each periodicity.
 
         :param trig_season_var_shape_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma shape priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only one
         shape prior needs to be specified, namely for periodicity 12.
-        Default is 3 for each periodicity.
+        Default is 0.01 for each periodicity.
 
         :param trig_season_var_scale_prior: tuple of int, float > 0 with s elements, where s is the number of
         stochastic periodicities. Specifies the inverse-Gamma scale priors for each periodicity in trig_seasonal.
         For example, if trig_seasonal = ((12, 3), (10, 2)) and stochastic_trig_seasonal = (True, False), only two
         scale priors need to be specified, namely periodicity 12.
-        Default is (0.01 * (3 - 1 ) * std(response))^2 / # of state equations for each periodicity. Note that whatever
+        Default is (0.01 * std(response))^2 * 1.01 / # of state equations for each periodicity. Note that whatever
         value is passed to trig_season_var_scale_prior is automatically scaled by the number of state
         equations implied by the periodicity and number of harmonics.
 
