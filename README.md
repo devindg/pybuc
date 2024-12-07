@@ -475,7 +475,7 @@ factor $1.01$, which forces the mode of the prior variance to be $(0.01 * \mathr
 
 The default prior for trend variance is also more conservative in `pybuc`. This is reflected by a standard deviation 
 that is one-fourth the size (in standard deviation) of the rest of the scale priors, and a shape prior equal to 0.5. 
-This implies that the mode of the prior trend variance is (0.0025 * \mathrm{Std.Dev}(y))^2. The purpose is to mitigate 
+This implies that the mode of the prior trend variance is $(0.0025 * \mathrm{Std.Dev}(y))^2$. The purpose is to mitigate 
 the impact that noise in the data could have on producing an overly aggressive and/or volatile trend.
 
 **Note that the scale prior for trigonometric seasonality is automatically scaled by the number of state 
