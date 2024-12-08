@@ -2266,7 +2266,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = 1e-3
+                zellner_prior_obs = 1.
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))

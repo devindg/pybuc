@@ -531,7 +531,7 @@ $$
 \frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
 $$
 
-where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 0.001$ is the number 
+where $\mathbf X$ is the design matrix, $n$ is the number of response observations, and $\kappa = 1$ is the number 
 of default prior observations given to the mean prior of $\mathbf 0$. This prior is a slight modification of Zellner's 
 g-prior (to guard against potential singularity of the design matrix). The number of prior observations, $\kappa$, can be 
 changed by passing a value to the argument `zellner_prior_obs` in the `sample()` method. If Zellner's g-prior is not 
