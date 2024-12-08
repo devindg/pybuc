@@ -2171,6 +2171,7 @@ class BayesianUnobservedComponents:
                 else:
                     back_tform_pred_scaler = np.ones_like(X_scale)
             else:
+                X = self._center_predictors(X)
                 back_tform_pred_scaler = np.ones_like(X_scale)
 
             num_obs, num_pred = X.shape
@@ -2266,7 +2267,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = 1.
+                zellner_prior_obs = 0.05
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))
@@ -2622,7 +2623,7 @@ class BayesianUnobservedComponents:
 
         :param zellner_prior_obs: int, float > 0. Relevant only if no regression precision matrix is provided.
         It controls how precise one believes their priors are for the regression coefficients, assuming no regression
-        precision matrix is provided. Default value is 1e-3, which gives little weight to the regression coefficient
+        precision matrix is provided. Default value is 0.05, which gives little weight to the regression coefficient
         mean prior. This should approximate maximum likelihood estimation.
 
         :param upper_var_limit: int of float > 0. This sets an acceptable upper bound on sampled variances (i.e.,
@@ -3342,6 +3343,8 @@ class BayesianUnobservedComponents:
 
             if standardize_predictors:
                 X = self._standardize_predictors(X)
+            else:
+                X = self._center_predictors(X)
 
             Vt, _ = self._design_matrix_svd(X)
             reg_coeff_mean_prior = model.reg_coeff_mean_prior
@@ -3843,6 +3846,8 @@ class BayesianUnobservedComponents:
                         fut_pred = fut_pred / self.response_scale
                     else:
                         pass
+                else:
+                    fut_pred = self._center_predictors(fut_pred)
 
         elif self.has_predictors and future_predictors is None:
             raise ValueError(
@@ -4018,6 +4023,8 @@ class BayesianUnobservedComponents:
                     X = self._standardize_predictors(X)
                 elif setup.standardize_predictors and setup.back_transform:
                     X = self._center_predictors(X)
+                else:
+                    X = self._center_predictors(X)
 
                 X_new = np.array(predictors)
 
@@ -4029,6 +4036,8 @@ class BayesianUnobservedComponents:
                 if setup.standardize_predictors and not setup.back_transform:
                     X_new = self._standardize_predictors(X_new)
                 elif setup.standardize_predictors and setup.back_transform:
+                    X_new = self._center_predictors(X_new)
+                else:
                     X_new = self._center_predictors(X_new)
 
                 if not np.all(X.shape == X_new.shape):
@@ -4271,8 +4280,9 @@ class BayesianUnobservedComponents:
 
             if setup.standardize_predictors and not setup.back_transform:
                 X = self._standardize_predictors(X)
-
             elif setup.standardize_predictors and setup.back_transform:
+                X = self._center_predictors(X)
+            else:
                 X = self._center_predictors(X)
 
             reg_coeff = posterior.regression_coefficients[burn:, :, 0].T
