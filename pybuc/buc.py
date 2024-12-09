@@ -2267,7 +2267,7 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = num_pred / num_obs
+                zellner_prior_obs = num_pred ** 2 / num_obs
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))
@@ -2623,7 +2623,7 @@ class BayesianUnobservedComponents:
 
         :param zellner_prior_obs: int, float > 0. Relevant only if no regression precision matrix is provided.
         It controls how precise one believes their priors are for the regression coefficients, assuming no regression
-        precision matrix is provided. Default value is # of predictors / # of observations.
+        precision matrix is provided. Default value is (squared # of predictors) / (# of observations).
 
         :param upper_var_limit: int of float > 0. This sets an acceptable upper bound on sampled variances (i.e.,
         response error variance and stochastic state error variances). By default, this value is set to the sample
