@@ -532,7 +532,7 @@ $$
 $$
 
 where $\mathbf X \in \mathbb{R}^{n \times p}$ is the design matrix, $n$ is the number of response observations, 
-$p$ is the number of predictors, and $\kappa = p^2 / n$ is the number of default prior observations given to the mean 
+$p$ is the number of predictors, and $\kappa = 0.01$ is the number of default prior observations given to the mean 
 prior of $\mathbf 0$. This prior is a slight modification of Zellner's g-prior (to guard against potential singularity 
 of the design matrix). The number of prior observations, $\kappa$, can be changed by passing a value to the argument 
 `zellner_prior_obs` in the `sample()` method. If Zellner's g-prior is not desired, then a custom precision matrix can 
