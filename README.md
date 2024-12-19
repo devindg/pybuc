@@ -547,28 +547,30 @@ data should be mostly unconstrained in determining the posterior of the regressi
 $R_\mathrm{prior}^2$ is given, then by default $R_\mathrm{prior}^2$ will be based on estimation of the model
 
 $$
-\Delta y_t = y_t - y_{t-1} = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \epsilon_{t},
+\Delta \mathbf y = \mathbf y - L \mathbf y = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \boldsymbol{\epsilon},
 $$
 
-with prior $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{0.01}{\max(n - 1, p^2)} 
+where $L$ is the lag operator, and $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{0.01}{\max(n - 1, p^2)} 
 \mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)$. The factor $0.01$ corresponds to a hyper-prior 
 $R^2 \approx 0.99$.
 
 After the model is estimated, $R_\mathrm{prior}^2$ is computed as
 
 $$
-R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta y_t})}{\mathrm{Var}(\hat{\Delta y_t}) + \mathrm{Var}(\hat{\Delta r_t})},
+R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta \mathbf y})}{\mathrm{Var}(\hat{\Delta \mathbf y}) + \mathrm{Var}(\Delta \mathbf r)},
 $$
 
 where 
 
 $$
-\hat{\Delta y_t} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{0.01}{\max(n - 1, p^2)} 
-\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X)\right)^{-1} \Delta \mathbf X^\prime \Delta y_t
-$$ and 
+\hat{\Delta \mathbf y} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{0.01}{\max(n - 1, p^2)} 
+\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X)\right)^{-1} \Delta \mathbf X^\prime \Delta \mathbf y
+$$ 
+
+and 
 
 $$
-r_t = \Delta y_t - \hat{\Delta y_t}
+\Delta \mathbf r = \Delta \mathbf y - \hat{\Delta \mathbf y}
 $$
 
 A custom $R_\mathrm{prior}^2$ can be passed via the argument `zellner_prior_r_sqr`.
