@@ -1699,7 +1699,9 @@ class BayesianUnobservedComponents:
                      trig_season_var_scale_prior,
                      reg_coeff_mean_prior,
                      reg_coeff_prec_prior,
-                     zellner_prior_obs
+                     zellner_prior_obs,
+                     zellner_prior_r_sqr,
+                     zellner_max_cond_index
                      ) -> ModelSetup:
 
         n = self.num_obs
@@ -2178,6 +2180,13 @@ class BayesianUnobservedComponents:
             Vt, StS = self._design_matrix_svd(X)
             XtX = Vt.T @ StS @ Vt
 
+            # Get numerical condition of matrix
+            if num_pred > 1:
+                eig_vals = np.linalg.eigvalsh(XtX)
+                eig_cond_index = np.sqrt(np.max(eig_vals) / eig_vals)
+            else:
+                eig_cond_index = None
+
             # Get a record of all periodicities and harmonics
             season_specs = []
             if len(self.dummy_seasonal) > 0:
@@ -2267,7 +2276,19 @@ class BayesianUnobservedComponents:
             gibbs_iter0_init_state.append(1.)
 
             if zellner_prior_obs is None:
-                zellner_prior_obs = 0.01
+                zellner_prior_obs = 1
+
+            if zellner_prior_r_sqr is None:
+                y_diff = np.diff(y, axis=0)
+                x_diff = np.diff(X, axis=0)
+                y_diff_hat = x_diff @ ao.mat_inv(x_diff.T @ x_diff) @ x_diff.T @ y_diff
+                resid_diff = y_diff - y_diff_hat
+                var_y_diff_hat = np.var(y_diff_hat, ddof=num_pred)
+                var_resid_diff = np.var(resid_diff, ddof=num_pred)
+                zellner_prior_r_sqr = var_y_diff_hat / (var_y_diff_hat + var_resid_diff)
+
+            if zellner_max_cond_index is None:
+                zellner_max_cond_index = 30
 
             if reg_coeff_mean_prior is None:
                 reg_coeff_mean_prior = np.zeros((num_pred, 1))
@@ -2292,11 +2313,36 @@ class BayesianUnobservedComponents:
                     pass
 
             if reg_coeff_prec_prior is None:
+
+                # Use the ratio of the average determinant to average trace
+                # as a measure of the stability of the design matrix. The
+                # lower this ratio is, the less stable the design matrix is,
+                # in which case more weight will be given to a diagonal precision
+                # matrix.
+                if num_pred > 1:
+                    if np.any(eig_cond_index > zellner_max_cond_index):
+                        w = 0
+                    else:
+                        det_sign, log_det = np.linalg.slogdet(XtX)
+                        avg_determ = (det_sign * np.exp(log_det)) ** (1 / num_pred)
+                        avg_trace = np.trace(XtX) / num_pred
+                        w = avg_determ / avg_trace
+                else:
+                    w = 1
+
+                # The precision will depend on the prior R-squared, prior observations,
+                # number of observations, and number of predictors. Higher prior R-squared induces
+                # less precision. Higher prior observations induces more precision. Higher
+                # observations and number of squared predictors induce less precision.
+                # The quantity max(n, k^2), where n and k represent the number of observations
+                # and predictors, respectively, is expected to work well when degrees of
+                # freedom are high or low (see "Benchmark Priors for Bayesian Model Averaging",
+                # Fernandez, Ley, Steel [2001]).
                 reg_coeff_prec_prior = (
-                        zellner_prior_obs / n
-                        * (0.5 * XtX + 0.5 * np.diag(np.diag(XtX)))
+                        (1 - zellner_prior_r_sqr) / zellner_prior_r_sqr
+                        * zellner_prior_obs / max(n, num_pred ** 2)
+                        * (w * XtX + (1 - w) * np.diag(np.diag(XtX)))
                 )
-                reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             else:
                 if standardize_predictors and not scale_response:
                     pred_scale_diag = np.diag(1 / X_scale)
@@ -2305,10 +2351,8 @@ class BayesianUnobservedComponents:
                             @ reg_coeff_prec_prior
                             @ pred_scale_diag
                     )
-                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
                 elif not standardize_predictors and scale_response:
                     reg_coeff_prec_prior = reg_coeff_prec_prior * scaler ** 2
-                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
                 elif standardize_predictors and scale_response:
                     pred_scale_diag = np.diag(1 / X_scale)
                     reg_coeff_prec_prior = (
@@ -2316,10 +2360,8 @@ class BayesianUnobservedComponents:
                             @ reg_coeff_prec_prior
                             @ pred_scale_diag * scaler ** 2
                     )
-                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
-                else:
-                    reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
 
+            reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
             reg_ninvg_coeff_prec_post = (
                     Vt.T
                     @ (StS + Vt @ reg_coeff_prec_prior @ Vt.T)
@@ -2513,6 +2555,8 @@ class BayesianUnobservedComponents:
                reg_coeff_mean_prior: Union[np.ndarray, list, tuple] = None,
                reg_coeff_prec_prior: Union[np.ndarray, list, tuple] = None,
                zellner_prior_obs: Union[int, float] = None,
+               zellner_prior_r_sqr: float = None,
+               zellner_max_cond_index: Union[int, float] = None,
                upper_var_limit: Union[int, float] = None,
                max_samp_iter_factor: Union[int, float] = None
                ) -> Posterior:
@@ -2613,17 +2657,30 @@ class BayesianUnobservedComponents:
         If predictors are specified without a mean prior, a k-dimensional zero vector will be assumed.
 
         :param reg_coeff_prec_prior: Numpy array, list, or tuple with (k, k) elements, where k is the number of
-        predictors. If predictors are specified without a precision prior, Zellner's g-prior will be enforced.
-        Specifically, 1 / g * (w * dot(X.T, X) + (1 - w) * diag(dot(X.T, X))), where g = n / prior_obs, prior_obs
-        is the number of prior observations given to the regression coefficient mean prior (i.e., it controls how
-        much weight is given to the mean prior), n is the number of observations, X is the design matrix, and
-        diag(dot(X.T, X)) is a diagonal matrix with the diagonal elements matching those of dot(X.T, X). The
-        addition of the diagonal matrix to dot(X.T, X) is to guard against singularity (i.e., a design matrix
-        that is not full rank). The weighting controlled by w is set to 0.5.
+        predictors. If predictors are specified without a precision prior, a version of Zellner's g-prior will be
+        enforced. Specifically, 1 / g * (w * X'X + (1 - w) * diag(X'X)), where
+        g = prior_r_sqr / (1 - prior_r_sqr) * n / prior_obs, and w in (0, 1) controls how much weight is given to
+        the original precision matrix vs. the diagonalized precision matrix. The weight w is empirically determined
+        using the ratio of the geometric average of the determinant to the arithmetic average of the trace of the
+        precision matrix. This ratio, which is bounded between (0, 1), serves as an approximation to the stability
+        of the design the matrix. A less stable design matrix, such as one with high multicollinearity or
+        errors-in-variables, should result in a low determinant and thus low w.
 
         :param zellner_prior_obs: int, float > 0. Relevant only if no regression precision matrix is provided.
-        It controls how precise one believes their priors are for the regression coefficients, assuming no regression
-        precision matrix is provided. Default value is 0.01.
+        It represents the number of observations one believes the prior mean should be given, out of the total of
+        max(n, k^2), where n is the number of observations and k is the number of predictors. A higher value will
+        induce more shrinkage toward the prior mean. Default value is 1.
+
+        :param zellner_prior_r_sqr: float in (0, 1). Relevant only if no regression precision matrix is provided.
+        It represents how closely one believes the regression component fits the data, conditional on the underlying
+        unobserved time component, in terms of R-squared. A higher value will induce less shrinkage toward the prior
+        mean. Default value is 0.5.
+
+        :param zellner_max_cond_index: int or float > 0. This defines a threshold for the weighting given to the
+        original precision matrix vs. the diagonalized precision matrix used for the modified Zellner's g-prior.
+        If the condition index, defined as (max(eigen_value) / eigen_value)^0.5, for any predictor exceeds the
+        max condition index allowable, then the weight w will be set to 0, thus giving all weight to the diagonalized
+        precision matrix in the Zellner prior. Default value is 30.
 
         :param upper_var_limit: int of float > 0. This sets an acceptable upper bound on sampled variances (i.e.,
         response error variance and stochastic state error variances). By default, this value is set to the sample
@@ -3193,6 +3250,14 @@ class BayesianUnobservedComponents:
                 else:
                     raise ValueError('zellner_prior_obs must be strictly positive.')
 
+            if zellner_prior_r_sqr is not None:
+                if 0 >= zellner_prior_r_sqr >= 1 or not isinstance(zellner_prior_r_sqr, float):
+                    raise ValueError('zellner_prior_r_sqr must be between 0 and 1.')
+
+            if zellner_max_cond_index is not None:
+                if zellner_max_cond_index < 0 or not isinstance(zellner_max_cond_index, (int, float)):
+                    raise ValueError('zellner_max_cond_index must be strictly positive.')
+
         # Set upper limits on variance draws and number of sampling iterations
         if upper_var_limit is None:
             upper_var_limit = self.response_scale ** 2
@@ -3258,7 +3323,9 @@ class BayesianUnobservedComponents:
             trig_season_var_scale_prior,
             reg_coeff_mean_prior,
             reg_coeff_prec_prior,
-            zellner_prior_obs
+            zellner_prior_obs,
+            zellner_prior_r_sqr,
+            zellner_max_cond_index
         )
 
         # Bring in model configuration
@@ -3360,7 +3427,7 @@ class BayesianUnobservedComponents:
             # Compute the Normal-Inverse-Gamma posterior covariance matrix and
             # precision-weighted mean prior ahead of time. This is to save
             # on computational expense in the sampling for-loop.
-            W = Vt @ reg_ninvg_coeff_cov_post @ Vt.T
+            W = Vt @ reg_ninvg_coeff_cov_post @ Vt.T  # for SVD transformation
             c = reg_coeff_prec_prior @ reg_coeff_mean_prior
         else:
             regression_coefficients = np.array([[[]]])
@@ -3555,6 +3622,7 @@ class BayesianUnobservedComponents:
                         smooth_time_prediction = smoothed_prediction[s] - Z[:, :, -1]
                         y_tilde = y - smooth_time_prediction  # y with smooth time prediction subtracted out
                         reg_coeff_mean_post = reg_ninvg_coeff_cov_post @ (X.T @ y_tilde + c)
+
                         response_var_scale_post = (
                                 response_var_scale_prior
                                 + 0.5 * (
@@ -3563,6 +3631,7 @@ class BayesianUnobservedComponents:
                                         - reg_coeff_mean_post.T @ reg_ninvg_coeff_prec_post @ reg_coeff_mean_post
                                 )
                         )
+
                         response_error_variance[s] = dist.vec_ig(
                             response_var_shape_post,
                             response_var_scale_post

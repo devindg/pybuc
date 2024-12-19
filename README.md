@@ -527,17 +527,55 @@ $$
 The default prior for regression coefficients is
 
 $$
-\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{\kappa}{n} \left(\frac{1}{2} \mathbf X^\prime \mathbf X + 
-\frac{1}{2} \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
+\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{1 - R_\mathrm{prior}^2}{R_\mathrm{prior}^2}
+\frac{n_\mathrm{prior}}{\max(n, p^2)} 
+\left(w \mathbf X^\prime \mathbf X + (1 - w) \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
 $$
 
 where $\mathbf X \in \mathbb{R}^{n \times p}$ is the design matrix, $n$ is the number of response observations, 
-$p$ is the number of predictors, and $\kappa = 0.01$ is the number of default prior observations given to the mean 
+$p$ is the number of predictors, and $n_\mathrm{prior} = 1$ is the number of default prior observations given to the mean 
 prior of $\mathbf 0$. This prior is a slight modification of Zellner's g-prior (to guard against potential singularity 
-of the design matrix). The number of prior observations, $\kappa$, can be changed by passing a value to the argument 
+of the design matrix). The number of prior observations, $n_\mathrm{prior}$, can be changed by passing a value to the argument 
 `zellner_prior_obs` in the `sample()` method. If Zellner's g-prior is not desired, then a custom precision matrix can 
 be passed to the argument `reg_coeff_prec_prior`. Similarly, if a zero-mean prior is not wanted, a custom mean prior 
 can be passed to `reg_coeff_mean_prior`.
+
+The divisor $\max(n, p^2)$ follows the benchmark Zellner $g$ recommendation in "Benchmark Prior for Bayesian Model 
+Averaging" (Fernandez, Ley, Steel), which is expected to work well if degrees of freedom are low or high. Notice also 
+that the prior precision is decreasing in $R_\mathrm{prior}^2$. Intuitively, if the expected fit is strong, then the 
+data should be mostly unconstrained in determining the posterior of the regression coefficients. If no 
+$R_\mathrm{prior}^2$ is given, then by default $R_\mathrm{prior}^2$ will be computed based on ordinary least squares 
+estimation of the model
+
+$$
+\Delta y_t = y_t - y_{t-1} = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \epsilon_{t}
+$$
+
+After the model is estimated, $R_\mathrm{prior}^2$ is computed as
+
+$$
+R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta y_t})}{\mathrm{Var}(\hat{\Delta y_t}) + \mathrm{Var}(\hat{\Delta r_t})},
+$$
+
+where $\hat{\Delta y_t} = \Delta \mathbf X (\Delta \mathbf X^\prime \Delta \mathbf X)^{-1} \Delta \mathbf X^\prime 
+\Delta y_t$ and $r_t = \Delta y_t - \hat{\Delta y_t}$.
+
+A custom $R_\mathrm{prior}^2$ can be passed via the argument `zellner_prior_r_sqr`.
+
+Finally, the weight given to the untransformed covariance matrix vs. the diagonalized covariance matrix, controlled by 
+$w$, is automatically determined by the determinant and trace of the covariance matrix $\mathbf X_*^\prime \mathbf X_*$, 
+where $\mathbf X_*$ is a centered or standardized version of $\mathbf X$. 
+Specifically,
+
+$$
+w = \frac{\mathrm{det}(\mathbf X_*^\prime \mathbf X_*)^{\frac{1}{p}}}{\mathrm{trace}(\mathbf X_*^\prime \mathbf X_*) / p}
+$$
+
+Because the determinant is a product of eigenvalues and the trace is a sum of eigenvalues, the geometric average of the 
+determinant relative to the arithmetic average of the trace should be close to 1 if the eigenvalues are close to 
+uniformly distributed. If spacing between the eigenvalues is significantly nonlinear, this could be indicative of an 
+ill-conditioned design matrix, in which case it is safer to give more weight to the diagonalized covariance matrix. In 
+the extreme case where the determinant is equal to 0, all weight will be given to the diagonalized covariance matrix.
 
 ## State space representation (example)
 The unobserved components model can be rewritten in state space form. For example, suppose level, trend, seasonal, 
