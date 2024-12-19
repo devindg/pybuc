@@ -563,12 +563,12 @@ where $\hat{\Delta y_t} = \Delta \mathbf X (\Delta \mathbf X^\prime \Delta \math
 A custom $R_\mathrm{prior}^2$ can be passed via the argument `zellner_prior_r_sqr`.
 
 Finally, the weight given to the untransformed covariance matrix vs. the diagonalized covariance matrix, controlled by 
-$w$, is automatically determined by the determinant and trace of the covariance matrix $\mathbf X_*^\prime \mathbf X_*$, 
-where $\mathbf X_*$ is a centered or standardized version of $\mathbf X$. 
+$w$, is automatically determined by the determinant and trace of the covariance matrix $\mathbf X_ *^\prime \mathbf X_ *$, 
+where $\mathbf X_ *$ is a centered or standardized version of $\mathbf X$. 
 Specifically,
 
 $$
-w = \frac{\mathrm{det}(\mathbf X_*^\prime \mathbf X_*)^{\frac{1}{p}}}{\mathrm{trace}(\mathbf X_*^\prime \mathbf X_*) / p}
+w = \frac{\mathrm{det}(\mathbf X_ *^\prime \mathbf X_ *)^{\frac{1}{p}}}{\mathrm{trace}(\mathbf X_ *^\prime \mathbf X_ *) / p}
 $$
 
 Because the determinant is a product of eigenvalues and the trace is a sum of eigenvalues, the geometric average of the 
