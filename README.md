@@ -550,8 +550,9 @@ $$
 \Delta y_t = y_t - y_{t-1} = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \epsilon_{t},
 $$
 
-with prior $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{1}{\max(n, p^2)} 
-\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)$
+with prior $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{0.01}{\max(n - 1, p^2)} 
+\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)$. The factor $0.01$ corresponds to a hyper-prior 
+$R^2 \approx 0.99$.
 
 After the model is estimated, $R_\mathrm{prior}^2$ is computed as
 
@@ -562,7 +563,7 @@ $$
 where 
 
 $$
-\hat{\Delta y_t} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{1}{\max(n, p^2)} 
+\hat{\Delta y_t} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{0.01}{\max(n - 1, p^2)} 
 \mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X)\right)^{-1} \Delta \mathbf X^\prime \Delta y_t
 $$ and 
 

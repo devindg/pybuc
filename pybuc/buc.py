@@ -2284,7 +2284,7 @@ class BayesianUnobservedComponents:
                 y_diff_hat = (
                         x_diff
                         @ ao.mat_inv(x_diff.T @ x_diff
-                                     + 1 / max(n, num_pred ** 2) * np.diag(np.diag(x_diff.T @ x_diff))
+                                     + 0.01 / max(n - 1, num_pred ** 2) * np.diag(np.diag(x_diff.T @ x_diff))
                                      )
                         @ x_diff.T
                         @ y_diff
