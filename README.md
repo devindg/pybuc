@@ -557,7 +557,7 @@ $R^2 \approx 0.99$.
 After the model is estimated, $R_\mathrm{prior}^2$ is computed as
 
 $$
-R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta \mathbf y})}{\mathrm{Var}(\hat{\Delta \mathbf y}) + \mathrm{Var}(\hat{\Delta \mathbf r})},
+R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta \mathbf y})}{\mathrm{Var}(\hat{\Delta \mathbf y}) + \mathrm{Var}(\Delta \mathbf r)},
 $$
 
 where 
@@ -570,7 +570,7 @@ $$
 and 
 
 $$
-\mathbf r = \Delta \mathbf y - \hat{\Delta \mathbf y}
+\Delta \mathbf r = \Delta \mathbf y - \hat{\Delta \mathbf y}
 $$
 
 A custom $R_\mathrm{prior}^2$ can be passed via the argument `zellner_prior_r_sqr`.
