@@ -565,7 +565,9 @@ where
 $$
 \hat{\Delta y_t} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{0.01}{\max(n - 1, p^2)} 
 \mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X)\right)^{-1} \Delta \mathbf X^\prime \Delta y_t
-$$ and 
+$$ 
+
+and 
 
 $$
 r_t = \Delta y_t - \hat{\Delta y_t}
