@@ -544,12 +544,14 @@ The divisor $\max(n, p^2)$ follows the benchmark Zellner $g$ recommendation in "
 Averaging" (Fernandez, Ley, Steel), which is expected to work well if degrees of freedom are low or high. Notice also 
 that the prior precision is decreasing in $R_\mathrm{prior}^2$. Intuitively, if the expected fit is strong, then the 
 data should be mostly unconstrained in determining the posterior of the regression coefficients. If no 
-$R_\mathrm{prior}^2$ is given, then by default $R_\mathrm{prior}^2$ will be computed based on ordinary least squares 
-estimation of the model
+$R_\mathrm{prior}^2$ is given, then by default $R_\mathrm{prior}^2$ will be based on estimation of the model
 
 $$
-\Delta y_t = y_t - y_{t-1} = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \epsilon_{t}
+\Delta y_t = y_t - y_{t-1} = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \epsilon_{t},
 $$
+
+with prior $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{1}{\max(n, p^2)} 
+\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)$
 
 After the model is estimated, $R_\mathrm{prior}^2$ is computed as
 
@@ -557,8 +559,16 @@ $$
 R_\mathrm{prior}^2 = \frac{\mathrm{Var}(\hat{\Delta y_t})}{\mathrm{Var}(\hat{\Delta y_t}) + \mathrm{Var}(\hat{\Delta r_t})},
 $$
 
-where $\hat{\Delta y_t} = \Delta \mathbf X (\Delta \mathbf X^\prime \Delta \mathbf X)^{-1} \Delta \mathbf X^\prime 
-\Delta y_t$ and $r_t = \Delta y_t - \hat{\Delta y_t}$.
+where 
+
+$$
+\hat{\Delta y_t} = \Delta \mathbf X \left(\Delta \mathbf X^\prime \Delta \mathbf X + \frac{1}{\max(n, p^2)} 
+\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X)\right)^{-1} \Delta \mathbf X^\prime \Delta y_t
+$$ and 
+
+$$
+r_t = \Delta y_t - \hat{\Delta y_t}
+$$
 
 A custom $R_\mathrm{prior}^2$ can be passed via the argument `zellner_prior_r_sqr`.
 
@@ -573,7 +583,7 @@ $$
 
 Because the determinant is a product of eigenvalues and the trace is a sum of eigenvalues, the geometric average of the 
 determinant relative to the arithmetic average of the trace should be close to 1 if the eigenvalues are close to 
-uniformly distributed. If spacing between the eigenvalues is significantly nonlinear, this could be indicative of an 
+evenly spaced. If spacing between the eigenvalues is significantly nonlinear, this could be indicative of an 
 ill-conditioned design matrix, in which case it is safer to give more weight to the diagonalized covariance matrix. In 
 the extreme case where the determinant is equal to 0, all weight will be given to the diagonalized covariance matrix.
 

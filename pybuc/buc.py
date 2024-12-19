@@ -2281,7 +2281,14 @@ class BayesianUnobservedComponents:
             if zellner_prior_r_sqr is None:
                 y_diff = np.diff(y, axis=0)
                 x_diff = np.diff(X, axis=0)
-                y_diff_hat = x_diff @ ao.mat_inv(x_diff.T @ x_diff) @ x_diff.T @ y_diff
+                y_diff_hat = (
+                        x_diff
+                        @ ao.mat_inv(x_diff.T @ x_diff
+                                     + 1 / max(n, num_pred ** 2) * np.diag(np.diag(x_diff.T @ x_diff))
+                                     )
+                        @ x_diff.T
+                        @ y_diff
+                )
                 resid_diff = y_diff - y_diff_hat
                 var_y_diff_hat = np.var(y_diff_hat, ddof=num_pred)
                 var_resid_diff = np.var(resid_diff, ddof=num_pred)
