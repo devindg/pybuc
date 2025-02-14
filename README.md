@@ -528,9 +528,9 @@ $$
 The default prior for regression coefficients is
 
 $$
-\boldsymbol{\beta} \sim N\left(\mathbf 0, \frac{1 - R_\mathrm{prior}^2}{R_\mathrm{prior}^2}
+\boldsymbol{\beta} \sim N\left(\mathbf 0, \left(\frac{1 - R_\mathrm{prior}^2}{R_\mathrm{prior}^2}
 \frac{n_\mathrm{prior}}{\max(n, p^2)} 
-\left(w \mathbf X^\prime \mathbf X + (1 - w) \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)
+\left(w \mathbf X^\prime \mathbf X + (1 - w) \mathrm{diag}(\mathbf X^\prime \mathbf X) \right)\right)^{-1}\right)
 $$
 
 where $\mathbf X \in \mathbb{R}^{n \times p}$ is the design matrix, $n$ is the number of response observations, 
@@ -551,8 +551,8 @@ $$
 \Delta \mathbf y = \mathbf y - L \mathbf y = \Delta \mathbf X \boldsymbol{\beta}^* + \Delta \boldsymbol{\epsilon},
 $$
 
-where $L$ is the lag operator, and $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \frac{0.01}{\max(n - 1, p^2)} 
-\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)$. The factor $0.01$ corresponds to a hyper-prior 
+where $L$ is the lag operator, and $\boldsymbol{\beta}^* \sim N\left(\mathbf 0,  \left(\frac{0.01}{\max(n - 1, p^2)} 
+\mathrm{diag}(\Delta \mathbf X^\prime \Delta \mathbf X) \right)^{-1}\right)$. The factor $0.01$ corresponds to a hyper-prior 
 $R^2 \approx 0.99$.
 
 After the model is estimated, $R_\mathrm{prior}^2$ is computed as
