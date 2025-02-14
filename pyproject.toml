@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pybuc"
-version = "0.55.0"
+version = "0.55.1"
 description = "Fast estimation of Bayesian structural time series models via Gibbs sampling."
 authors = ["Devin D. Garcia"]
 license = "BSD 3-Clause"
@@ -15,7 +15,7 @@ keywords = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10, <3.12"
+python = ">=3.10, <=3.13"
 pandas = ">=1.5.3"
 numpy = ">=1.26.1"
 matplotlib = ">=3.7.1"
