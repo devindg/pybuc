@@ -2184,6 +2184,7 @@ class BayesianUnobservedComponents:
             if num_pred > 1:
                 eig_vals = np.linalg.eigvalsh(XtX)
                 eig_cond_index = np.sqrt(np.max(eig_vals) / eig_vals)
+                eig_cond_index = np.nan_to_num(eig_cond_index, nan=np.inf)
             else:
                 eig_cond_index = None
 

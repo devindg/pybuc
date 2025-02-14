@@ -31,8 +31,9 @@ for Python.
 ```
 pip install pybuc
 ```
-See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, and 
-Matplotlib. Python 3.9 and above is supported.
+See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, statsmodels,
+and Matplotlib. Python 3.10 and above is supported for versions of this package >= 0.55. All other versions support 
+Python 3.9 and above.
 
 # Motivation
 
