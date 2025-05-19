@@ -31,9 +31,16 @@ for Python.
 ```
 pip install pybuc
 ```
-See `pyproject.toml` and `poetry.lock` for dependency details. This module depends on NumPy, Numba, Pandas, statsmodels,
+See `pyproject.toml` and `uv.lock` for dependency details. This module depends on NumPy, Numba, Pandas, statsmodels,
 and Matplotlib. Python 3.10 and above is supported for versions of this package >= 0.55. All other versions support 
 Python 3.9 and above.
+
+Alternatively, you can set up an environment for the project via `uv`. Steps:
+
+1. Install `uv`. See https://github.com/astral-sh/uv for installation instructions.
+2. git clone https://www.github.com/devindg/pybuc.git
+2. `cd pybuc`
+3. `uv sync`
 
 # Motivation
 
