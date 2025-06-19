@@ -2,8 +2,8 @@
 name = "pybuc"
 version = "0.56.0"
 description = "Fast estimation of Bayesian structural time series models via Gibbs sampling."
-authors = ["Devin D. Garcia"]
-license = "BSD 3-Clause"
+authors = [{name = "Devin D. Garcia"}]
+license = {text = "BSD 3-Clause"}
 readme = "README.md"
 keywords = [
     "structural",
@@ -22,3 +22,6 @@ dependencies = [
     "seaborn>=0.13.2",
     "statsmodels>=0.14.4",
 ]
+
+[tool.setuptools]
+py-modules = []
