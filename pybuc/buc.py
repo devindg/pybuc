@@ -1059,14 +1059,14 @@ class BayesianUnobservedComponents:
         if self.has_predictors:
             return np.std(self.predictors, ddof=1, axis=0)
         else:
-            return
+            return None
 
     @property
     def predictors_means(self):
         if self.has_predictors:
             return np.mean(self.predictors, axis=0)
         else:
-            return
+            return None
 
     def _center_predictors(self, predictors):
         mean = self.predictors_means
@@ -1075,7 +1075,7 @@ class BayesianUnobservedComponents:
         if self.has_predictors:
             return X - mean[np.newaxis, :]
         else:
-            return
+            return None
 
     def _standardize_predictors(self, predictors):
         scale = self.predictors_scales
@@ -1084,7 +1084,7 @@ class BayesianUnobservedComponents:
         if self.has_predictors:
             return self._center_predictors(X) / scale[np.newaxis, :]
         else:
-            return
+            return None
 
     @property
     def num_lag_season_state_eqs(self) -> int:
@@ -1513,7 +1513,7 @@ class BayesianUnobservedComponents:
             first_y = self._first_value(y)[0]
             return first_y
         else:
-            return
+            return None
 
     def _gibbs_iter0_init_trend(self, y):
         """
@@ -1532,7 +1532,7 @@ class BayesianUnobservedComponents:
                 trend = (last_y[0] - first_y[0]) / num_steps
             return trend
         else:
-            return
+            return None
 
     def _gibbs_iter0_init_lag_season(self):
         """
@@ -1544,7 +1544,7 @@ class BayesianUnobservedComponents:
             num_eqs = self.num_lag_season_state_eqs
             return np.zeros(num_eqs)
         else:
-            return
+            return None
 
     def _gibbs_iter0_init_dum_season(self):
         """
@@ -1556,7 +1556,7 @@ class BayesianUnobservedComponents:
             num_eqs = self.num_dum_season_state_eqs
             return np.zeros(num_eqs)
         else:
-            return
+            return None
 
     def _gibbs_iter0_init_trig_season(self):
         """
@@ -1568,7 +1568,7 @@ class BayesianUnobservedComponents:
             num_eqs = self.num_trig_season_state_eqs
             return np.zeros(num_eqs)
         else:
-            return
+            return None
 
     @staticmethod
     def _ar_state_post_upd(smoothed_state: np.ndarray,
@@ -2352,21 +2352,12 @@ class BayesianUnobservedComponents:
                         * (w * XtX + (1 - w) * np.diag(np.diag(XtX)))
                 )
             else:
-                if standardize_predictors and not scale_response:
+                if standardize_predictors:
                     pred_scale_diag = np.diag(1 / X_scale)
                     reg_coeff_prec_prior = (
                             pred_scale_diag
                             @ reg_coeff_prec_prior
                             @ pred_scale_diag
-                    )
-                elif not standardize_predictors and scale_response:
-                    reg_coeff_prec_prior = reg_coeff_prec_prior * scaler ** 2
-                elif standardize_predictors and scale_response:
-                    pred_scale_diag = np.diag(1 / X_scale)
-                    reg_coeff_prec_prior = (
-                            pred_scale_diag
-                            @ reg_coeff_prec_prior
-                            @ pred_scale_diag * scaler ** 2
                     )
 
             reg_coeff_cov_prior = ao.mat_inv(reg_coeff_prec_prior)
@@ -2535,6 +2526,8 @@ class BayesianUnobservedComponents:
                                  pct_high_var=pct_high_var)
 
             return hv
+        else:
+            return None
 
     def sample(self,
                num_samp: int,
