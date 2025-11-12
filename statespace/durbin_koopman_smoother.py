@@ -1,9 +1,9 @@
 import numpy as np
 from typing import NamedTuple
 from numba import njit
-from ..statespace.kalman_filter import kalman_filter as kf
-from ..vectorized import distributions as dist
-from ..utils import array_operations as ao
+from statespace.kalman_filter import kalman_filter as kf
+from vectorized import distributions as dist
+from utils import array_operations as ao
 
 
 class DKSS(NamedTuple):

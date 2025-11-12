@@ -1,7 +1,7 @@
 import numpy as np
 from typing import NamedTuple
 from numba import njit
-from ..utils import array_operations as ao
+from utils import array_operations as ao
 
 
 class KF(NamedTuple):

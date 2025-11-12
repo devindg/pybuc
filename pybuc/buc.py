@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import warnings
 from typing import Union, NamedTuple
 import pandas as pd
-from pybuc.statespace.durbin_koopman_smoother import dk_smoother as dks
-from pybuc.utils import array_operations as ao
-from pybuc.utils.array_operations import diag_2d
-from pybuc.vectorized import distributions as dist
-from pybuc.model_assessment.performance import watanabe_akaike, WAIC
+from statespace.durbin_koopman_smoother import dk_smoother as dks
+from utils import array_operations as ao
+from utils.array_operations import diag_2d
+from vectorized import distributions as dist
+from model_assessment.performance import watanabe_akaike, WAIC
 from seaborn import histplot, lineplot
 from statsmodels.tsa.statespace.structural import UnobservedComponents as UC
-from pybuc.vectorized.distributions import vec_norm
+from vectorized.distributions import vec_norm
 
 
 class MaxIterSamplingError(Exception):

@@ -1,6 +1,6 @@
 [project]
 name = "pybuc"
-version = "0.56.0"
+version = "0.56.2"
 description = "Fast estimation of Bayesian structural time series models via Gibbs sampling."
 authors = [{name = "Devin D. Garcia"}]
 license = {text = "BSD 3-Clause"}
@@ -24,4 +24,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = []
+packages = ["pybuc", "model_assessment", "statespace", "utils", "vectorized"]
